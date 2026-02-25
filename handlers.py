@@ -14,11 +14,12 @@ from aiogram.exceptions import TelegramBadRequest
 
 import config
 import inventory
-from sort_assortment import sort_assortment_to_categories, build_output_text
+from sort_assortment import sort_assortment_to_categories, build_output_text, add_item_to_categories
 
 logger = logging.getLogger(__name__)
 router = Router()
 
+# Состояния для загрузки ассортимента (старый способ)
 class UploadStates(StatesGroup):
     waiting_for_mode = State()
     waiting_for_inventory = State()
@@ -129,10 +130,12 @@ async def process_full_text(message: Message, full_text: str, mode: str, state: 
         if new_objects:
             updated_inventory = current_inventory + new_objects
             inventory.save_inventory(updated_inventory)
+
         response = f"✅ Добавлено новых позиций: {added_count}\n"
         response += f"⏭ Пропущено (дубликаты): {len(skipped_lines)}\n"
         response += f"📦 Всего в ассортименте: {len(current_inventory) + len(new_objects)}\n\n"
         response += "📄 Подробности в файле result.txt"
+
         combined_lines = []
         if added_lines:
             combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
@@ -141,6 +144,7 @@ async def process_full_text(message: Message, full_text: str, mode: str, state: 
         if skipped_lines:
             combined_lines.append(f"=== ПРОПУЩЕННЫЕ ({len(skipped_lines)}) ===")
             combined_lines.extend(skipped_lines)
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
             f.write("\n".join(combined_lines))
             tmp_path = f.name
@@ -149,6 +153,7 @@ async def process_full_text(message: Message, full_text: str, mode: str, state: 
             await message.answer_document(document, caption=response)
         finally:
             os.unlink(tmp_path)
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить ещё", callback_data="continue:add_more"),
              InlineKeyboardButton(text="✅ Завершить", callback_data="continue:finish")]
@@ -164,7 +169,10 @@ async def cmd_start(message: Message, bot: Bot):
     logger.info(f"🔥 Команда /start получена от {message.from_user.id}")
     try:
         keyboard = get_main_menu_keyboard()
-        await message.answer("👋 Добро пожаловать! Используйте кнопки ниже для управления.", reply_markup=keyboard)
+        await message.answer(
+            "👋 Добро пожаловать! Используйте кнопки ниже для управления.",
+            reply_markup=keyboard
+        )
         logger.info(f"✅ Ответ на /start отправлен пользователю {message.from_user.id}")
     except Exception as e:
         logger.exception(f"❌ Ошибка при обработке /start: {e}")
@@ -231,7 +239,10 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
              InlineKeyboardButton(text="❌ Нет, отмена", callback_data="confirm_clear:no")]
         ])
         try:
-            await callback.message.edit_text("⚠️ Вы уверены, что хотите полностью очистить ассортимент? Это действие необратимо.", reply_markup=keyboard)
+            await callback.message.edit_text(
+                "⚠️ Вы уверены, что хотите полностью очистить ассортимент? Это действие необратимо.",
+                reply_markup=keyboard
+            )
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
                 pass
@@ -402,14 +413,16 @@ async def process_inventory_invalid(message: Message):
     await message.answer("⚠️ Пожалуйста, отправьте текстовое сообщение или текстовый файл.")
 
 # -------------------------------------------------------------------
-# НОВЫЙ ОБРАБОТЧИК для топика «Ассортимент» (с подтверждением)
+# Обработчик для топика «Ассортимент» (с подтверждением)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ASSORTMENT)
 async def handle_assortment_upload(message: Message, bot: Bot, state: FSMContext):
     logger.info(f"📥 Загрузка ассортимента в топик Ассортимент от {message.from_user.id}")
+
     current_state = await state.get_state()
     if current_state == AssortmentConfirmState.waiting_for_confirm.state:
         await state.clear()
+
     if message.text:
         full_text = message.text.strip()
         if not full_text:
@@ -426,7 +439,11 @@ async def handle_assortment_upload(message: Message, bot: Bot, state: FSMContext
             [InlineKeyboardButton(text="✅ Подтвердить", callback_data="assort_confirm:yes"),
              InlineKeyboardButton(text="❌ Отмена", callback_data="assort_confirm:no")]
         ])
-        await message.reply(f"📦 Найдено категорий: {len(categories)}, всего позиций: {total_items}\nПодтвердите загрузку (это заменит весь текущий ассортимент).", reply_markup=keyboard)
+        await message.reply(
+            f"📦 Найдено категорий: {len(categories)}, всего позиций: {total_items}\n"
+            "Подтвердите загрузку (это заменит весь текущий ассортимент).",
+            reply_markup=keyboard
+        )
     elif message.document:
         document = message.document
         if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
@@ -451,7 +468,11 @@ async def handle_assortment_upload(message: Message, bot: Bot, state: FSMContext
                 [InlineKeyboardButton(text="✅ Подтвердить", callback_data="assort_confirm:yes"),
                  InlineKeyboardButton(text="❌ Отмена", callback_data="assort_confirm:no")]
             ])
-            await message.reply(f"📦 Найдено категорий: {len(categories)}, всего позиций: {total_items}\nПодтвердите загрузку (это заменит весь текущий ассортимент).", reply_markup=keyboard)
+            await message.reply(
+                f"📦 Найдено категорий: {len(categories)}, всего позиций: {total_items}\n"
+                "Подтвердите загрузку (это заменит весь текущий ассортимент).",
+                reply_markup=keyboard
+            )
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -475,17 +496,8 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
     await callback.answer()
 
 # -------------------------------------------------------------------
-# НОВЫЙ ОБРАБОТЧИК для топика «Прибытие» (добавление товаров с поиском категории)
+# Обработчик для топика «Прибытие» (добавление товаров)
 # -------------------------------------------------------------------
-def find_matching_category(categories, text):
-    """Возвращает индекс категории, заголовок которой содержится в тексте (без учёта регистра)."""
-    text_lower = text.lower()
-    for idx, cat in enumerate(categories):
-        header = cat['header'].rstrip(':').lower()
-        if header in text_lower:
-            return idx
-    return None
-
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ARRIVAL)
 async def handle_arrival(message: Message, bot: Bot):
     logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
@@ -501,45 +513,25 @@ async def handle_arrival(message: Message, bot: Bot):
             return
 
         categories = inventory.load_inventory()
-        new_objects = inventory.parse_lines_to_objects(lines)
-        if not categories:
-            categories = [{"header": "Общее:", "items": []}]
+        all_items = inventory.text_only(categories)
+        existing_texts = set(all_items)
+        existing_serials = {inventory.extract_serial(item) for item in all_items if inventory.extract_serial(item)}
 
         added_count = 0
         skipped_lines = []
-        for obj in new_objects:
-            line = obj['text']
-            serial = obj['serial']
 
-            # Проверка дубликата по тексту во всех категориях
-            duplicate = False
-            for cat in categories:
-                if line in cat['items']:
-                    skipped_lines.append(f"[Дубликат текста] {line}")
-                    duplicate = True
-                    break
-            if duplicate:
+        for line in lines:
+            if line in existing_texts:
+                skipped_lines.append(f"[Дубликат текста] {line}")
                 continue
-
-            # Проверка дубликата по серийному номеру во всех категориях
+            serial = inventory.extract_serial(line)
+            if serial and serial in existing_serials:
+                skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
+                continue
+            categories, idx = add_item_to_categories(line, categories)
+            existing_texts.add(line)
             if serial:
-                serial_duplicate = False
-                for cat in categories:
-                    for it in cat['items']:
-                        if inventory.extract_serial(it) == serial:
-                            skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
-                            serial_duplicate = True
-                            break
-                    if serial_duplicate:
-                        break
-                if serial_duplicate:
-                    continue
-
-            # Ищем подходящую категорию
-            target_idx = find_matching_category(categories, line)
-            if target_idx is None:
-                target_idx = 0  # кладём в "Общее:" (первая категория)
-            categories[target_idx]['items'].append(line)
+                existing_serials.add(serial)
             added_count += 1
 
         if added_count > 0:
@@ -572,40 +564,29 @@ async def handle_arrival(message: Message, bot: Bot):
             if not lines:
                 await message.reply("❌ Файл пуст.")
                 return
+
             categories = inventory.load_inventory()
-            new_objects = inventory.parse_lines_to_objects(lines)
-            if not categories:
-                categories = [{"header": "Общее:", "items": []}]
+            all_items = inventory.text_only(categories)
+            existing_texts = set(all_items)
+            existing_serials = {inventory.extract_serial(item) for item in all_items if inventory.extract_serial(item)}
+
             added_count = 0
             skipped_lines = []
-            for obj in new_objects:
-                line = obj['text']
-                serial = obj['serial']
-                duplicate = False
-                for cat in categories:
-                    if line in cat['items']:
-                        skipped_lines.append(f"[Дубликат текста] {line}")
-                        duplicate = True
-                        break
-                if duplicate:
+
+            for line in lines:
+                if line in existing_texts:
+                    skipped_lines.append(f"[Дубликат текста] {line}")
                     continue
+                serial = inventory.extract_serial(line)
+                if serial and serial in existing_serials:
+                    skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
+                    continue
+                categories, idx = add_item_to_categories(line, categories)
+                existing_texts.add(line)
                 if serial:
-                    serial_duplicate = False
-                    for cat in categories:
-                        for it in cat['items']:
-                            if inventory.extract_serial(it) == serial:
-                                skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
-                                serial_duplicate = True
-                                break
-                        if serial_duplicate:
-                            break
-                    if serial_duplicate:
-                        continue
-                target_idx = find_matching_category(categories, line)
-                if target_idx is None:
-                    target_idx = 0
-                categories[target_idx]['items'].append(line)
+                    existing_serials.add(serial)
                 added_count += 1
+
             if added_count > 0:
                 inventory.save_inventory(categories)
                 await message.react([ReactionTypeEmoji(emoji='✅')])
