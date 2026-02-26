@@ -5,7 +5,6 @@ import shutil
 from datetime import datetime
 from config import INVENTORY_FILE, BACKUP_DIR, MAX_BACKUPS
 
-# Регулярные выражения для отсеивания ложных срабатываний
 UNIT_PATTERN = re.compile(r'^\d+\s*(mm|см|дюйм|gb|tb|mb|р|руб|\$|€|%|скидка|бонус)$', re.IGNORECASE)
 TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,11}$')
 
@@ -43,7 +42,6 @@ def load_inventory():
         return []
     with open(INVENTORY_FILE, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    # Миграция старого формата (плоский список)
     if isinstance(data, list) and all(isinstance(item, dict) and "text" in item for item in data):
         items = [item["text"] for item in data]
         new_data = [{"header": "Общее:", "items": items}]

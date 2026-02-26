@@ -217,22 +217,26 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
     action = callback.data.split(":")[1]
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
+
+    # Немедленно отвечаем на callback
+    await callback.answer()
+
     if action == "inventory":
         await show_inventory(bot, chat_id)
     elif action == "upload":
         await start_upload_selection(callback.message, bot, state, user_id)
     elif action == "export_assortment":
         if user_id != config.ADMIN_ID:
-            await callback.answer("⛔ У вас нет прав на выгрузку ассортимента.", show_alert=True)
+            await callback.message.answer("⛔ У вас нет прав на выгрузку ассортимента.")
             return
         await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
         if user_id != config.ADMIN_ID:
-            await callback.answer("⛔ У вас нет прав на это действие.", show_alert=True)
+            await callback.message.answer("⛔ У вас нет прав на это действие.")
             return
         current_state = await state.get_state()
         if current_state is not None:
-            await callback.answer("⚠️ Сначала завершите текущее действие (/cancel).", show_alert=True)
+            await callback.message.answer("⚠️ Сначала завершите текущее действие (/cancel).")
             return
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, очистить", callback_data="confirm_clear:yes"),
@@ -260,12 +264,13 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
     elif action == "help":
         await show_help(bot, chat_id)
     else:
-        await callback.answer("Неизвестная команда", show_alert=True)
-    await callback.answer()
+        await callback.message.answer("Неизвестная команда")
 
 @router.callback_query(F.data.startswith("confirm_clear:"))
 async def process_confirm_clear(callback: CallbackQuery, bot: Bot):
     action = callback.data.split(":")[1]
+    await callback.answer()
+
     try:
         if action == "yes":
             inventory.save_inventory([])
@@ -278,11 +283,12 @@ async def process_confirm_clear(callback: CallbackQuery, bot: Bot):
         else:
             raise
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
-    await callback.answer()
 
 @router.callback_query(UploadStates.waiting_for_mode, F.data.startswith("upload_mode:"))
 async def process_mode_selection(callback: CallbackQuery, state: FSMContext):
     mode = callback.data.split(":")[1]
+    await callback.answer()
+
     await state.update_data(mode=mode, parts=[])
     await state.set_state(UploadStates.waiting_for_inventory)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -303,28 +309,33 @@ async def process_mode_selection(callback: CallbackQuery, state: FSMContext):
             pass
         else:
             raise
-    await callback.answer()
 
 @router.callback_query(UploadStates.waiting_for_inventory, F.data == "done:finish")
 async def process_done_callback(callback: CallbackQuery, bot: Bot, state: FSMContext):
+    await callback.answer()
+
     data = await state.get_data()
     parts = data.get("parts", [])
     mode = data.get("mode")
     if not parts:
-        await callback.answer("❌ Нет накопленных частей. Отправьте текст или загрузите файл.", show_alert=True)
+        await callback.message.answer("❌ Нет накопленных частей. Отправьте текст или загрузите файл.")
         return
     full_text = "\n".join(parts)
     await process_full_text(callback.message, full_text, mode, state, bot)
-    await callback.answer()
 
 @router.callback_query(UploadStates.waiting_for_continue, F.data.startswith("continue:"))
 async def process_continue(callback: CallbackQuery, state: FSMContext):
     action = callback.data.split(":")[1]
+    await callback.answer()
+
     if action == "add_more":
         await state.update_data(parts=[])
         await state.set_state(UploadStates.waiting_for_inventory)
         try:
-            await callback.message.edit_text("Отправляйте новый список позиций (можно несколько сообщений).\nКогда закончите, нажмите «✅ Готово» или отправьте /done.")
+            await callback.message.edit_text(
+                "Отправляйте новый список позиций (можно несколько сообщений).\n"
+                "Когда закончите, нажмите «✅ Готово» или отправьте /done."
+            )
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
                 pass
@@ -334,7 +345,6 @@ async def process_continue(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.message.edit_text("✅ Загрузка завершена. Ассортимент обновлён.")
         await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
-    await callback.answer()
 
 # -------------------------------------------------------------------
 # Загрузка текста (накопление) – старый способ
@@ -482,6 +492,8 @@ async def handle_assortment_upload(message: Message, bot: Bot, state: FSMContext
 @router.callback_query(AssortmentConfirmState.waiting_for_confirm, F.data.startswith("assort_confirm:"))
 async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext):
     action = callback.data.split(":")[1]
+    await callback.answer()
+
     data = await state.get_data()
     categories = data.get("temp_categories")
     if action == "yes":
@@ -493,7 +505,6 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
     else:
         await callback.message.edit_text("❌ Загрузка отменена.")
     await state.clear()
-    await callback.answer()
 
 # -------------------------------------------------------------------
 # Обработчик для топика «Прибытие» (добавление товаров)
@@ -534,7 +545,6 @@ async def handle_arrival(message: Message, bot: Bot):
                 existing_serials.add(serial)
             added_count += 1
 
-        # ===== ИЗМЕНЁННАЯ ЛОГИКА =====
         if added_count > 0:
             inventory.save_inventory(categories)
             await message.react([ReactionTypeEmoji(emoji='✅')])
@@ -552,7 +562,6 @@ async def handle_arrival(message: Message, bot: Bot):
                 await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
             finally:
                 os.unlink(tmp_path)
-        # =============================
 
     elif message.document:
         document = message.document
@@ -591,7 +600,6 @@ async def handle_arrival(message: Message, bot: Bot):
                     existing_serials.add(serial)
                 added_count += 1
 
-            # ===== ИЗМЕНЁННАЯ ЛОГИКА =====
             if added_count > 0:
                 inventory.save_inventory(categories)
                 await message.react([ReactionTypeEmoji(emoji='✅')])
@@ -609,7 +617,6 @@ async def handle_arrival(message: Message, bot: Bot):
                     await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
                 finally:
                     os.unlink(tmp_path)
-            # =============================
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)

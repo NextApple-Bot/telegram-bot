@@ -223,15 +223,12 @@ def add_item_to_categories(item, categories):
     else:
         # Создаём новую категорию
         if 'iphone' in item.lower():
-            # Пытаемся выделить модель и память
             base = extract_base_name(item)
             new_header = f"{base}:"
         else:
-            # Для остальных используем первое слово до запятой или всё, что есть
             if ',' in item:
                 new_header = item.split(',')[0].strip() + ':'
             else:
-                # Если нет запятой, берём первые два слова
                 words = item.split()[:2]
                 new_header = ' '.join(words).strip() + ':'
         new_header = normalize_name(new_header)
