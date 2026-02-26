@@ -534,21 +534,25 @@ async def handle_arrival(message: Message, bot: Bot):
                 existing_serials.add(serial)
             added_count += 1
 
+        # ===== ИЗМЕНЁННАЯ ЛОГИКА =====
         if added_count > 0:
             inventory.save_inventory(categories)
             await message.react([ReactionTypeEmoji(emoji='✅')])
             await message.reply(f"✅ Добавлено позиций: {added_count}")
-            if skipped_lines:
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-                    f.write("\n".join(skipped_lines))
-                    tmp_path = f.name
-                try:
-                    doc = FSInputFile(tmp_path, filename="skipped.txt")
-                    await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
-                finally:
-                    os.unlink(tmp_path)
         else:
+            await message.react([ReactionTypeEmoji(emoji='❌')])
             await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
+
+        if skipped_lines:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+                f.write("\n".join(skipped_lines))
+                tmp_path = f.name
+            try:
+                doc = FSInputFile(tmp_path, filename="skipped.txt")
+                await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
+            finally:
+                os.unlink(tmp_path)
+        # =============================
 
     elif message.document:
         document = message.document
@@ -587,21 +591,25 @@ async def handle_arrival(message: Message, bot: Bot):
                     existing_serials.add(serial)
                 added_count += 1
 
+            # ===== ИЗМЕНЁННАЯ ЛОГИКА =====
             if added_count > 0:
                 inventory.save_inventory(categories)
                 await message.react([ReactionTypeEmoji(emoji='✅')])
                 await message.reply(f"✅ Добавлено позиций: {added_count}")
-                if skipped_lines:
-                    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-                        f.write("\n".join(skipped_lines))
-                        tmp_path = f.name
-                    try:
-                        doc = FSInputFile(tmp_path, filename="skipped.txt")
-                        await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
-                    finally:
-                        os.unlink(tmp_path)
             else:
+                await message.react([ReactionTypeEmoji(emoji='❌')])
                 await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
+
+            if skipped_lines:
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+                    f.write("\n".join(skipped_lines))
+                    tmp_path = f.name
+                try:
+                    doc = FSInputFile(tmp_path, filename="skipped.txt")
+                    await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
+                finally:
+                    os.unlink(tmp_path)
+            # =============================
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)

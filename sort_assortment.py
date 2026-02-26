@@ -24,13 +24,6 @@ def extract_watch_size(text):
         return int(match.group(1))
     return None
 
-def extract_mac_gen(text):
-    """Извлекает поколение процессора Mac (M1, M2, ...)."""
-    match = re.search(r'\b(M\d+)\b', text, re.IGNORECASE)
-    if match:
-        return match.group(1).upper()
-    return None
-
 def detect_sim_type(text):
     """Определяет тип SIM: 'eSIM', 'SIM+eSIM' или 'other'."""
     lower = text.lower()
