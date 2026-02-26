@@ -11,7 +11,7 @@ def normalize_model(name):
     return re.sub(r'S\s+(\d+)', r'S\1', name, flags=re.IGNORECASE)
 
 def extract_memory(text):
-    """Извлекает объём памяти (число перед GB/гб/TB)."""
+    """Извлекает объём памяти (число перед GB/гб/TB). Возвращает строку вида '256GB' или None."""
     match = re.search(r'(\d+)\s*(gb|гб|tb)', text, re.IGNORECASE)
     if match:
         return f"{match.group(1)}{match.group(2).upper()}"
@@ -160,14 +160,16 @@ def sort_items_in_category(items, header):
             gen = extract_mac_gen(item)
             if gen is None:
                 gen = "Other"
-            vol_gb, vol_str = extract_memory(item)  # vol_str уже сформирован
-            # Преобразуем vol_str в объём для сортировки
-            if vol_str:
-                num = int(re.search(r'\d+', vol_str).group())
-                unit = vol_str[-2:].lower()
+            # ИСПРАВЛЕНО: теперь получаем строку памяти и вычисляем числовой объём
+            mem_str = extract_memory(item)
+            if mem_str:
+                num = int(re.search(r'\d+', mem_str).group())
+                unit = mem_str[-2:].lower()
                 vol_gb = num * 1024 if unit == 'tb' else num
+                vol_str = mem_str
             else:
                 vol_gb = None
+                vol_str = None
             gen_groups.setdefault(gen, []).append((vol_gb, vol_str, item))
 
         # Сортируем поколения по порядку
