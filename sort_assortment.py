@@ -123,6 +123,7 @@ def sort_items_in_category(items, header):
 
         # Сортируем ключи: None в конце, остальные по возрастанию объёма
         sorted_keys = sorted(groups.keys(), key=lambda k: (k[0] is None, k[0] if k[0] is not None else float('inf')))
+
         for vol_gb, vol_str in sorted_keys:
             if vol_str is not None:
                 output.append(f"{vol_str}:")
@@ -152,60 +153,8 @@ def sort_items_in_category(items, header):
                 output.append('-')
         return output
 
-    elif 'macbook' in header_lower:
-        # Группировка по поколению процессора, внутри по объёму
-        mac_generations = ["M1", "M2", "M3", "M4", "M5", "M6"]
-        gen_groups = {}
-        for item in items:
-            gen = extract_mac_gen(item)
-            if gen is None:
-                gen = "Other"
-            # ИСПРАВЛЕНО: теперь получаем строку памяти и вычисляем числовой объём
-            mem_str = extract_memory(item)
-            if mem_str:
-                num = int(re.search(r'\d+', mem_str).group())
-                unit = mem_str[-2:].lower()
-                vol_gb = num * 1024 if unit == 'tb' else num
-                vol_str = mem_str
-            else:
-                vol_gb = None
-                vol_str = None
-            gen_groups.setdefault(gen, []).append((vol_gb, vol_str, item))
-
-        # Сортируем поколения по порядку
-        def gen_key(g):
-            if g == "Other":
-                return float('inf')
-            try:
-                return mac_generations.index(g)
-            except ValueError:
-                return len(mac_generations) + 1
-        sorted_gens = sorted(gen_groups.keys(), key=gen_key)
-
-        for gen in sorted_gens:
-            items_with_vol = gen_groups[gen]
-            # Сортируем внутри поколения по объёму
-            items_with_vol.sort(key=lambda x: (x[0] is None, x[0] if x[0] is not None else float('inf'), x[2]))
-            output.append(f"{gen}:")
-            output.append('-')
-            # Группировка по объёму
-            vol_groups = {}
-            for (vol_gb, vol_str, item) in items_with_vol:
-                key = vol_gb if vol_gb is not None else "no_vol"
-                vol_groups.setdefault(key, []).append(item)
-            sorted_vol_keys = sorted(vol_groups.keys(), key=lambda k: (k == "no_vol", k if k != "no_vol" else float('inf')))
-            for vol_key in sorted_vol_keys:
-                if vol_key != "no_vol":
-                    # Найдём любой товар с таким объёмом, чтобы получить vol_str
-                    vol_str = next((v for v in items_with_vol if v[0] == vol_key), (None, None, None))[1]
-                    output.append(f"{vol_str}:")
-                    output.append('-')
-                output.extend(sorted(vol_groups[vol_key]))
-                output.append('-')
-        return output
-
     else:
-        # Остальные категории: просто сортируем по алфавиту
+        # Остальные категории (включая MacBook) – просто сортировка по алфавиту
         return sorted(items)
 
 # --- Основные функции для бота ---
