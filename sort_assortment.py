@@ -1,31 +1,24 @@
 import re
 
-# --- Нормализация и вспомогательные функции ---
-
 def normalize_name(name):
-    """Убирает лишние пробелы в начале/конце и множественные пробелы внутри."""
     return ' '.join(name.split())
 
 def normalize_model(name):
-    """Для Apple Watch убирает пробел после S: 'S 11' -> 'S11'."""
     return re.sub(r'S\s+(\d+)', r'S\1', name, flags=re.IGNORECASE)
 
 def extract_memory(text):
-    """Извлекает объём памяти (число перед GB/гб/TB). Возвращает строку вида '256GB' или None."""
     match = re.search(r'(\d+)\s*(gb|гб|tb)', text, re.IGNORECASE)
     if match:
         return f"{match.group(1)}{match.group(2).upper()}"
     return None
 
 def extract_watch_size(text):
-    """Извлекает размер часов в мм."""
     match = re.search(r'(\d+)\s*mm', text, re.IGNORECASE)
     if match:
         return int(match.group(1))
     return None
 
 def detect_sim_type(text):
-    """Определяет тип SIM: 'eSIM', 'SIM+eSIM' или 'other'."""
     lower = text.lower()
     if re.search(r'\(sim\+esim\)|\bsim\+esim\b', lower):
         return 'SIM+eSIM'
@@ -34,10 +27,6 @@ def detect_sim_type(text):
     return 'other'
 
 def extract_base_name(item):
-    """
-    Извлекает базовое имя товара (модель + память) для поиска категории.
-    Для iPhone: часть до запятой + память.
-    """
     if ',' in item:
         model_part = item.split(',', 1)[0].strip()
     else:
@@ -51,98 +40,41 @@ def extract_base_name(item):
     base = normalize_model(base)
     return base
 
-# --- Парсинг категорий из текста (финальная версия) ---
-
 def parse_categories(lines):
-    """
-    Разбирает текст на категории.
-    Поддерживает:
-      - трёхстрочные заголовки: строка дефисов, строка с названием и двоеточием, строка дефисов.
-      - однострочные заголовки: дефисы вокруг названия с двоеточием.
-    Внутренние подзаголовки (например, '128GB:', '-SIM+eSIM-', '-eSIM-', '42mm:') игнорируются.
-    Разделительные строки из дефисов пропускаются.
-    Все остальные непустые строки считаются товарами текущей категории.
-    """
     categories = []
     current_header = None
     current_items = []
-    i = 0
-    n = len(lines)
 
-    while i < n:
-        stripped = lines[i].rstrip('\n')
+    for line in lines:
+        stripped = line.rstrip('\n')
         trimmed = stripped.strip()
         if trimmed == '':
-            i += 1
             continue
-
         # Пропускаем строки, состоящие только из дефисов (разделители)
-        if re.match(r'^\s*-+\s*$', stripped):
-            i += 1
+        if re.match(r'^\s*-+\s*$', stripped) and not trimmed.endswith(':'):
             continue
-
-        # Проверка на трёхстрочный заголовок
-        if (re.match(r'^\s*-+\s*$', stripped) and
-            i + 1 < n and ':' in lines[i + 1] and
-            i + 2 < n and re.match(r'^\s*-+\s*$', lines[i + 2])):
-            # Строка с названием категории
-            header_line = lines[i + 1].strip()
-            # Извлекаем имя (убираем двоеточие и лишние дефисы)
-            header_text = header_line.strip('- ').strip()
-            if header_text.endswith(':'):
-                header_text = header_text[:-1].strip()
-            if current_header is not None and current_items:
-                categories.append({"header": current_header, "items": current_items})
-                current_items = []
-            current_header = normalize_name(header_text)
-            i += 3
-            continue
-
-        # Проверка на однострочный заголовок
-        if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
-            if current_header is not None and current_items:
-                categories.append({"header": current_header, "items": current_items})
-                current_items = []
-            header_text = trimmed.strip('- ').strip()
-            if header_text.endswith(':'):
-                header_text = header_text[:-1].strip()
-            current_header = normalize_name(header_text)
-            i += 1
-            continue
-
-        # Игнорируем строки, которые выглядят как внутренние подзаголовки
-        # (например, '128GB:', '42mm:', '-SIM+eSIM-', '-eSIM-')
-        if trimmed.endswith(':'):
-            i += 1
-            continue
+        # Игнорируем строки вида -SIM+eSIM- и -eSIM- (подзаголовки)
         if re.match(r'^-\s*[^-]+\s*-$', trimmed):
-            i += 1
             continue
+        if trimmed.endswith(':'):
+            if current_header is not None and current_items:
+                categories.append({"header": current_header, "items": current_items})
+                current_items = []
+            current_header = normalize_name(trimmed)
+        else:
+            if current_header is None:
+                current_header = "Общее:"
+            current_items.append(stripped)
 
-        # Всё остальное считаем товаром
-        if current_header is None:
-            # Если категория ещё не началась, создаём "Общее"
-            current_header = "Общее"
-        current_items.append(stripped)
-        i += 1
-
-    # Добавляем последнюю категорию
     if current_header is not None and current_items:
         categories.append({"header": current_header, "items": current_items})
     return categories
 
-# --- Сортировка товаров внутри категории ---
-
 def sort_items_in_category(items, header):
-    """
-    Возвращает список строк для вставки в выходной текст.
-    Включает подзаголовки (-eSIM-, -SIM+eSIM-), группировку по памяти и разделители.
-    """
     header_lower = header.lower()
     output = []
 
     if 'iphone' in header_lower:
-        # Группировка по объёму памяти, внутри по SIM
         groups = {}
         for item in items:
             sim = detect_sim_type(item)
@@ -176,7 +108,6 @@ def sort_items_in_category(items, header):
         return output
 
     elif 'apple watch' in header_lower:
-        # Группировка по размеру
         size_groups = {}
         for item in items:
             size = extract_watch_size(item)
@@ -191,18 +122,13 @@ def sort_items_in_category(items, header):
         return output
 
     else:
-        # Остальные категории – просто сортировка по алфавиту
         return sorted(items)
 
-# --- Основные функции для бота ---
-
 def sort_assortment_to_categories(input_text):
-    """Принимает текст файла, возвращает список категорий (без сортировки внутри)."""
     lines = input_text.splitlines()
     return parse_categories(lines)
 
 def build_output_text(categories):
-    """Принимает список категорий, возвращает отформатированный текст с сортировкой."""
     output_lines = []
     for cat in categories:
         header = cat['header']
@@ -225,7 +151,6 @@ def build_output_text(categories):
     return '\n'.join(output_lines)
 
 def find_category_for_item(item, categories):
-    """Находит индекс категории для товара."""
     normalized_item = normalize_name(item)
     normalized_item = normalize_model(normalized_item).lower()
     base = extract_base_name(item).lower()
@@ -247,7 +172,6 @@ def find_category_for_item(item, categories):
     return None
 
 def add_item_to_categories(item, categories):
-    """Добавляет товар в подходящую категорию или создаёт новую."""
     idx = find_category_for_item(item, categories)
     if idx is not None:
         categories[idx]['items'].append(item)
