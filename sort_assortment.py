@@ -41,15 +41,6 @@ def extract_base_name(item):
     return base
 
 def parse_categories(lines):
-    """
-    Разбирает текст на категории.
-    Категориями считаются:
-      - однострочные заголовки, начинающиеся и заканчивающиеся дефисами, содержащие двоеточие.
-      - трёхстрочные заголовки (строка дефисов, строка с двоеточием, строка дефисов).
-    Все остальные строки с двоеточием (например, '128GB:', '-SIM+eSIM-') игнорируются.
-    Разделительные строки из дефисов пропускаются.
-    Всё остальное считается товарами текущей категории.
-    """
     categories = []
     current_header = None
     current_items = []
@@ -63,7 +54,7 @@ def parse_categories(lines):
             i += 1
             continue
 
-        # Проверка на однострочный заголовок (дефисы вокруг, есть двоеточие)
+        # Однострочный заголовок (дефисы вокруг, есть двоеточие)
         if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
             if current_header is not None and current_items:
                 categories.append({"header": current_header, "items": current_items})
@@ -75,7 +66,7 @@ def parse_categories(lines):
             i += 1
             continue
 
-        # Проверка на трёхстрочный заголовок
+        # Трёхстрочный заголовок
         if (re.match(r'^\s*-+\s*$', stripped) and
             i + 1 < n and ':' in lines[i + 1] and
             i + 2 < n and re.match(r'^\s*-+\s*$', lines[i + 2])):
@@ -95,12 +86,12 @@ def parse_categories(lines):
             i += 1
             continue
 
-        # Игнорируем подзаголовки типа -SIM+eSIM-, -eSIM-
+        # Игнорируем подзаголовки типа -SIM+eSIM- и -eSIM-
         if re.match(r'^-\s*[^-]+\s*-$', trimmed):
             i += 1
             continue
 
-        # Игнорируем любые другие строки, оканчивающиеся двоеточием (например, '128GB:')
+        # Игнорируем любые строки, оканчивающиеся двоеточием (например, '128GB:', '49mm:')
         if trimmed.endswith(':'):
             i += 1
             continue
