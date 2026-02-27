@@ -41,6 +41,12 @@ def extract_base_name(item):
     return base
 
 def parse_categories(lines):
+    """
+    Разбирает текст на категории.
+    Категория: строка, оканчивающаяся на ':' и имеющая дефисы в начале и конце (минимум по 1 с каждой стороны).
+    Внутренние подзаголовки (например, '128GB:') игнорируются.
+    Все остальные непустые строки (не состоящие только из дефисов) считаются товарами текущей категории.
+    """
     categories = []
     current_header = None
     current_items = []
@@ -50,18 +56,38 @@ def parse_categories(lines):
         trimmed = stripped.strip()
         if trimmed == '':
             continue
-        if re.match(r'^\s*-+\s*$', stripped) and not trimmed.endswith(':'):
+        # Пропускаем строки, состоящие только из дефисов (они служат разделителями)
+        if re.match(r'^\s*-+\s*$', stripped):
             continue
-        if trimmed.endswith(':'):
+
+        # Проверяем, является ли строка основной категорией
+        # Основная категория: начинается и заканчивается дефисами, содержит двоеточие
+        if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
+            # Завершаем предыдущую категорию
             if current_header is not None and current_items:
                 categories.append({"header": current_header, "items": current_items})
                 current_items = []
-            current_header = normalize_name(trimmed)
+            # Извлекаем название категории (убираем дефисы по краям и двоеточие)
+            header_text = trimmed.strip('- ').strip()
+            if header_text.endswith(':'):
+                header_text = header_text[:-1].strip()
+            current_header = normalize_name(header_text)
+            continue
+
+        # Если это строка, оканчивающаяся двоеточием, но не основная категория – игнорируем
+        if trimmed.endswith(':'):
+            continue
+
+        # Если мы внутри категории, добавляем строку как товар
+        if current_header is not None:
+            current_items.append(stripped)
         else:
-            if current_header is None:
-                current_header = "Общее:"
+            # Если категория ещё не началась, создаём категорию "Общее:" для первых товаров (на случай, если они есть)
+            # В вашем файле такого не будет, но оставим для универсальности
+            current_header = "Общее"
             current_items.append(stripped)
 
+    # Добавляем последнюю категорию
     if current_header is not None and current_items:
         categories.append({"header": current_header, "items": current_items})
     return categories
