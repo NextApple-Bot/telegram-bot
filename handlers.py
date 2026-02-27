@@ -550,7 +550,7 @@ async def handle_arrival(message: Message, bot: Bot):
             await message.react([ReactionTypeEmoji(emoji='✅')])
             await message.reply(f"✅ Добавлено позиций: {added_count}")
         else:
-            await message.react([ReactionTypeEmoji(emoji='❌')])
+            await message.react([ReactionTypeEmoji(emoji='👎')])  # ИСПРАВЛЕНО
             await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
         if skipped_lines:
@@ -605,7 +605,7 @@ async def handle_arrival(message: Message, bot: Bot):
                 await message.react([ReactionTypeEmoji(emoji='✅')])
                 await message.reply(f"✅ Добавлено позиций: {added_count}")
             else:
-                await message.react([ReactionTypeEmoji(emoji='❌')])
+                await message.react([ReactionTypeEmoji(emoji='👎')])  # ИСПРАВЛЕНО
                 await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
             if skipped_lines:
