@@ -6,6 +6,7 @@ MAIN_GROUP_ID = int(os.environ.get("MAIN_GROUP_ID", 0))
 THREAD_SALES = int(os.environ.get("THREAD_SALES", 0))
 THREAD_ASSORTMENT = int(os.environ.get("THREAD_ASSORTMENT", 0))
 THREAD_ARRIVAL = int(os.environ.get("THREAD_ARRIVAL", 0))
+THREAD_PREORDER = int(os.environ.get("THREAD_PREORDER", 0))   # добавить эту строку
 
 INVENTORY_FILE = "inventory.json"
 BACKUP_DIR = "backups"
