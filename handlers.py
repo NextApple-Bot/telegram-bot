@@ -510,9 +510,6 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ARRIVAL)
 async def handle_arrival(message: Message, bot: Bot):
     logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
-        logger.info(f"Обработка строк: {lines}")
-        logger.info(f"Существующие тексты: {existing_texts}")
-        logger.info(f"Существующие серийники: {existing_serials}")
 
     if message.text:
         full_text = message.text.strip()
@@ -533,11 +530,6 @@ async def handle_arrival(message: Message, bot: Bot):
         skipped_lines = []
 
         for line in lines:
-            logger.info(f"Проверка строки: {line}")
-            logger.info(f"  в existing_texts: {line in existing_texts}")
-            serial = inventory.extract_serial(line)
-            logger.info(f"  серийный номер: {serial}")
-            logger.info(f"  в existing_serials: {serial in existing_serials if serial else False}")
             if line in existing_texts:
                 skipped_lines.append(f"[Дубликат текста] {line}")
                 continue
