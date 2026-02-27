@@ -51,50 +51,80 @@ def extract_base_name(item):
     base = normalize_model(base)
     return base
 
-# --- Парсинг категорий из текста (исправленная версия) ---
+# --- Парсинг категорий из текста (финальная версия) ---
 
 def parse_categories(lines):
     """
     Разбирает текст на категории.
-    Категория: строка, которая начинается и заканчивается дефисами, содержит двоеточие.
-    Внутренние подзаголовки (например, '128GB:', '-SIM+eSIM-', '-eSIM-') игнорируются.
+    Поддерживает:
+      - трёхстрочные заголовки: строка дефисов, строка с названием и двоеточием, строка дефисов.
+      - однострочные заголовки: дефисы вокруг названия с двоеточием.
+    Внутренние подзаголовки (например, '128GB:', '-SIM+eSIM-', '-eSIM-', '42mm:') игнорируются.
     Разделительные строки из дефисов пропускаются.
     Все остальные непустые строки считаются товарами текущей категории.
     """
     categories = []
     current_header = None
     current_items = []
+    i = 0
+    n = len(lines)
 
-    for line in lines:
-        stripped = line.rstrip('\n')
+    while i < n:
+        stripped = lines[i].rstrip('\n')
         trimmed = stripped.strip()
         if trimmed == '':
+            i += 1
             continue
+
         # Пропускаем строки, состоящие только из дефисов (разделители)
         if re.match(r'^\s*-+\s*$', stripped):
+            i += 1
             continue
-        # Проверяем, является ли строка основной категорией
-        if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
-            # Завершаем предыдущую категорию
+
+        # Проверка на трёхстрочный заголовок
+        if (re.match(r'^\s*-+\s*$', stripped) and
+            i + 1 < n and ':' in lines[i + 1] and
+            i + 2 < n and re.match(r'^\s*-+\s*$', lines[i + 2])):
+            # Строка с названием категории
+            header_line = lines[i + 1].strip()
+            # Извлекаем имя (убираем двоеточие и лишние дефисы)
+            header_text = header_line.strip('- ').strip()
+            if header_text.endswith(':'):
+                header_text = header_text[:-1].strip()
             if current_header is not None and current_items:
                 categories.append({"header": current_header, "items": current_items})
                 current_items = []
-            # Извлекаем название категории (убираем дефисы по краям и двоеточие)
+            current_header = normalize_name(header_text)
+            i += 3
+            continue
+
+        # Проверка на однострочный заголовок
+        if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
+            if current_header is not None and current_items:
+                categories.append({"header": current_header, "items": current_items})
+                current_items = []
             header_text = trimmed.strip('- ').strip()
             if header_text.endswith(':'):
                 header_text = header_text[:-1].strip()
             current_header = normalize_name(header_text)
+            i += 1
             continue
 
-        # Если это строка, оканчивающаяся двоеточием, но не основная категория – игнорируем
+        # Игнорируем строки, которые выглядят как внутренние подзаголовки
+        # (например, '128GB:', '42mm:', '-SIM+eSIM-', '-eSIM-')
         if trimmed.endswith(':'):
+            i += 1
+            continue
+        if re.match(r'^-\s*[^-]+\s*-$', trimmed):
+            i += 1
             continue
 
-        # Иначе считаем товаром
+        # Всё остальное считаем товаром
         if current_header is None:
-            # На случай, если в начале файла есть товары без категории – создаём "Общее"
+            # Если категория ещё не началась, создаём "Общее"
             current_header = "Общее"
         current_items.append(stripped)
+        i += 1
 
     # Добавляем последнюю категорию
     if current_header is not None and current_items:
