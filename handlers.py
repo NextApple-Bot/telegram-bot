@@ -650,8 +650,7 @@ async def handle_preorder(message: Message, bot: Bot):
     categories, idx = add_item_to_categories(new_item, categories)
     inventory.save_inventory(categories)
 
-    await message.react([ReactionTypeEmoji(emoji='✅')])
-    await message.reply(f"✅ Добавлена бронь:\n{new_item}")
+    await message.react([ReactionTypeEmoji(emoji='👍')])
 
 # -------------------------------------------------------------------
 # Функция для выгрузки ассортимента в топик (по кнопке)
