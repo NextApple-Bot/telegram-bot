@@ -51,14 +51,15 @@ def extract_base_name(item):
     base = normalize_model(base)
     return base
 
-# --- Парсинг категорий из текста ---
+# --- Парсинг категорий из текста (исправленная версия) ---
 
 def parse_categories(lines):
     """
     Разбирает текст на категории.
-    Категория: строка, оканчивающаяся на ':' и имеющая дефисы в начале и конце (минимум по 1 с каждой стороны).
-    Внутренние подзаголовки (например, '128GB:') игнорируются.
-    Все остальные непустые строки (не состоящие только из дефисов) считаются товарами текущей категории.
+    Категория: строка, которая начинается и заканчивается дефисами, содержит двоеточие.
+    Внутренние подзаголовки (например, '128GB:', '-SIM+eSIM-', '-eSIM-') игнорируются.
+    Разделительные строки из дефисов пропускаются.
+    Все остальные непустые строки считаются товарами текущей категории.
     """
     categories = []
     current_header = None
@@ -72,11 +73,7 @@ def parse_categories(lines):
         # Пропускаем строки, состоящие только из дефисов (разделители)
         if re.match(r'^\s*-+\s*$', stripped):
             continue
-        # Пропускаем подзаголовки типа -SIM+eSIM- или -eSIM-
-        if re.match(r'^-\s*[^-]+\s*-$', stripped):
-            continue
         # Проверяем, является ли строка основной категорией
-        # Основная категория: начинается и заканчивается дефисами, содержит двоеточие
         if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
             # Завершаем предыдущую категорию
             if current_header is not None and current_items:
@@ -93,14 +90,11 @@ def parse_categories(lines):
         if trimmed.endswith(':'):
             continue
 
-        # Если мы внутри категории, добавляем строку как товар
-        if current_header is not None:
-            current_items.append(stripped)
-        else:
-            # Если категория ещё не началась, создаём категорию "Общее:" для первых товаров
-            # В вашем файле такого не будет, но оставим для универсальности
+        # Иначе считаем товаром
+        if current_header is None:
+            # На случай, если в начале файла есть товары без категории – создаём "Общее"
             current_header = "Общее"
-            current_items.append(stripped)
+        current_items.append(stripped)
 
     # Добавляем последнюю категорию
     if current_header is not None and current_items:
@@ -117,10 +111,9 @@ def sort_items_in_category(items, header):
     header_lower = header.lower()
     output = []
 
-    # Определяем тип категории для специальной обработки
     if 'iphone' in header_lower:
         # Группировка по объёму памяти, внутри по SIM
-        groups = {}  # (vol_gb, vol_str) -> {'eSIM': [], 'SIM+eSIM': [], 'other': []}
+        groups = {}
         for item in items:
             sim = detect_sim_type(item)
             match = re.search(r'(\d+)\s*(gb|tb)', item, re.IGNORECASE)
@@ -137,9 +130,7 @@ def sort_items_in_category(items, header):
                 groups[key] = {'eSIM': [], 'SIM+eSIM': [], 'other': []}
             groups[key][sim].append(item)
 
-        # Сортируем ключи: None в конце, остальные по возрастанию объёма
         sorted_keys = sorted(groups.keys(), key=lambda k: (k[0] is None, k[0] if k[0] is not None else float('inf')))
-
         for vol_gb, vol_str in sorted_keys:
             if vol_str is not None:
                 output.append(f"{vol_str}:")
@@ -185,7 +176,6 @@ def build_output_text(categories):
     output_lines = []
     for cat in categories:
         header = cat['header']
-        # Нормализуем заголовок для вывода
         display_header = normalize_name(header)
         if not display_header.endswith(':'):
             display_header += ':'
@@ -195,7 +185,6 @@ def build_output_text(categories):
         output_lines.append('-' * dash_len)
         output_lines.append('-')
 
-        # Сортируем товары внутри категории
         sorted_output = sort_items_in_category(cat['items'], header)
         if isinstance(sorted_output, list):
             output_lines.extend(sorted_output)
@@ -206,14 +195,11 @@ def build_output_text(categories):
     return '\n'.join(output_lines)
 
 def find_category_for_item(item, categories):
-    """
-    Находит индекс категории, в которую должен попасть товар.
-    Для iPhone ищет по модели + память, для остальных – по вхождению имени категории.
-    Возвращает индекс или None.
-    """
+    """Находит индекс категории для товара."""
+    normalized_item = normalize_name(item)
+    normalized_item = normalize_model(normalized_item).lower()
     base = extract_base_name(item).lower()
 
-    # Сначала ищем точное совпадение базового имени с заголовком
     for idx, cat in enumerate(categories):
         cat_name = normalize_name(cat['header']).lower()
         if cat_name.endswith(':'):
@@ -221,7 +207,6 @@ def find_category_for_item(item, categories):
         if cat_name == base:
             return idx
 
-    # Затем ищем вхождение
     for idx, cat in enumerate(categories):
         cat_name = normalize_name(cat['header']).lower()
         if cat_name.endswith(':'):
@@ -232,17 +217,12 @@ def find_category_for_item(item, categories):
     return None
 
 def add_item_to_categories(item, categories):
-    """
-    Добавляет товар в подходящую категорию.
-    Если категория не найдена, создаёт новую.
-    Возвращает (обновлённый список, индекс категории).
-    """
+    """Добавляет товар в подходящую категорию или создаёт новую."""
     idx = find_category_for_item(item, categories)
     if idx is not None:
         categories[idx]['items'].append(item)
         return categories, idx
     else:
-        # Создаём новую категорию
         if 'iphone' in item.lower():
             base = extract_base_name(item)
             new_header = f"{base}:"
