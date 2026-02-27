@@ -19,7 +19,6 @@ from sort_assortment import sort_assortment_to_categories, build_output_text, ad
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Состояния для загрузки ассортимента (старый способ)
 class UploadStates(StatesGroup):
     waiting_for_mode = State()
     waiting_for_inventory = State()
@@ -162,15 +161,6 @@ async def process_full_text(message: Message, full_text: str, mode: str, state: 
         await state.set_state(UploadStates.waiting_for_continue)
 
 # -------------------------------------------------------------------
-# ВРЕМЕННЫЙ ОБРАБОТЧИК ДЛЯ ПОЛУЧЕНИЯ ID ТОПИКА
-# -------------------------------------------------------------------
-@router.message(F.chat.id == config.MAIN_GROUP_ID)
-async def debug_thread_id(message: Message):
-    logger.info(f"Получено сообщение из топика. Thread ID: {message.message_thread_id}")
-    # Если хотите, чтобы бот отвечал в чат, раскомментируйте следующую строку:
-    # await message.reply(f"Thread ID этого топика: {message.message_thread_id}")
-
-# -------------------------------------------------------------------
 # Команды
 # -------------------------------------------------------------------
 @router.message(Command("start"))
@@ -227,7 +217,7 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
 
-    await callback.answer()  # немедленный ответ
+    await callback.answer()
 
     if action == "inventory":
         await show_inventory(bot, chat_id)
@@ -641,7 +631,6 @@ async def handle_preorder(message: Message, bot: Bot):
     if not message.text:
         return
 
-    # Ищем строку, содержащую серийный номер (что-то в скобках длиной ≥5)
     lines = message.text.splitlines()
     item_line = None
     for line in lines:
@@ -654,11 +643,9 @@ async def handle_preorder(message: Message, bot: Bot):
         await message.reply("❌ Не удалось найти товар с серийным номером.")
         return
 
-    # Добавляем пометку с текущей датой
-    today = datetime.now().strftime("%d.%m")  # например, "27.02"
+    today = datetime.now().strftime("%d.%m")
     new_item = f"{item_line} (Бронь от {today})"
 
-    # Сохраняем в инвентарь
     categories = inventory.load_inventory()
     categories, idx = add_item_to_categories(new_item, categories)
     inventory.save_inventory(categories)
