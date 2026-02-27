@@ -41,30 +41,75 @@ def extract_base_name(item):
     return base
 
 def parse_categories(lines):
+    """
+    Разбирает текст на категории.
+    Категориями считаются:
+      - однострочные заголовки, начинающиеся и заканчивающиеся дефисами, содержащие двоеточие.
+      - трёхстрочные заголовки (строка дефисов, строка с двоеточием, строка дефисов).
+    Все остальные строки с двоеточием (например, '128GB:', '-SIM+eSIM-') игнорируются.
+    Разделительные строки из дефисов пропускаются.
+    Всё остальное считается товарами текущей категории.
+    """
     categories = []
     current_header = None
     current_items = []
+    i = 0
+    n = len(lines)
 
-    for line in lines:
-        stripped = line.rstrip('\n')
+    while i < n:
+        stripped = lines[i].rstrip('\n')
         trimmed = stripped.strip()
         if trimmed == '':
+            i += 1
             continue
-        # Пропускаем строки, состоящие только из дефисов (разделители)
-        if re.match(r'^\s*-+\s*$', stripped) and not trimmed.endswith(':'):
-            continue
-        # Игнорируем строки вида -SIM+eSIM- и -eSIM- (подзаголовки)
-        if re.match(r'^-\s*[^-]+\s*-$', trimmed):
-            continue
-        if trimmed.endswith(':'):
+
+        # Проверка на однострочный заголовок (дефисы вокруг, есть двоеточие)
+        if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
             if current_header is not None and current_items:
                 categories.append({"header": current_header, "items": current_items})
                 current_items = []
-            current_header = normalize_name(trimmed)
-        else:
-            if current_header is None:
-                current_header = "Общее:"
-            current_items.append(stripped)
+            header_text = trimmed.strip('- ').strip()
+            if header_text.endswith(':'):
+                header_text = header_text[:-1].strip()
+            current_header = normalize_name(header_text)
+            i += 1
+            continue
+
+        # Проверка на трёхстрочный заголовок
+        if (re.match(r'^\s*-+\s*$', stripped) and
+            i + 1 < n and ':' in lines[i + 1] and
+            i + 2 < n and re.match(r'^\s*-+\s*$', lines[i + 2])):
+            header_line = lines[i + 1].strip()
+            header_text = header_line.strip('- ').strip()
+            if header_text.endswith(':'):
+                header_text = header_text[:-1].strip()
+            if current_header is not None and current_items:
+                categories.append({"header": current_header, "items": current_items})
+                current_items = []
+            current_header = normalize_name(header_text)
+            i += 3
+            continue
+
+        # Пропускаем строки, состоящие только из дефисов (разделители)
+        if re.match(r'^\s*-+\s*$', stripped):
+            i += 1
+            continue
+
+        # Игнорируем подзаголовки типа -SIM+eSIM-, -eSIM-
+        if re.match(r'^-\s*[^-]+\s*-$', trimmed):
+            i += 1
+            continue
+
+        # Игнорируем любые другие строки, оканчивающиеся двоеточием (например, '128GB:')
+        if trimmed.endswith(':'):
+            i += 1
+            continue
+
+        # Всё остальное считаем товаром
+        if current_header is None:
+            current_header = "Общее:"
+        current_items.append(stripped)
+        i += 1
 
     if current_header is not None and current_items:
         categories.append({"header": current_header, "items": current_items})
@@ -172,6 +217,17 @@ def find_category_for_item(item, categories):
     return None
 
 def add_item_to_categories(item, categories):
+    # Специальная обработка для Б/У
+    if item.strip().startswith("Б/У -") or item.strip().startswith("Б/У "):
+        for idx, cat in enumerate(categories):
+            cat_name = normalize_name(cat['header']).lower()
+            if cat_name == "б/у" or cat_name == "б/у:":
+                categories[idx]['items'].append(item)
+                return categories, idx
+        new_cat = {"header": "Б/У:", "items": [item]}
+        categories.append(new_cat)
+        return categories, len(categories)-1
+
     idx = find_category_for_item(item, categories)
     if idx is not None:
         categories[idx]['items'].append(item)
