@@ -210,7 +210,7 @@ async def cmd_done(message: Message, bot: Bot, state: FSMContext):
     await process_full_text(message, full_text, mode, state, bot)
 
 # -------------------------------------------------------------------
-# Callback-обработчики
+# Callback-обработчики (с немедленным ответом)
 # -------------------------------------------------------------------
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMContext):
@@ -550,7 +550,7 @@ async def handle_arrival(message: Message, bot: Bot):
             await message.react([ReactionTypeEmoji(emoji='✅')])
             await message.reply(f"✅ Добавлено позиций: {added_count}")
         else:
-            await message.react([ReactionTypeEmoji(emoji='👎')])  # ИСПРАВЛЕНО
+            await message.react([ReactionTypeEmoji(emoji='👎')])  # исправлено
             await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
         if skipped_lines:
@@ -605,7 +605,7 @@ async def handle_arrival(message: Message, bot: Bot):
                 await message.react([ReactionTypeEmoji(emoji='✅')])
                 await message.reply(f"✅ Добавлено позиций: {added_count}")
             else:
-                await message.react([ReactionTypeEmoji(emoji='👎')])  # ИСПРАВЛЕНО
+                await message.react([ReactionTypeEmoji(emoji='👎')])  # исправлено
                 await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
             if skipped_lines:
@@ -622,6 +622,41 @@ async def handle_arrival(message: Message, bot: Bot):
                 os.remove(file_path)
     else:
         await message.reply("⚠️ Отправьте текст или файл .txt.")
+
+# -------------------------------------------------------------------
+# Обработчик для топика «Предзаказ» (брони)
+# -------------------------------------------------------------------
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
+async def handle_preorder(message: Message, bot: Bot):
+    logger.info(f"📥 Сообщение в топике Предзаказ от {message.from_user.id}")
+
+    if not message.text:
+        return
+
+    # Ищем строку, содержащую серийный номер (что-то в скобках длиной ≥5)
+    lines = message.text.splitlines()
+    item_line = None
+    for line in lines:
+        line = line.strip()
+        if re.search(r'\([A-Z0-9-]{5,}\)', line, re.IGNORECASE):
+            item_line = line
+            break
+
+    if not item_line:
+        await message.reply("❌ Не удалось найти товар с серийным номером.")
+        return
+
+    # Добавляем пометку с текущей датой
+    today = datetime.now().strftime("%d.%m")  # например, "27.02"
+    new_item = f"{item_line} (Бронь от {today})"
+
+    # Сохраняем в инвентарь
+    categories = inventory.load_inventory()
+    categories, idx = add_item_to_categories(new_item, categories)
+    inventory.save_inventory(categories)
+
+    await message.react([ReactionTypeEmoji(emoji='✅')])
+    await message.reply(f"✅ Добавлена бронь:\n{new_item}")
 
 # -------------------------------------------------------------------
 # Функция для выгрузки ассортимента в топик (по кнопке)
