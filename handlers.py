@@ -162,6 +162,15 @@ async def process_full_text(message: Message, full_text: str, mode: str, state: 
         await state.set_state(UploadStates.waiting_for_continue)
 
 # -------------------------------------------------------------------
+# ВРЕМЕННЫЙ ОБРАБОТЧИК ДЛЯ ПОЛУЧЕНИЯ ID ТОПИКА
+# -------------------------------------------------------------------
+@router.message(F.chat.id == config.MAIN_GROUP_ID)
+async def debug_thread_id(message: Message):
+    logger.info(f"Получено сообщение из топика. Thread ID: {message.message_thread_id}")
+    # Если хотите, чтобы бот отвечал в чат, раскомментируйте следующую строку:
+    # await message.reply(f"Thread ID этого топика: {message.message_thread_id}")
+
+# -------------------------------------------------------------------
 # Команды
 # -------------------------------------------------------------------
 @router.message(Command("start"))
@@ -210,7 +219,7 @@ async def cmd_done(message: Message, bot: Bot, state: FSMContext):
     await process_full_text(message, full_text, mode, state, bot)
 
 # -------------------------------------------------------------------
-# Callback-обработчики (с немедленным ответом)
+# Callback-обработчики
 # -------------------------------------------------------------------
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMContext):
@@ -218,8 +227,7 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
 
-    # Немедленно отвечаем на callback
-    await callback.answer()
+    await callback.answer()  # немедленный ответ
 
     if action == "inventory":
         await show_inventory(bot, chat_id)
@@ -550,7 +558,7 @@ async def handle_arrival(message: Message, bot: Bot):
             await message.react([ReactionTypeEmoji(emoji='✅')])
             await message.reply(f"✅ Добавлено позиций: {added_count}")
         else:
-            await message.react([ReactionTypeEmoji(emoji='👎')])  # исправлено
+            await message.react([ReactionTypeEmoji(emoji='👎')])
             await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
         if skipped_lines:
@@ -605,7 +613,7 @@ async def handle_arrival(message: Message, bot: Bot):
                 await message.react([ReactionTypeEmoji(emoji='✅')])
                 await message.reply(f"✅ Добавлено позиций: {added_count}")
             else:
-                await message.react([ReactionTypeEmoji(emoji='👎')])  # исправлено
+                await message.react([ReactionTypeEmoji(emoji='👎')])
                 await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
             if skipped_lines:
