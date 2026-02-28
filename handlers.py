@@ -512,7 +512,7 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
 async def handle_arrival(message: Message, bot: Bot):
     logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
 
-    # Функция для обработки списка строк
+    # Вспомогательная функция для обработки списка строк
     async def process_lines(lines, reply_to):
         # Убираем строки, состоящие только из дефисов (с возможными пробелами)
         lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
@@ -529,7 +529,6 @@ async def handle_arrival(message: Message, bot: Bot):
         skipped_lines = []
 
         for line in lines:
-            # Проверка на дубликат текста
             if line in existing_texts:
                 skipped_lines.append(f"[Дубликат текста] {line}")
                 continue
@@ -537,7 +536,6 @@ async def handle_arrival(message: Message, bot: Bot):
             if serial and serial in existing_serials:
                 skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
                 continue
-            # Добавляем товар
             categories, idx = add_item_to_categories(line, categories)
             existing_texts.add(line)
             if serial:
@@ -561,8 +559,10 @@ async def handle_arrival(message: Message, bot: Bot):
             f.write("\n".join(combined_lines))
             tmp_path = f.name
 
+        today = datetime.now().strftime("%d.%m.%Y")
+        filename = f"прибытие_{today}.txt"
         try:
-            doc = FSInputFile(tmp_path, filename="result.txt")
+            doc = FSInputFile(tmp_path, filename=filename)
             await message.answer_document(
                 doc,
                 caption=f"✅ Добавлено: {len(added_lines)} | ⏭ Пропущено: {len(skipped_lines)}"
@@ -620,7 +620,7 @@ async def handle_preorder(message: Message, bot: Bot):
         await message.reply("❌ Не удалось найти товар с серийным номером.")
         return
 
-    today = datetime.now().strftime("%d.%m.%Y")
+    today = datetime.now().strftime("%d.%m")
     new_item = f"{item_line} (Бронь от {today})"
 
     categories = inventory.load_inventory()
@@ -639,7 +639,7 @@ async def export_assortment_to_topic(bot: Bot, admin_id: int):
         await bot.send_message(admin_id, "📭 Ассортимент пуст, нечего выгружать.")
         return
     text = build_output_text(categories)
-    today = datetime.now().strftime("%Y%m%d")
+    today = datetime.now().strftime("%d.%m.%Y")  # изменён формат на ДД.ММ.ГГГГ
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write(text)
         tmp_path = f.name
