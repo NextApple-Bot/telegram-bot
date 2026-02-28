@@ -526,7 +526,7 @@ async def handle_arrival(message: Message, bot: Bot):
         existing_texts = set(all_items)
         existing_serials = {inventory.extract_serial(item) for item in all_items if inventory.extract_serial(item)}
 
-        added_count = 0
+        added_lines = []
         skipped_lines = []
 
         for line in lines:
@@ -541,25 +541,33 @@ async def handle_arrival(message: Message, bot: Bot):
             existing_texts.add(line)
             if serial:
                 existing_serials.add(serial)
-            added_count += 1
+            added_lines.append(line)
 
-        if added_count > 0:
+        if added_lines:
             inventory.save_inventory(categories)
-            await message.react([ReactionTypeEmoji(emoji='✅')])
-            await message.reply(f"✅ Добавлено позиций: {added_count}")
-        else:
-            await message.react([ReactionTypeEmoji(emoji='👎')])
-            await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
+        # Формируем файл с отчётом
+        combined_lines = []
+        if added_lines:
+            combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
+            combined_lines.extend(added_lines)
+            combined_lines.append("")
         if skipped_lines:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-                f.write("\n".join(skipped_lines))
-                tmp_path = f.name
-            try:
-                doc = FSInputFile(tmp_path, filename="skipped.txt")
-                await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
-            finally:
-                os.unlink(tmp_path)
+            combined_lines.append(f"=== ПРОПУЩЕННЫЕ ({len(skipped_lines)}) ===")
+            combined_lines.extend(skipped_lines)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write("\n".join(combined_lines))
+            tmp_path = f.name
+
+        try:
+            doc = FSInputFile(tmp_path, filename="result.txt")
+            await message.answer_document(
+                doc,
+                caption=f"✅ Добавлено: {len(added_lines)} | ⏭ Пропущено: {len(skipped_lines)}"
+            )
+        finally:
+            os.unlink(tmp_path)
 
     elif message.document:
         document = message.document
@@ -581,7 +589,7 @@ async def handle_arrival(message: Message, bot: Bot):
             existing_texts = set(all_items)
             existing_serials = {inventory.extract_serial(item) for item in all_items if inventory.extract_serial(item)}
 
-            added_count = 0
+            added_lines = []
             skipped_lines = []
 
             for line in lines:
@@ -596,25 +604,33 @@ async def handle_arrival(message: Message, bot: Bot):
                 existing_texts.add(line)
                 if serial:
                     existing_serials.add(serial)
-                added_count += 1
+                added_lines.append(line)
 
-            if added_count > 0:
+            if added_lines:
                 inventory.save_inventory(categories)
-                await message.react([ReactionTypeEmoji(emoji='✅')])
-                await message.reply(f"✅ Добавлено позиций: {added_count}")
-            else:
-                await message.react([ReactionTypeEmoji(emoji='👎')])
-                await message.reply("❌ Ничего не добавлено (все позиции уже есть).")
 
+            combined_lines = []
+            if added_lines:
+                combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
+                combined_lines.extend(added_lines)
+                combined_lines.append("")
             if skipped_lines:
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-                    f.write("\n".join(skipped_lines))
-                    tmp_path = f.name
-                try:
-                    doc = FSInputFile(tmp_path, filename="skipped.txt")
-                    await message.answer_document(doc, caption=f"⏭ Пропущено: {len(skipped_lines)}")
-                finally:
-                    os.unlink(tmp_path)
+                combined_lines.append(f"=== ПРОПУЩЕННЫЕ ({len(skipped_lines)}) ===")
+                combined_lines.extend(skipped_lines)
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+                f.write("\n".join(combined_lines))
+                tmp_path = f.name
+
+            try:
+                doc = FSInputFile(tmp_path, filename="result.txt")
+                await message.answer_document(
+                    doc,
+                    caption=f"✅ Добавлено: {len(added_lines)} | ⏭ Пропущено: {len(skipped_lines)}"
+                )
+            finally:
+                os.unlink(tmp_path)
+
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -643,7 +659,7 @@ async def handle_preorder(message: Message, bot: Bot):
         await message.reply("❌ Не удалось найти товар с серийным номером.")
         return
 
-    today = datetime.now().strftime("%d.%m")
+    today = datetime.now().strftime(2026-02-28)
     new_item = f"{item_line} (Бронь от {today})"
 
     categories = inventory.load_inventory()
