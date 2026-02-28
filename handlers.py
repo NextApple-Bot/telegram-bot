@@ -608,6 +608,13 @@ async def handle_preorder(message: Message, bot: Bot):
     if not message.text:
         return
 
+    # Пропускаем сообщения, где первая строка является заголовком "Предзаказ"
+    first_line = message.text.strip().splitlines()[0].strip().lower()
+    if re.match(r'^предзаказ\s*:?$', first_line):
+        logger.info("Сообщение является заголовком предзаказа, пропускаем.")
+        return
+
+    # Далее обычная логика
     lines = message.text.splitlines()
     item_line = None
     for line in lines:
