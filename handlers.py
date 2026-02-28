@@ -14,13 +14,12 @@ from aiogram.exceptions import TelegramBadRequest
 
 import config
 import inventory
-import stats  # новый импорт
+import stats
 from sort_assortment import sort_assortment_to_categories, build_output_text, add_item_to_categories
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Состояния для загрузки ассортимента (старый способ)
 class UploadStates(StatesGroup):
     waiting_for_mode = State()
     waiting_for_inventory = State()
@@ -63,7 +62,7 @@ async def cancel_action(bot: Bot, chat_id: int, state: FSMContext):
     await bot.send_message(chat_id, "✅ Действие отменено.")
 
 async def start_upload_selection(target, bot: Bot, state: FSMContext, user_id: int):
-    # Проверка на администратора УДАЛЕНА – теперь любой может загружать
+    # Проверка на администратора УДАЛЕНА
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Заменить весь ассортимент", callback_data="upload_mode:replace"),
          InlineKeyboardButton(text="➕ Добавить к существующему", callback_data="upload_mode:add")]
@@ -230,7 +229,8 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
         ])
-        await callback.message.answer(text, reply_markup=keyboard)    elif action == "export_assortment":
+        await callback.message.answer(text, reply_markup=keyboard)
+    elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
         current_state = await state.get_state()
@@ -282,11 +282,12 @@ async def process_confirm_clear(callback: CallbackQuery, bot: Bot):
         else:
             raise
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
+
 @router.callback_query(F.data.startswith("reset_stats:"))
 async def process_reset_stats(callback: CallbackQuery):
     action = callback.data.split(":")[1]
     if action == "confirm":
-        # Запрашиваем подтверждение
+        # Запрос подтверждения
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_stats:yes"),
              InlineKeyboardButton(text="❌ Нет", callback_data="reset_stats:no")]
@@ -529,6 +530,7 @@ async def handle_arrival(message: Message, bot: Bot):
     logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
 
     async def process_lines(lines, reply_to):
+        # Убираем строки, состоящие только из дефисов (с возможными пробелами)
         lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
         if not lines:
             await reply_to("❌ Нет ни одной позиции после фильтрации.")
@@ -590,7 +592,6 @@ async def handle_arrival(message: Message, bot: Bot):
             return
         lines = [line.strip() for line in full_text.splitlines() if line.strip()]
         await process_lines(lines, message.reply)
-
     elif message.document:
         document = message.document
         if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
@@ -610,7 +611,7 @@ async def handle_arrival(message: Message, bot: Bot):
         await message.reply("⚠️ Отправьте текст или файл .txt.")
 
 # -------------------------------------------------------------------
-# Обработчик для топика «Предзаказ» (брони)
+# Обработчик для топика «Предзаказ» (брони/предзаказы)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
 async def handle_preorder(message: Message, bot: Bot):
@@ -625,7 +626,7 @@ async def handle_preorder(message: Message, bot: Bot):
 
     first_line = lines[0].strip().lower()
 
-    # Проверяем, является ли это бронью
+    # Определяем, является ли это бронью
     if re.match(r'^бронь\s*:?$', first_line):
         # Это бронь – ищем серийный номер и добавляем в инвентарь
         content_lines = lines[1:]
@@ -708,7 +709,7 @@ async def handle_sales_message(message: Message):
             not_found_serials.append(cand)
     if found_serials:
         inventory.save_inventory(inv)
-        stats.increment_sales(len(found_serials))  # увеличиваем счётчик продаж
+        stats.increment_sales(len(found_serials))
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:

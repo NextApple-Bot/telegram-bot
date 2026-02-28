@@ -46,9 +46,10 @@ def get_stats():
     stats = load_stats()
     stats = check_and_reset(stats)
     return stats
+
 def reset_stats():
     stats = load_stats()
-    stats = check_and_reset(stats)  # обновит дату, если она сменилась
+    stats = check_and_reset(stats)
     stats["preorders"] = 0
     stats["bookings"] = 0
     stats["sales"] = 0
