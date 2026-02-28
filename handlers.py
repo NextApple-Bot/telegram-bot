@@ -90,6 +90,8 @@ def process_new_objects(lines, current_inventory):
     existing_serials = {obj["serial"] for obj in current_inventory if obj["serial"]}
     existing_texts = {obj["text"] for obj in current_inventory}
     for line in lines:
+        if re.match(r'^\s*-\s*$', line):
+            continue  # пропускаем строки-разделители
         if line in existing_texts:
             skipped_lines.append(f"[Дубликат текста] {line}")
             continue
