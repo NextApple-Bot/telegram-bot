@@ -1,5 +1,5 @@
 from aiogram import F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
 import config
@@ -10,6 +10,8 @@ from .base import (
     show_inventory, show_help, cancel_action, start_upload_selection,
     get_main_menu_keyboard, process_full_text
 )
+from .topics import export_assortment_to_topic
+
 
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
@@ -31,7 +33,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         ])
         await callback.message.answer(text, reply_markup=keyboard)
     elif action == "export_assortment":
-        await export_assortment_to_topic(bot, user_id)  # функция определена в topics.py, но её нужно импортировать
+        await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
         current_state = await state.get_state()
         if current_state is not None:
@@ -65,6 +67,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     else:
         await callback.message.answer("Неизвестная команда")
 
+
 @router.callback_query(F.data.startswith("confirm_clear:"))
 async def process_confirm_clear(callback: CallbackQuery, bot):
     action = callback.data.split(":")[1]
@@ -82,6 +85,7 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
         else:
             raise
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
+
 
 @router.callback_query(F.data.startswith("reset_stats:"))
 async def process_reset_stats(callback: CallbackQuery):
@@ -102,6 +106,7 @@ async def process_reset_stats(callback: CallbackQuery):
         text = f"📊 Статистика за {s['date']}:\n• Предзаказов: {s['preorders']}\n• Броней: {s['bookings']}\n• Продаж: {s['sales']}"
         await callback.message.edit_text(text)
     await callback.answer()
+
 
 @router.callback_query(UploadStates.waiting_for_mode, F.data.startswith("upload_mode:"))
 async def process_mode_selection(callback: CallbackQuery, state):
@@ -129,6 +134,7 @@ async def process_mode_selection(callback: CallbackQuery, state):
         else:
             raise
 
+
 @router.callback_query(UploadStates.waiting_for_inventory, F.data == "done:finish")
 async def process_done_callback(callback: CallbackQuery, bot, state):
     await callback.answer()
@@ -141,6 +147,7 @@ async def process_done_callback(callback: CallbackQuery, bot, state):
         return
     full_text = "\n".join(parts)
     await process_full_text(callback.message, full_text, mode, state, bot)
+
 
 @router.callback_query(UploadStates.waiting_for_continue, F.data.startswith("continue:"))
 async def process_continue(callback: CallbackQuery, state):
