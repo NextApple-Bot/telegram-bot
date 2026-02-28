@@ -607,42 +607,41 @@ async def handle_preorder(message: Message, bot: Bot):
 
     first_line = lines[0].strip().lower()
 
-    # Определяем, является ли это бронью
-    is_booking = bool(re.match(r'^бронь\s*:?$', first_line))
-    if is_booking:
-        # Убираем первую строку, она не содержит товара
-        lines = lines[1:]
-        if not lines:
-            await message.reply("❌ Не найдено описание товара.")
+    # Проверяем, является ли это бронью
+    if re.match(r'^бронь\s*:?$', first_line):
+        # Это бронь – ищем серийный номер и добавляем в инвентарь
+        content_lines = lines[1:]
+        if not content_lines:
+            await message.reply("❌ Не найдено описание товара для брони.")
             return
 
-    # Ищем строку с серийным номером
-    item_line = None
-    for line in lines:
-        line = line.strip()
-        if re.search(r'\([A-Z0-9-]{5,}\)', line, re.IGNORECASE):
-            item_line = line
-            break
+        item_line = None
+        for line in content_lines:
+            line = line.strip()
+            if re.search(r'\([A-Z0-9-]{5,}\)', line, re.IGNORECASE):
+                item_line = line
+                break
 
-    if not item_line:
-        await message.reply("❌ Не удалось найти товар с серийным номером.")
-        return
+        if not item_line:
+            await message.reply("❌ Не удалось найти товар с серийным номером для брони.")
+            return
 
-    today = datetime.now().strftime("%d.%m")
-    new_item = f"{item_line} (Бронь от {today})"
+        today = datetime.now().strftime("%d.%m")
+        new_item = f"{item_line} (Бронь от {today})"
 
-    categories = inventory.load_inventory()
-    categories, idx = add_item_to_categories(new_item, categories)
-    inventory.save_inventory(categories)
+        categories = inventory.load_inventory()
+        categories, idx = add_item_to_categories(new_item, categories)
+        inventory.save_inventory(categories)
 
-    # Увеличиваем соответствующий счётчик
-    if is_booking:
         stats.increment_booking()
-    else:
-        stats.increment_preorder()
 
-    await message.react([ReactionTypeEmoji(emoji='👍')])
-    await message.reply(f"✅ Добавлена бронь:\n{new_item}")
+        await message.react([ReactionTypeEmoji(emoji='👍')])
+        await message.reply(f"✅ Добавлена бронь:\n{new_item}")
+
+    else:
+        # Это предзаказ – только счётчик и реакция 👌
+        stats.increment_preorder()
+        await message.react([ReactionTypeEmoji(emoji='👌')])
 
 # -------------------------------------------------------------------
 # Функция для выгрузки ассортимента в топик (по кнопке)
