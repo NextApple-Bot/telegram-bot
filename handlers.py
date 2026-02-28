@@ -3,6 +3,7 @@ import tempfile
 import os
 import aiofiles
 import logging
+import stats
 from datetime import datetime
 from aiogram import Router, F, Bot
 from aiogram.types import Message, FSInputFile, Document, CallbackQuery, ReactionTypeEmoji
@@ -74,12 +75,12 @@ def get_main_menu_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📦 Показать ассортимент", callback_data="menu:inventory"),
          InlineKeyboardButton(text="📤 Загрузить ассортимент", callback_data="menu:upload")],
-        [InlineKeyboardButton(text="📤 Выгрузить ассортимент", callback_data="menu:export_assortment"),
-         InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help")],
-        [InlineKeyboardButton(text="🗑️ Очистить ассортимент", callback_data="menu:clear"),
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="menu:stats"),
+         InlineKeyboardButton(text="📤 Выгрузить ассортимент", callback_data="menu:export_assortment")],
+        [InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
+         InlineKeyboardButton(text="🗑️ Очистить ассортимент", callback_data="menu:clear"),
          InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
     ])
-
 def process_new_objects(lines, current_inventory):
     added_count = 0
     skipped_lines = []
@@ -222,6 +223,14 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
         await show_inventory(bot, chat_id)
     elif action == "upload":
         await start_upload_selection(callback.message, bot, state, user_id)
+       elif action == "stats":
+        s = stats.get_stats()
+        await callback.message.answer(
+            f"📊 Статистика за {s['date']}:\n"
+            f"• Предзаказов: {s['preorders']}\n"
+            f"• Броней: {s['bookings']}\n"
+            f"• Продаж: {s['sales']}"
+        )
     elif action == "export_assortment":
         # Проверка на администратора УДАЛЕНА
         await export_assortment_to_topic(bot, user_id)
@@ -622,6 +631,7 @@ async def handle_preorder(message: Message, bot: Bot):
     categories = inventory.load_inventory()
     categories, idx = add_item_to_categories(new_item, categories)
     inventory.save_inventory(categories)
+        stats.increment_preorder()
 
     await message.react([ReactionTypeEmoji(emoji='👍')])
     await message.reply(f"✅ Добавлена бронь:\n{new_item}")
@@ -673,6 +683,7 @@ async def handle_sales_message(message: Message):
             not_found_serials.append(cand)
     if found_serials:
         inventory.save_inventory(inv)
+                stats.increment_sales(len(found_serials))
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
