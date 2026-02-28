@@ -607,11 +607,6 @@ async def handle_preorder(message: Message, bot: Bot):
 
     first_line = lines[0].strip().lower()
 
-    # Пропускаем сообщения, начинающиеся с "Предзаказ"
-    if re.match(r'^предзаказ\s*:?$', first_line):
-        logger.info("Сообщение является заголовком предзаказа, пропускаем.")
-        return
-
     # Определяем, является ли это бронью
     is_booking = bool(re.match(r'^бронь\s*:?$', first_line))
     if is_booking:
