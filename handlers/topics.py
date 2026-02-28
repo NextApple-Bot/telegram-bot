@@ -211,6 +211,7 @@ async def handle_preorder(message: Message, bot):
             await message.reply("❌ Не найдено описание товара для брони.")
             return
 
+        # Ищем строку с серийным номером
         item_line = None
         for line in content_lines:
             line = line.strip()
@@ -222,10 +223,29 @@ async def handle_preorder(message: Message, bot):
             await message.reply("❌ Не удалось найти товар с серийным номером для брони.")
             return
 
+        # Извлекаем серийный номер
+        serial = inventory.extract_serial(item_line)
+        if not serial:
+            await message.reply("❌ Не удалось извлечь серийный номер.")
+            return
+
+        categories = inventory.load_inventory()
+
+        # Проверяем, есть ли уже забронированный товар с таким серийным номером
+        for cat in categories:
+            for item in cat['items']:
+                if inventory.extract_serial(item) == serial and "(Бронь от" in item:
+                    await message.reply("⚠️ Этот товар уже забронирован.")
+                    return
+
+        # Удаляем все товары с таким серийным номером
+        categories, removed = inventory.remove_by_serial(categories, serial)
+
+        # Создаём новую строку с пометкой
         today = datetime.now().strftime("%d.%m")
         new_item = f"{item_line} (Бронь от {today})"
 
-        categories = inventory.load_inventory()
+        # Добавляем новый товар
         categories, idx = add_item_to_categories(new_item, categories)
         inventory.save_inventory(categories)
 
