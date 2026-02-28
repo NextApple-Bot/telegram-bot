@@ -15,14 +15,14 @@ from aiogram.types import Update
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import config
-import handlers
+from handlers import router
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 bot = Bot(token=config.TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
-dp.include_router(handlers.router)
+dp.include_router(router)
 
 RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
 PORT = int(os.environ.get('PORT', 8000))
