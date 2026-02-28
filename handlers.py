@@ -62,9 +62,7 @@ async def cancel_action(bot: Bot, chat_id: int, state: FSMContext):
     await bot.send_message(chat_id, "✅ Действие отменено.")
 
 async def start_upload_selection(target, bot: Bot, state: FSMContext, user_id: int):
-    if user_id != config.ADMIN_ID:
-        await bot.send_message(target.chat.id, "⛔ У вас нет прав на выполнение этой команды.")
-        return
+    # Проверка на администратора УДАЛЕНА – теперь любой может загружать
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Заменить весь ассортимент", callback_data="upload_mode:replace"),
          InlineKeyboardButton(text="➕ Добавить к существующему", callback_data="upload_mode:add")]
@@ -225,14 +223,10 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
     elif action == "upload":
         await start_upload_selection(callback.message, bot, state, user_id)
     elif action == "export_assortment":
-        if user_id != config.ADMIN_ID:
-            await callback.message.answer("⛔ У вас нет прав на выгрузку ассортимента.")
-            return
+        # Проверка на администратора УДАЛЕНА
         await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
-        if user_id != config.ADMIN_ID:
-            await callback.message.answer("⛔ У вас нет прав на это действие.")
-            return
+        # Проверка на администратора УДАЛЕНА
         current_state = await state.get_state()
         if current_state is not None:
             await callback.message.answer("⚠️ Сначала завершите текущее действие (/cancel).")
@@ -350,9 +344,7 @@ async def process_continue(callback: CallbackQuery, state: FSMContext):
 # -------------------------------------------------------------------
 @router.message(UploadStates.waiting_for_inventory, F.text)
 async def process_inventory_text_part(message: Message, bot: Bot, state: FSMContext):
-    if message.from_user.id != config.ADMIN_ID:
-        await state.clear()
-        return
+    # Проверка на администратора УДАЛЕНА
     data = await state.get_data()
     parts = data.get("parts", [])
     parts.append(message.text.strip())
@@ -362,9 +354,7 @@ async def process_inventory_text_part(message: Message, bot: Bot, state: FSMCont
 
 @router.message(UploadStates.waiting_for_inventory, F.document)
 async def process_inventory_document(message: Message, bot: Bot, state: FSMContext):
-    if message.from_user.id != config.ADMIN_ID:
-        await state.clear()
-        return
+    # Проверка на администратора УДАЛЕНА
     data = await state.get_data()
     mode = data.get("mode")
     document = message.document
@@ -599,7 +589,7 @@ async def handle_arrival(message: Message, bot: Bot):
         await message.reply("⚠️ Отправьте текст или файл .txt.")
 
 # -------------------------------------------------------------------
-# Обработчик для топика «Предзаказ» (брони)
+# Обработчик для топика «Предзаказ» (брони) – с игнорированием заголовков
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
 async def handle_preorder(message: Message, bot: Bot):
@@ -614,7 +604,6 @@ async def handle_preorder(message: Message, bot: Bot):
         logger.info("Сообщение является заголовком предзаказа, пропускаем.")
         return
 
-    # Далее обычная логика
     lines = message.text.splitlines()
     item_line = None
     for line in lines:
