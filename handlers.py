@@ -19,6 +19,7 @@ from sort_assortment import sort_assortment_to_categories, build_output_text, ad
 logger = logging.getLogger(__name__)
 router = Router()
 
+# Состояния для загрузки ассортимента (старый способ)
 class UploadStates(StatesGroup):
     waiting_for_mode = State()
     waiting_for_inventory = State()
@@ -90,8 +91,6 @@ def process_new_objects(lines, current_inventory):
     existing_serials = {obj["serial"] for obj in current_inventory if obj["serial"]}
     existing_texts = {obj["text"] for obj in current_inventory}
     for line in lines:
-        if re.match(r'^\s*-\s*$', line):
-            continue  # пропускаем строки-разделители
         if line in existing_texts:
             skipped_lines.append(f"[Дубликат текста] {line}")
             continue
@@ -507,20 +506,18 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
     await state.clear()
 
 # -------------------------------------------------------------------
-# Обработчик для топика «Прибытие» (добавление товаров)
+# Обработчик для топика «Прибытие» (добавление товаров) – ИСПРАВЛЕННАЯ ВЕРСИЯ
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ARRIVAL)
 async def handle_arrival(message: Message, bot: Bot):
     logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
 
-    if message.text:
-        full_text = message.text.strip()
-        if not full_text:
-            await message.reply("❌ Пустой список.")
-            return
-        lines = [line.strip() for line in full_text.splitlines() if line.strip()]
+    # Функция для обработки списка строк
+    async def process_lines(lines, reply_to):
+        # Убираем строки, состоящие только из дефисов (с возможными пробелами)
+        lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
         if not lines:
-            await message.reply("❌ Нет ни одной позиции.")
+            await reply_to("❌ Нет ни одной позиции после фильтрации.")
             return
 
         categories = inventory.load_inventory()
@@ -532,6 +529,7 @@ async def handle_arrival(message: Message, bot: Bot):
         skipped_lines = []
 
         for line in lines:
+            # Проверка на дубликат текста
             if line in existing_texts:
                 skipped_lines.append(f"[Дубликат текста] {line}")
                 continue
@@ -539,6 +537,7 @@ async def handle_arrival(message: Message, bot: Bot):
             if serial and serial in existing_serials:
                 skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
                 continue
+            # Добавляем товар
             categories, idx = add_item_to_categories(line, categories)
             existing_texts.add(line)
             if serial:
@@ -571,6 +570,16 @@ async def handle_arrival(message: Message, bot: Bot):
         finally:
             os.unlink(tmp_path)
 
+    # Обработка текстового сообщения
+    if message.text:
+        full_text = message.text.strip()
+        if not full_text:
+            await message.reply("❌ Пустой список.")
+            return
+        lines = [line.strip() for line in full_text.splitlines() if line.strip()]
+        await process_lines(lines, message.reply)
+
+    # Обработка документа
     elif message.document:
         document = message.document
         if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
@@ -582,57 +591,7 @@ async def handle_arrival(message: Message, bot: Bot):
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
                 content = await f.read()
             lines = [line.strip() for line in content.splitlines() if line.strip()]
-            if not lines:
-                await message.reply("❌ Файл пуст.")
-                return
-
-            categories = inventory.load_inventory()
-            all_items = inventory.text_only(categories)
-            existing_texts = set(all_items)
-            existing_serials = {inventory.extract_serial(item) for item in all_items if inventory.extract_serial(item)}
-
-            added_lines = []
-            skipped_lines = []
-
-            for line in lines:
-                if line in existing_texts:
-                    skipped_lines.append(f"[Дубликат текста] {line}")
-                    continue
-                serial = inventory.extract_serial(line)
-                if serial and serial in existing_serials:
-                    skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
-                    continue
-                categories, idx = add_item_to_categories(line, categories)
-                existing_texts.add(line)
-                if serial:
-                    existing_serials.add(serial)
-                added_lines.append(line)
-
-            if added_lines:
-                inventory.save_inventory(categories)
-
-            combined_lines = []
-            if added_lines:
-                combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
-                combined_lines.extend(added_lines)
-                combined_lines.append("")
-            if skipped_lines:
-                combined_lines.append(f"=== ПРОПУЩЕННЫЕ ({len(skipped_lines)}) ===")
-                combined_lines.extend(skipped_lines)
-
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-                f.write("\n".join(combined_lines))
-                tmp_path = f.name
-
-            try:
-                doc = FSInputFile(tmp_path, filename="result.txt")
-                await message.answer_document(
-                    doc,
-                    caption=f"✅ Добавлено: {len(added_lines)} | ⏭ Пропущено: {len(skipped_lines)}"
-                )
-            finally:
-                os.unlink(tmp_path)
-
+            await process_lines(lines, message.reply)
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -661,7 +620,7 @@ async def handle_preorder(message: Message, bot: Bot):
         await message.reply("❌ Не удалось найти товар с серийным номером.")
         return
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%d.%m")
     new_item = f"{item_line} (Бронь от {today})"
 
     categories = inventory.load_inventory()
