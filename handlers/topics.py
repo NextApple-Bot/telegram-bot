@@ -3,7 +3,7 @@ import tempfile
 import os
 import aiofiles
 from datetime import datetime
-from aiogram import F
+from aiogram import F, Bot
 from aiogram.types import Message, ReactionTypeEmoji, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
@@ -91,6 +91,7 @@ async def process_assortment_confirm(callback: CallbackQuery, state):
 
     data = await state.get_data()
     categories = data.get("temp_categories")
+    action = callback.data.split(":")[1]
     if action == "yes":
         if categories:
             inventory.save_inventory(categories)
@@ -238,7 +239,32 @@ async def handle_preorder(message: Message, bot):
         await message.react([ReactionTypeEmoji(emoji='👌')])
 
 # -------------------------------------------------------------------
-# Обработчик для топика «Продажи» (удаление по серийным номерам)
+# Функция для выгрузки ассортимента в топик (по кнопке)
+# -------------------------------------------------------------------
+async def export_assortment_to_topic(bot: Bot, admin_id: int):
+    categories = inventory.load_inventory()
+    if not categories:
+        await bot.send_message(admin_id, "📭 Ассортимент пуст, нечего выгружать.")
+        return
+    text = build_output_text(categories)
+    today = datetime.now().strftime("%d.%m.%Y")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+        f.write(text)
+        tmp_path = f.name
+    try:
+        document = FSInputFile(tmp_path, filename=f"assortiment_{today}.txt")
+        await bot.send_document(
+            chat_id=config.MAIN_GROUP_ID,
+            document=document,
+            caption=f"📦 Текущий ассортимент (категорий: {len(categories)})",
+            message_thread_id=config.THREAD_ASSORTMENT
+        )
+        await bot.send_message(admin_id, "✅ Ассортимент успешно выгружен в топик «Ассортимент».")
+    finally:
+        os.unlink(tmp_path)
+
+# -------------------------------------------------------------------
+# Обработка сообщений из топика «Продажи» (удаление по серийным номерам)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
 async def handle_sales_message(message: Message):
@@ -268,28 +294,3 @@ async def handle_sales_message(message: Message):
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
-
-# -------------------------------------------------------------------
-# Функция для выгрузки ассортимента в топик (по кнопке)
-# -------------------------------------------------------------------
-async def export_assortment_to_topic(bot: Bot, admin_id: int):
-    categories = inventory.load_inventory()
-    if not categories:
-        await bot.send_message(admin_id, "📭 Ассортимент пуст, нечего выгружать.")
-        return
-    text = build_output_text(categories)
-    today = datetime.now().strftime("%d.%m.%Y")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-        f.write(text)
-        tmp_path = f.name
-    try:
-        document = FSInputFile(tmp_path, filename=f"assortiment_{today}.txt")
-        await bot.send_document(
-            chat_id=config.MAIN_GROUP_ID,
-            document=document,
-            caption=f"📦 Текущий ассортимент (категорий: {len(categories)})",
-            message_thread_id=config.THREAD_ASSORTMENT
-        )
-        await bot.send_message(admin_id, "✅ Ассортимент успешно выгружен в топик «Ассортимент».")
-    finally:
-        os.unlink(tmp_path)
