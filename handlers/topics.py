@@ -4,7 +4,8 @@ import os
 import aiofiles
 from datetime import datetime
 from aiogram import F
-from aiogram.types import Message, ReactionTypeEmoji, FSInputFile
+from aiogram.types import Message, ReactionTypeEmoji, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramBadRequest
 
 import config
 import inventory
@@ -83,8 +84,10 @@ async def handle_assortment_upload(message: Message, bot, state):
 
 @router.callback_query(AssortmentConfirmState.waiting_for_confirm, F.data.startswith("assort_confirm:"))
 async def process_assortment_confirm(callback: CallbackQuery, state):
-    action = callback.data.split(":")[1]
-    await callback.answer()
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
 
     data = await state.get_data()
     categories = data.get("temp_categories")

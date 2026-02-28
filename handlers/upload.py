@@ -2,7 +2,7 @@ import tempfile
 import os
 import aiofiles
 from aiogram import F
-from aiogram.types import Message, ReactionTypeEmoji
+from aiogram.types import Message, ReactionTypeEmoji, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 from .base import (
     router, logger, UploadStates, process_new_objects,

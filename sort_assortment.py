@@ -131,7 +131,6 @@ def sort_items_in_category(items, header):
         sorted_keys = sorted(groups.keys(), key=lambda k: (k[0] is None, k[0] if k[0] is not None else float('inf')))
         for vol_gb, vol_str in sorted_keys:
             if vol_str is not None:
-                # ИЗМЕНЕНО: подзаголовок памяти теперь без пробелов
                 output.append(f"-{vol_str}-")
                 output.append('-')
             for sim_type in ['eSIM', 'SIM+eSIM', 'other']:
@@ -152,7 +151,6 @@ def sort_items_in_category(items, header):
         sorted_sizes = sorted(size_groups.keys(), key=lambda s: (s is None, s if s is not None else float('inf')))
         for size in sorted_sizes:
             if size is not None:
-                # ИЗМЕНЕНО: подзаголовок размера теперь без пробелов
                 output.append(f"-{size}mm-")
                 output.append('-')
                 output.extend(sorted(size_groups[size]))

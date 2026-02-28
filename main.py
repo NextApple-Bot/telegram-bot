@@ -15,7 +15,7 @@ from aiogram.types import Update
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import config
-from handlers import router
+from handlers import router  # импортируем роутер из пакета handlers
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -50,7 +50,8 @@ async def setup_webhook(retries=3):
             result = await bot.set_webhook(
                 url=webhook_url,
                 allowed_updates=dp.resolve_used_update_types(),
-                drop_pending_updates=True
+                drop_pending_updates=True,
+                max_connections=100  # увеличиваем для снижения задержек
             )
             logger.info(f"📦 Результат set_webhook: {result}")
             if result:

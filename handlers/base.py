@@ -18,7 +18,7 @@ import stats
 from sort_assortment import sort_assortment_to_categories, build_output_text, add_item_to_categories
 
 logger = logging.getLogger(__name__)
-router = Router()  # основной роутер, который будет собирать все обработчики
+router = Router()
 
 # Состояния для загрузки ассортимента (старый способ)
 class UploadStates(StatesGroup):

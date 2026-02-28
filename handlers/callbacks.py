@@ -15,11 +15,14 @@ from .topics import export_assortment_to_topic
 
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
     action = callback.data.split(":")[1]
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
-    await callback.answer()
 
     if action == "inventory":
         await show_inventory(bot, chat_id)
@@ -70,8 +73,12 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
 
 @router.callback_query(F.data.startswith("confirm_clear:"))
 async def process_confirm_clear(callback: CallbackQuery, bot):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
     action = callback.data.split(":")[1]
-    await callback.answer()
 
     try:
         if action == "yes":
@@ -89,6 +96,11 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
 
 @router.callback_query(F.data.startswith("reset_stats:"))
 async def process_reset_stats(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
     action = callback.data.split(":")[1]
     if action == "confirm":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -105,13 +117,16 @@ async def process_reset_stats(callback: CallbackQuery):
         s = stats.get_stats()
         text = f"📊 Статистика за {s['date']}:\n• Предзаказов: {s['preorders']}\n• Броней: {s['bookings']}\n• Продаж: {s['sales']}"
         await callback.message.edit_text(text)
-    await callback.answer()
 
 
 @router.callback_query(UploadStates.waiting_for_mode, F.data.startswith("upload_mode:"))
 async def process_mode_selection(callback: CallbackQuery, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
     mode = callback.data.split(":")[1]
-    await callback.answer()
 
     await state.update_data(mode=mode, parts=[])
     await state.set_state(UploadStates.waiting_for_inventory)
@@ -137,7 +152,10 @@ async def process_mode_selection(callback: CallbackQuery, state):
 
 @router.callback_query(UploadStates.waiting_for_inventory, F.data == "done:finish")
 async def process_done_callback(callback: CallbackQuery, bot, state):
-    await callback.answer()
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
 
     data = await state.get_data()
     parts = data.get("parts", [])
@@ -151,8 +169,12 @@ async def process_done_callback(callback: CallbackQuery, bot, state):
 
 @router.callback_query(UploadStates.waiting_for_continue, F.data.startswith("continue:"))
 async def process_continue(callback: CallbackQuery, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
     action = callback.data.split(":")[1]
-    await callback.answer()
 
     if action == "add_more":
         await state.update_data(parts=[])
