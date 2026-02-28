@@ -3,7 +3,6 @@ import tempfile
 import os
 import aiofiles
 import logging
-import stats
 from datetime import datetime
 from aiogram import Router, F, Bot
 from aiogram.types import Message, FSInputFile, Document, CallbackQuery, ReactionTypeEmoji
@@ -15,6 +14,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 import config
 import inventory
+import stats  # новый импорт
 from sort_assortment import sort_assortment_to_categories, build_output_text, add_item_to_categories
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ def get_main_menu_keyboard():
          InlineKeyboardButton(text="🗑️ Очистить ассортимент", callback_data="menu:clear"),
          InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
     ])
+
 def process_new_objects(lines, current_inventory):
     added_count = 0
     skipped_lines = []
@@ -223,7 +224,7 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
         await show_inventory(bot, chat_id)
     elif action == "upload":
         await start_upload_selection(callback.message, bot, state, user_id)
-       elif action == "stats":
+    elif action == "stats":
         s = stats.get_stats()
         await callback.message.answer(
             f"📊 Статистика за {s['date']}:\n"
@@ -232,10 +233,8 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
             f"• Продаж: {s['sales']}"
         )
     elif action == "export_assortment":
-        # Проверка на администратора УДАЛЕНА
         await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
-        # Проверка на администратора УДАЛЕНА
         current_state = await state.get_state()
         if current_state is not None:
             await callback.message.answer("⚠️ Сначала завершите текущее действие (/cancel).")
@@ -505,15 +504,13 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
     await state.clear()
 
 # -------------------------------------------------------------------
-# Обработчик для топика «Прибытие» (добавление товаров) – ИСПРАВЛЕННАЯ ВЕРСИЯ
+# Обработчик для топика «Прибытие» (добавление товаров)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ARRIVAL)
 async def handle_arrival(message: Message, bot: Bot):
     logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
 
-    # Вспомогательная функция для обработки списка строк
     async def process_lines(lines, reply_to):
-        # Убираем строки, состоящие только из дефисов (с возможными пробелами)
         lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
         if not lines:
             await reply_to("❌ Нет ни одной позиции после фильтрации.")
@@ -544,7 +541,6 @@ async def handle_arrival(message: Message, bot: Bot):
         if added_lines:
             inventory.save_inventory(categories)
 
-        # Формируем файл с отчётом
         combined_lines = []
         if added_lines:
             combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
@@ -569,7 +565,6 @@ async def handle_arrival(message: Message, bot: Bot):
         finally:
             os.unlink(tmp_path)
 
-    # Обработка текстового сообщения
     if message.text:
         full_text = message.text.strip()
         if not full_text:
@@ -578,7 +573,6 @@ async def handle_arrival(message: Message, bot: Bot):
         lines = [line.strip() for line in full_text.splitlines() if line.strip()]
         await process_lines(lines, message.reply)
 
-    # Обработка документа
     elif message.document:
         document = message.document
         if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
@@ -598,7 +592,7 @@ async def handle_arrival(message: Message, bot: Bot):
         await message.reply("⚠️ Отправьте текст или файл .txt.")
 
 # -------------------------------------------------------------------
-# Обработчик для топика «Предзаказ» (брони) – с игнорированием заголовков
+# Обработчик для топика «Предзаказ» (брони)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
 async def handle_preorder(message: Message, bot: Bot):
@@ -607,7 +601,6 @@ async def handle_preorder(message: Message, bot: Bot):
     if not message.text:
         return
 
-    # Пропускаем сообщения, где первая строка является заголовком "Предзаказ"
     first_line = message.text.strip().splitlines()[0].strip().lower()
     if re.match(r'^предзаказ\s*:?$', first_line):
         logger.info("Сообщение является заголовком предзаказа, пропускаем.")
@@ -631,7 +624,8 @@ async def handle_preorder(message: Message, bot: Bot):
     categories = inventory.load_inventory()
     categories, idx = add_item_to_categories(new_item, categories)
     inventory.save_inventory(categories)
-        stats.increment_preorder()
+
+    stats.increment_preorder()  # увеличиваем счётчик предзаказов
 
     await message.react([ReactionTypeEmoji(emoji='👍')])
     await message.reply(f"✅ Добавлена бронь:\n{new_item}")
@@ -645,7 +639,7 @@ async def export_assortment_to_topic(bot: Bot, admin_id: int):
         await bot.send_message(admin_id, "📭 Ассортимент пуст, нечего выгружать.")
         return
     text = build_output_text(categories)
-    today = datetime.now().strftime("%d.%m.%Y")  # изменён формат на ДД.ММ.ГГГГ
+    today = datetime.now().strftime("%d.%m.%Y")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write(text)
         tmp_path = f.name
@@ -683,7 +677,7 @@ async def handle_sales_message(message: Message):
             not_found_serials.append(cand)
     if found_serials:
         inventory.save_inventory(inv)
-                stats.increment_sales(len(found_serials))
+        stats.increment_sales(len(found_serials))  # увеличиваем счётчик продаж
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
