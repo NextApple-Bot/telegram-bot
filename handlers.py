@@ -601,12 +601,27 @@ async def handle_preorder(message: Message, bot: Bot):
     if not message.text:
         return
 
-    first_line = message.text.strip().splitlines()[0].strip().lower()
+    lines = message.text.strip().splitlines()
+    if not lines:
+        return
+
+    first_line = lines[0].strip().lower()
+
+    # Пропускаем сообщения, начинающиеся с "Предзаказ"
     if re.match(r'^предзаказ\s*:?$', first_line):
         logger.info("Сообщение является заголовком предзаказа, пропускаем.")
         return
 
-    lines = message.text.splitlines()
+    # Определяем, является ли это бронью
+    is_booking = bool(re.match(r'^бронь\s*:?$', first_line))
+    if is_booking:
+        # Убираем первую строку, она не содержит товара
+        lines = lines[1:]
+        if not lines:
+            await message.reply("❌ Не найдено описание товара.")
+            return
+
+    # Ищем строку с серийным номером
     item_line = None
     for line in lines:
         line = line.strip()
@@ -625,7 +640,11 @@ async def handle_preorder(message: Message, bot: Bot):
     categories, idx = add_item_to_categories(new_item, categories)
     inventory.save_inventory(categories)
 
-    stats.increment_preorder()  # увеличиваем счётчик предзаказов
+    # Увеличиваем соответствующий счётчик
+    if is_booking:
+        stats.increment_booking()
+    else:
+        stats.increment_preorder()
 
     await message.react([ReactionTypeEmoji(emoji='👍')])
     await message.reply(f"✅ Добавлена бронь:\n{new_item}")
