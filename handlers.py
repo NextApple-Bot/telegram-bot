@@ -226,13 +226,11 @@ async def process_menu_callback(callback: CallbackQuery, bot: Bot, state: FSMCon
         await start_upload_selection(callback.message, bot, state, user_id)
     elif action == "stats":
         s = stats.get_stats()
-        await callback.message.answer(
-            f"📊 Статистика за {s['date']}:\n"
-            f"• Предзаказов: {s['preorders']}\n"
-            f"• Броней: {s['bookings']}\n"
-            f"• Продаж: {s['sales']}"
-        )
-    elif action == "export_assortment":
+        text = f"📊 Статистика за {s['date']}:\n• Предзаказов: {s['preorders']}\n• Броней: {s['bookings']}\n• Продаж: {s['sales']}"
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
+        ])
+        await callback.message.answer(text, reply_markup=keyboard)    elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
         current_state = await state.get_state()
@@ -284,6 +282,26 @@ async def process_confirm_clear(callback: CallbackQuery, bot: Bot):
         else:
             raise
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
+@router.callback_query(F.data.startswith("reset_stats:"))
+async def process_reset_stats(callback: CallbackQuery):
+    action = callback.data.split(":")[1]
+    if action == "confirm":
+        # Запрашиваем подтверждение
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_stats:yes"),
+             InlineKeyboardButton(text="❌ Нет", callback_data="reset_stats:no")]
+        ])
+        await callback.message.edit_text("Вы уверены, что хотите обнулить статистику?", reply_markup=keyboard)
+    elif action == "yes":
+        stats.reset_stats()
+        s = stats.get_stats()
+        text = f"📊 Статистика за {s['date']}:\n• Предзаказов: {s['preorders']}\n• Броней: {s['bookings']}\n• Продаж: {s['sales']}"
+        await callback.message.edit_text(text)
+    elif action == "no":
+        s = stats.get_stats()
+        text = f"📊 Статистика за {s['date']}:\n• Предзаказов: {s['preorders']}\n• Броней: {s['bookings']}\n• Продаж: {s['sales']}"
+        await callback.message.edit_text(text)
+    await callback.answer()
 
 @router.callback_query(UploadStates.waiting_for_mode, F.data.startswith("upload_mode:"))
 async def process_mode_selection(callback: CallbackQuery, state: FSMContext):
