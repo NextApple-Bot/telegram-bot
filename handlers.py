@@ -620,7 +620,7 @@ async def handle_preorder(message: Message, bot: Bot):
         await message.reply("❌ Не удалось найти товар с серийным номером.")
         return
 
-    today = datetime.now().strftime("%d.%m")
+    today = datetime.now().strftime("%d.%m.%Y")
     new_item = f"{item_line} (Бронь от {today})"
 
     categories = inventory.load_inventory()
