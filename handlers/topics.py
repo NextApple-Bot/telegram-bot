@@ -10,10 +10,57 @@ from aiogram.exceptions import TelegramBadRequest
 import config
 import inventory
 import stats
+import finances
 from .base import (
     router, logger, AssortmentConfirmState, add_item_to_categories,
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
 )
+
+
+# -------------------------------------------------------------------
+# Вспомогательные функции для извлечения сумм и способов оплаты
+# -------------------------------------------------------------------
+def extract_amount(text):
+    """
+    Извлекает число (сумму) из строки. Ищет цифры, возможно с пробелами, 
+    после которых могут быть слова 'руб', 'р.' или символ ₽.
+    """
+    match = re.search(r'(\d[\d\s]*\d|\d)\s*(?:руб|р\.|₽)?', text)
+    if match:
+        amount_str = match.group(1).replace(' ', '')
+        try:
+            return int(amount_str)
+        except:
+            return None
+    return None
+
+def extract_prepaid(line):
+    """
+    Извлекает предоплату из строки вида "П/О - 5000 (QR-код)".
+    Возвращает кортеж (способ, сумма) или None.
+    """
+    # Ищем П/О или П\О, затем число
+    match = re.search(r'П[/\\]О\s*[:\-]?\s*([\d\s]+)', line)
+    if not match:
+        return None
+    amount_str = match.group(1).replace(' ', '')
+    try:
+        amount = int(amount_str)
+    except:
+        return None
+    # Ищем способ оплаты в скобках
+    method_match = re.search(r'\(([^)]+)\)', line)
+    method = method_match.group(1).lower() if method_match else ""
+    if "наличные" in method or "нал" in method:
+        return ("cash", amount)
+    elif "терминал" in method or "терм" in method:
+        return ("terminal", amount)
+    elif "qr" in method or "кьюар" in method or "код" in method:
+        return ("qr", amount)
+    else:
+        # Если способ не распознан, игнорируем
+        return None
+
 
 # -------------------------------------------------------------------
 # Обработчик для топика «Ассортимент» (с подтверждением)
@@ -82,6 +129,7 @@ async def handle_assortment_upload(message: Message, bot, state):
     else:
         await message.reply("⚠️ Отправьте текст или файл .txt.")
 
+
 @router.callback_query(AssortmentConfirmState.waiting_for_confirm, F.data.startswith("assort_confirm:"))
 async def process_assortment_confirm(callback: CallbackQuery, state):
     try:
@@ -102,6 +150,7 @@ async def process_assortment_confirm(callback: CallbackQuery, state):
         await callback.message.edit_text("❌ Загрузка отменена.")
     await state.clear()
 
+
 # -------------------------------------------------------------------
 # Обработчик для топика «Прибытие» (добавление товаров)
 # -------------------------------------------------------------------
@@ -110,6 +159,7 @@ async def handle_arrival(message: Message, bot):
     logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
 
     async def process_lines(lines, reply_to):
+        # Убираем строки, состоящие только из дефисов
         lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
         if not lines:
             await reply_to("❌ Нет ни одной позиции после фильтрации.")
@@ -189,6 +239,7 @@ async def handle_arrival(message: Message, bot):
     else:
         await message.reply("⚠️ Отправьте текст или файл .txt.")
 
+
 # -------------------------------------------------------------------
 # Обработчик для топика «Предзаказ» (брони/предзаказы)
 # -------------------------------------------------------------------
@@ -205,6 +256,7 @@ async def handle_preorder(message: Message, bot):
 
     first_line = lines[0].strip().lower()
 
+    # Обработка брони
     if re.match(r'^бронь\s*:?$', first_line):
         content_lines = lines[1:]
         if not content_lines:
@@ -254,9 +306,77 @@ async def handle_preorder(message: Message, bot):
         await message.react([ReactionTypeEmoji(emoji='👍')])
         await message.reply(f"✅ Добавлена бронь:\n{new_item}")
 
+        # Парсим возможные предоплаты (если они есть в брони – по желанию, пока не требуется)
+        # Оставим на будущее
+
     else:
+        # Это предзаказ – только счётчик и реакция 👌
         stats.increment_preorder()
         await message.react([ReactionTypeEmoji(emoji='👌')])
+
+        # Парсим предоплаты из всех строк сообщения (кроме первой, но на всякий случай проходим по всем)
+        for line in lines:
+            prepaid = extract_prepaid(line)
+            if prepaid:
+                ptype, amount = prepaid
+                finances.add_payment(ptype, amount)
+
+
+# -------------------------------------------------------------------
+# Обработчик для топика «Продажи» (удаление по серийным номерам + учёт оплат)
+# -------------------------------------------------------------------
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
+async def handle_sales_message(message: Message):
+    logger.info(f"📩 Сообщение в топике Продажи: {message.text}")
+    if not message.text:
+        return
+
+    lines = [line.strip() for line in message.text.splitlines() if line.strip()]
+    if not lines:
+        return
+
+    # Сначала обрабатываем удаление по серийным номерам
+    inv = inventory.load_inventory()
+    removed_count = 0
+    not_found_serials = []
+
+    for line in lines:
+        serials = inventory.extract_serials_from_text(line)
+        if serials:
+            for serial in serials:
+                inv, removed = inventory.remove_by_serial(inv, serial)
+                if removed:
+                    removed_count += removed
+                else:
+                    not_found_serials.append(serial)
+        # Если в строке нет серийных номеров, ничего не делаем (удаление по тексту отключено)
+
+    if removed_count:
+        inventory.save_inventory(inv)
+        stats.increment_sales(removed_count)
+        try:
+            await message.react([ReactionTypeEmoji(emoji='🔥')])
+        except Exception as e:
+            logger.exception(f"Не удалось поставить реакцию: {e}")
+        await message.reply(f"✅ Удалено позиций: {removed_count}")
+
+    if not_found_serials:
+        text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
+        await message.reply(text)
+        logger.info(f"❌ Не найдены: {not_found_serials}")
+
+    # Теперь парсим строки с оплатами (независимо от удаления)
+    for line in lines:
+        amount = extract_amount(line)
+        if amount:
+            lower_line = line.lower()
+            if "наличные" in lower_line:
+                finances.add_payment("cash", amount)
+            elif "терминал" in lower_line:
+                finances.add_payment("terminal", amount)
+            elif "qr" in lower_line or "кьюар" in lower_line or "код" in lower_line:
+                finances.add_payment("qr", amount)
+
 
 # -------------------------------------------------------------------
 # Функция для выгрузки ассортимента в топик (по кнопке)
@@ -282,35 +402,3 @@ async def export_assortment_to_topic(bot: Bot, admin_id: int):
         await bot.send_message(admin_id, "✅ Ассортимент успешно выгружен в топик «Ассортимент».")
     finally:
         os.unlink(tmp_path)
-
-# -------------------------------------------------------------------
-# Обработка сообщений из топика «Продажи» (удаление по серийным номерам)
-# -------------------------------------------------------------------
-@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
-async def handle_sales_message(message: Message):
-    logger.info(f"📩 Сообщение в топике Продажи: {message.text}")
-    if not message.text:
-        return
-    candidates = inventory.extract_serials_from_text(message.text)
-    if not candidates:
-        return
-    inv = inventory.load_inventory()
-    found_serials = []
-    not_found_serials = []
-    for cand in candidates:
-        inv, removed = inventory.remove_by_serial(inv, cand)
-        if removed:
-            found_serials.append(cand)
-        else:
-            not_found_serials.append(cand)
-    if found_serials:
-        inventory.save_inventory(inv)
-        stats.increment_sales(len(found_serials))
-        try:
-            await message.react([ReactionTypeEmoji(emoji='🔥')])
-        except Exception as e:
-            logger.exception(f"Не удалось поставить реакцию: {e}")
-    if not_found_serials:
-        text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
-        await message.reply(text)
-        logger.info(f"❌ Не найдены: {not_found_serials}")
