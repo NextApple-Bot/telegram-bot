@@ -42,6 +42,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         text += f"Терминал: {f['terminal']} руб.\n"
         text += f"Наличные: {f['cash']} руб.\n"
         text += f"QR-код: {f['qr']} руб.\n"
+        text += f"Рассрочка: {f['installment']} руб.\n"
         text += f"ИТОГО: {f['total']} руб."
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
@@ -152,6 +153,7 @@ async def process_reset_finances(callback: CallbackQuery):
         text += f"Терминал: {f['terminal']} руб.\n"
         text += f"Наличные: {f['cash']} руб.\n"
         text += f"QR-код: {f['qr']} руб.\n"
+        text += f"Рассрочка: {f['installment']} руб.\n"
         text += f"ИТОГО: {f['total']} руб."
         await callback.message.edit_text(text)
     elif action == "no":
@@ -160,6 +162,7 @@ async def process_reset_finances(callback: CallbackQuery):
         text += f"Терминал: {f['terminal']} руб.\n"
         text += f"Наличные: {f['cash']} руб.\n"
         text += f"QR-код: {f['qr']} руб.\n"
+        text += f"Рассрочка: {f['installment']} руб.\n"
         text += f"ИТОГО: {f['total']} руб."
         await callback.message.edit_text(text)
 
