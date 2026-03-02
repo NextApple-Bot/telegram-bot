@@ -5,6 +5,7 @@ from aiogram.exceptions import TelegramBadRequest
 import config
 import inventory
 import stats
+import finances
 from .base import (
     router, logger, UploadStates, AssortmentConfirmState,
     show_inventory, show_help, cancel_action, start_upload_selection,
@@ -33,6 +34,17 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         text = f"📊 Статистика за {s['date']}:\n• Предзаказов: {s['preorders']}\n• Броней: {s['bookings']}\n• Продаж: {s['sales']}"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
+        ])
+        await callback.message.answer(text, reply_markup=keyboard)
+    elif action == "finances":
+        f = finances.get_finances()
+        text = f"💰 Финансы за {f['date']}:\n"
+        text += f"Терминал: {f['terminal']} руб.\n"
+        text += f"Наличные: {f['cash']} руб.\n"
+        text += f"QR-код: {f['qr']} руб.\n"
+        text += f"ИТОГО: {f['total']} руб."
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
         ])
         await callback.message.answer(text, reply_markup=keyboard)
     elif action == "export_assortment":
@@ -116,6 +128,39 @@ async def process_reset_stats(callback: CallbackQuery):
     elif action == "no":
         s = stats.get_stats()
         text = f"📊 Статистика за {s['date']}:\n• Предзаказов: {s['preorders']}\n• Броней: {s['bookings']}\n• Продаж: {s['sales']}"
+        await callback.message.edit_text(text)
+
+
+@router.callback_query(F.data.startswith("reset_finances:"))
+async def process_reset_finances(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    action = callback.data.split(":")[1]
+    if action == "confirm":
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_finances:yes"),
+             InlineKeyboardButton(text="❌ Нет", callback_data="reset_finances:no")]
+        ])
+        await callback.message.edit_text("Вы уверены, что хотите обнулить финансы?", reply_markup=keyboard)
+    elif action == "yes":
+        finances.reset_finances()
+        f = finances.get_finances()
+        text = f"💰 Финансы за {f['date']}:\n"
+        text += f"Терминал: {f['terminal']} руб.\n"
+        text += f"Наличные: {f['cash']} руб.\n"
+        text += f"QR-код: {f['qr']} руб.\n"
+        text += f"ИТОГО: {f['total']} руб."
+        await callback.message.edit_text(text)
+    elif action == "no":
+        f = finances.get_finances()
+        text = f"💰 Финансы за {f['date']}:\n"
+        text += f"Терминал: {f['terminal']} руб.\n"
+        text += f"Наличные: {f['cash']} руб.\n"
+        text += f"QR-код: {f['qr']} руб.\n"
+        text += f"ИТОГО: {f['total']} руб."
         await callback.message.edit_text(text)
 
 
