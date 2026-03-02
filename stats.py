@@ -24,22 +24,22 @@ def check_and_reset(stats):
         stats["sales"] = 0
     return stats
 
-def increment_preorder():
+def add_preorder(delta=1):
     stats = load_stats()
     stats = check_and_reset(stats)
-    stats["preorders"] += 1
+    stats["preorders"] += delta
     save_stats(stats)
 
-def increment_booking():
+def add_booking(delta=1):
     stats = load_stats()
     stats = check_and_reset(stats)
-    stats["bookings"] += 1
+    stats["bookings"] += delta
     save_stats(stats)
 
-def increment_sales(count=1):
+def add_sales(delta=1):
     stats = load_stats()
     stats = check_and_reset(stats)
-    stats["sales"] += count
+    stats["sales"] += delta
     save_stats(stats)
 
 def get_stats():
