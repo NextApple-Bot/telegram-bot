@@ -291,26 +291,51 @@ async def handle_sales_message(message: Message):
     logger.info(f"📩 Сообщение в топике Продажи: {message.text}")
     if not message.text:
         return
-    candidates = inventory.extract_serials_from_text(message.text)
-    if not candidates:
+
+    lines = [line.strip() for line in message.text.splitlines() if line.strip()]
+    if not lines:
         return
+
     inv = inventory.load_inventory()
-    found_serials = []
-    not_found_serials = []
-    for cand in candidates:
-        inv, removed = inventory.remove_by_serial(inv, cand)
-        if removed:
-            found_serials.append(cand)
+    removed_count = 0
+    not_found = []
+
+    for line in lines:
+        # Проверяем, есть ли серийные номера в строке
+        serials = inventory.extract_serials_from_text(line)
+        if serials:
+            # Если есть серийные номера, удаляем по каждому
+            for serial in serials:
+                inv, removed = inventory.remove_by_serial(inv, serial)
+                if removed:
+                    removed_count += removed
+                else:
+                    not_found.append(f"серийный номер {serial}")
         else:
-            not_found_serials.append(cand)
-    if found_serials:
+            # Нет серийных номеров – пробуем удалить по точному совпадению строки
+            found = False
+            for cat in inv:
+                for i, item in enumerate(cat['items']):
+                    if item == line:
+                        del cat['items'][i]
+                        found = True
+                        removed_count += 1
+                        break
+                if found:
+                    break
+            if not found:
+                not_found.append(f"'{line}'")
+
+    if removed_count:
         inventory.save_inventory(inv)
-        stats.increment_sales(len(found_serials))
+        stats.increment_sales(removed_count)
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
-    if not_found_serials:
-        text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
+        await message.reply(f"✅ Удалено позиций: {removed_count}")
+
+    if not_found:
+        text = "❌ Не удалось найти:\n" + "\n".join(not_found)
         await message.reply(text)
-        logger.info(f"❌ Не найдены: {not_found_serials}")
+        logger.info(f"❌ Не найдены: {not_found}")
