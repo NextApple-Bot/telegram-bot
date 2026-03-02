@@ -23,17 +23,18 @@ from .base import (
 # -------------------------------------------------------------------
 def extract_amount(text):
     """
-    Извлекает число (сумму) из строки. Ищет цифры, возможно с пробелами,
-    после которых могут быть слова 'руб', 'р.' или символ ₽.
+    Извлекает последнее число (сумму) из строки. Ищет все числа, возможно с пробелами,
+    и возвращает последнее (как int). Игнорирует числа, которые являются частью дат и т.п.
     """
-    match = re.search(r'(\d[\d\s]*\d|\d)\s*(?:руб|р\.|₽)?', text)
-    if match:
-        amount_str = match.group(1).replace(' ', '')
-        try:
-            return int(amount_str)
-        except:
-            return None
-    return None
+    matches = re.findall(r'(\d[\d\s]*\d|\d)', text)
+    if not matches:
+        return None
+    # Берём последнее совпадение
+    amount_str = matches[-1].replace(' ', '')
+    try:
+        return int(amount_str)
+    except:
+        return None
 
 def extract_prepaid(line):
     """
@@ -359,14 +360,23 @@ async def handle_preorder(message: Message, bot):
         stats.add_preorder(1)
         await message.react([ReactionTypeEmoji(emoji='👌')])
 
-        # Парсим предоплаты
+        # Парсим предоплаты и рассрочки
         payments = []
         for line in lines:
+            # Сначала ищем предоплату (П/О)
             prepaid = extract_prepaid(line)
             if prepaid:
                 ptype, amount = prepaid
                 finances.add_payment(ptype, amount)
                 payments.append((ptype, amount))
+                continue  # если уже обработали как предоплату, не проверяем как рассрочку
+
+            # Если не предоплата, проверяем на рассрочку
+            if "рассрочк" in line.lower():
+                amount = extract_amount(line)
+                if amount:
+                    finances.add_payment("installment", amount)
+                    payments.append(("installment", amount))
 
         # Сохраняем действие для отмены
         undo.save_action("preorder", {"payments": payments})
