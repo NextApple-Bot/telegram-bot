@@ -56,6 +56,8 @@ def extract_prepaid(line):
         return ("terminal", amount)
     elif "qr" in method or "кьюар" in method or "код" in method:
         return ("qr", amount)
+    elif "рассрочк" in method:
+        return ("installment", amount)
     else:
         return None
 
@@ -477,6 +479,8 @@ async def handle_sales_message(message: Message):
                 ptype = "terminal"
             elif "qr" in lower_line or "кьюар" in lower_line or "код" in lower_line:
                 ptype = "qr"
+            elif "рассрочк" in lower_line:
+                ptype = "installment"
             else:
                 continue
             finances.add_payment(ptype, amount)
