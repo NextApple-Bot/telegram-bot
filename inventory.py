@@ -8,9 +8,6 @@ from config import INVENTORY_FILE, BACKUP_DIR, MAX_BACKUPS
 UNIT_PATTERN = re.compile(r'^\d+\s*(mm|см|дюйм|gb|tb|mb|р|руб|\$|€|%|скидка|бонус)$', re.IGNORECASE)
 TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,12}$')
 
-# Разрешённые символы в серийных номерах: латиница, цифры, дефис, подчёркивание, точка, символ №
-ALLOWED_SERIAL_CHARS = r'A-Za-z0-9\-._№'
-
 def is_likely_serial(token, in_brackets=False):
     """
     Проверяет, похож ли токен на серийный номер.
@@ -40,13 +37,14 @@ def is_likely_serial(token, in_brackets=False):
 
 def extract_serial(line):
     """
-    Извлекает серийный номер из строки, если он находится в круглых скобках.
+    Извлекает первый подходящий серийный номер из строки, перебирая все скобки.
     """
-    match = re.search(r'\(([A-Za-zА-Яа-я0-9\-._№]{2,})\)', line)
-    if match:
-        token = match.group(1)
-        if is_likely_serial(token, in_brackets=True):
-            return token
+    for match in re.finditer(r'\(([^)]+)\)', line):
+        token = match.group(1).strip()
+        # Токен должен состоять только из разрешённых символов (латиница, цифры, дефис, подчёркивание, точка, №)
+        if re.match(r'^[A-Za-z0-9\-._№]+$', token):
+            if is_likely_serial(token, in_brackets=True):
+                return token
     return None
 
 def load_inventory():
@@ -112,11 +110,12 @@ def parse_lines_to_objects(lines):
 
 def extract_serials_from_text(text):
     """
-    Извлекает все серийные номера из текста, которые находятся в круглых скобках.
+    Извлекает все серийные номера из текста, перебирая все скобки.
     """
     serials = set()
-    for match in re.finditer(r'\(([A-Za-zА-Яа-я0-9\-._№]{2,})\)', text):
-        token = match.group(1)
-        if is_likely_serial(token, in_brackets=True):
-            serials.add(token)
+    for match in re.finditer(r'\(([^)]+)\)', text):
+        token = match.group(1).strip()
+        if re.match(r'^[A-Za-z0-9\-._№]+$', token):
+            if is_likely_serial(token, in_brackets=True):
+                serials.add(token)
     return list(serials)
