@@ -9,18 +9,29 @@ UNIT_PATTERN = re.compile(r'^\d+\s*(mm|см|дюйм|gb|tb|mb|р|руб|\$|€|%
 TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,11}$')
 
 def is_likely_serial(token, in_brackets=False):
-    if in_brackets:
-        return True
-    if len(token) < 6:
+    """
+    Проверяет, похож ли токен на серийный номер.
+    Требования:
+    - только латиница, цифры, дефис, подчёркивание, точка
+    - длина от 5 символов
+    - не является номером телефона или единицей измерения
+    """
+    # Разрешённые символы
+    if not re.match(r'^[A-Za-z0-9\-._]+$', token):
+        return False
+    if len(token) < 5:
         return False
     if TELEPHONE_PATTERN.match(token):
         return False
-    if token.isdigit():
-        return True
     if UNIT_PATTERN.match(token):
         return False
-    if re.search(r'\d', token):
+    # Если состоит только из цифр, но длина 5-6 – возможно серийный (оставим)
+    if token.isdigit():
         return True
+    # Если содержит и цифры, и заглавные буквы – скорее всего серийный
+    if re.search(r'\d', token) and re.search(r'[A-Z]', token):
+        return True
+    # Если все заглавные и длинные – тоже
     if token.isupper() and len(token) >= 8:
         return True
     return False
@@ -99,12 +110,19 @@ def parse_lines_to_objects(lines):
     return objects
 
 def extract_serials_from_text(text):
+    """
+    Извлекает из текста все возможные серийные номера.
+    Сначала ищет токены в круглых скобках (длиной >=5),
+    затем в остальном тексте (длиной >=5, но не слишком длинные).
+    """
     serials = set()
-    for match in re.finditer(r'\(([A-Za-zА-Яа-я0-9\-._]{4,})\)', text):
+    # Ищем в скобках
+    for match in re.finditer(r'\(([A-Za-zА-Яа-я0-9\-._]{5,})\)', text):
         token = match.group(1)
         if is_likely_serial(token, in_brackets=True):
             serials.add(token)
-    for match in re.finditer(r'\b([A-Za-zА-Яа-я0-9\-._]{4,})\b', text):
+    # Ищем остальные слова (границы слов, но не слишком длинные, например, до 20 символов)
+    for match in re.finditer(r'\b([A-Za-z0-9\-._]{5,20})\b', text):
         token = match.group(1)
         if token in serials:
             continue
