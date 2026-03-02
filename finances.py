@@ -14,6 +14,7 @@ def load_finances():
             "terminal": 0,
             "cash": 0,
             "qr": 0,
+            "installment": 0,
             "total": 0
         }
 
@@ -28,13 +29,14 @@ def check_and_reset(data):
         data["terminal"] = 0
         data["cash"] = 0
         data["qr"] = 0
+        data["installment"] = 0
         data["total"] = 0
     return data
 
 def add_payment(payment_type, amount):
     data = load_finances()
     data = check_and_reset(data)
-    if payment_type in ("terminal", "cash", "qr"):
+    if payment_type in ("terminal", "cash", "qr", "installment"):
         data[payment_type] += amount
         data["total"] += amount
     save_finances(data)
@@ -50,5 +52,6 @@ def reset_finances():
     data["terminal"] = 0
     data["cash"] = 0
     data["qr"] = 0
+    data["installment"] = 0
     data["total"] = 0
     save_finances(data)
