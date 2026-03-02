@@ -39,16 +39,13 @@ def is_likely_serial(token, in_brackets=False):
     return False
 
 def extract_serial(line):
-    # Ищем в скобках: разрешены латиница, кириллица, цифры, дефис, подчёркивание, точка, №
+    """
+    Извлекает серийный номер из строки, если он находится в круглых скобках.
+    """
     match = re.search(r'\(([A-Za-zА-Яа-я0-9\-._№]{2,})\)', line)
     if match:
         token = match.group(1)
         if is_likely_serial(token, in_brackets=True):
-            return token
-    # Ищем в тексте (границы слов) – только латиница, цифры, дефис, подчёркивание, точка, №
-    tokens = re.findall(r'\b([A-Za-z0-9\-._№]{2,})\b', line)
-    for token in tokens:
-        if is_likely_serial(token, in_brackets=False):
             return token
     return None
 
@@ -114,17 +111,12 @@ def parse_lines_to_objects(lines):
     return objects
 
 def extract_serials_from_text(text):
+    """
+    Извлекает все серийные номера из текста, которые находятся в круглых скобках.
+    """
     serials = set()
-    # Ищем в скобках
     for match in re.finditer(r'\(([A-Za-zА-Яа-я0-9\-._№]{2,})\)', text):
         token = match.group(1)
         if is_likely_serial(token, in_brackets=True):
-            serials.add(token)
-    # Ищем в тексте (границы слов)
-    for match in re.finditer(r'\b([A-Za-z0-9\-._№]{2,20})\b', text):
-        token = match.group(1)
-        if token in serials:
-            continue
-        if is_likely_serial(token, in_brackets=False):
             serials.add(token)
     return list(serials)
