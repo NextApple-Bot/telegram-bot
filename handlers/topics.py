@@ -367,6 +367,9 @@ async def handle_sales_message(message: Message):
 
     # Теперь парсим строки с оплатами (независимо от удаления)
     for line in lines:
+        # Пропускаем строки, содержащие предоплату (П/О)
+        if re.search(r'П[/\\]О', line, re.IGNORECASE):
+            continue
         amount = extract_amount(line)
         if amount:
             lower_line = line.lower()
