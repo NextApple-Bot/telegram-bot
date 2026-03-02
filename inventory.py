@@ -6,17 +6,22 @@ from datetime import datetime
 from config import INVENTORY_FILE, BACKUP_DIR, MAX_BACKUPS
 
 UNIT_PATTERN = re.compile(r'^\d+\s*(mm|см|дюйм|gb|tb|mb|р|руб|\$|€|%|скидка|бонус)$', re.IGNORECASE)
-TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,11}$')
+TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,12}$')
+
+# Разрешённые символы в серийных номерах: латиница, цифры, дефис, подчёркивание, точка, символ №
+ALLOWED_SERIAL_CHARS = r'A-Za-z0-9\-._№'
 
 def is_likely_serial(token, in_brackets=False):
     """
     Проверяет, похож ли токен на серийный номер.
-    Требования:
-    - только латиница, цифры, дефис, подчёркивание, точка
-    - длина от 5 символов
-    - не является номером телефона или единицей измерения
+    Если токен содержит символ '№', считаем его серийным (длина >=2).
+    Иначе применяем стандартные правила.
     """
-    # Разрешённые символы
+    # Если есть символ №, считаем серийным, если длина >=2
+    if '№' in token:
+        return len(token) >= 2
+
+    # Проверка на допустимые символы
     if not re.match(r'^[A-Za-z0-9\-._]+$', token):
         return False
     if len(token) < 5:
@@ -25,24 +30,23 @@ def is_likely_serial(token, in_brackets=False):
         return False
     if UNIT_PATTERN.match(token):
         return False
-    # Если состоит только из цифр, но длина 5-6 – возможно серийный (оставим)
     if token.isdigit():
         return True
-    # Если содержит и цифры, и заглавные буквы – скорее всего серийный
     if re.search(r'\d', token) and re.search(r'[A-Z]', token):
         return True
-    # Если все заглавные и длинные – тоже
     if token.isupper() and len(token) >= 8:
         return True
     return False
 
 def extract_serial(line):
-    match = re.search(r'\(([A-Za-zА-Яа-я0-9\-._]{4,})\)', line)
+    # Ищем в скобках: разрешены латиница, кириллица, цифры, дефис, подчёркивание, точка, №
+    match = re.search(r'\(([A-Za-zА-Яа-я0-9\-._№]{2,})\)', line)
     if match:
         token = match.group(1)
         if is_likely_serial(token, in_brackets=True):
             return token
-    tokens = re.findall(r'\b([A-Za-zА-Яа-я0-9\-._]{4,})\b', line)
+    # Ищем в тексте (границы слов) – только латиница, цифры, дефис, подчёркивание, точка, №
+    tokens = re.findall(r'\b([A-Za-z0-9\-._№]{2,})\b', line)
     for token in tokens:
         if is_likely_serial(token, in_brackets=False):
             return token
@@ -110,19 +114,14 @@ def parse_lines_to_objects(lines):
     return objects
 
 def extract_serials_from_text(text):
-    """
-    Извлекает из текста все возможные серийные номера.
-    Сначала ищет токены в круглых скобках (длиной >=5),
-    затем в остальном тексте (длиной >=5, но не слишком длинные).
-    """
     serials = set()
     # Ищем в скобках
-    for match in re.finditer(r'\(([A-Za-zА-Яа-я0-9\-._]{5,})\)', text):
+    for match in re.finditer(r'\(([A-Za-zА-Яа-я0-9\-._№]{2,})\)', text):
         token = match.group(1)
         if is_likely_serial(token, in_brackets=True):
             serials.add(token)
-    # Ищем остальные слова (границы слов, но не слишком длинные, например, до 20 символов)
-    for match in re.finditer(r'\b([A-Za-z0-9\-._]{5,20})\b', text):
+    # Ищем в тексте (границы слов)
+    for match in re.finditer(r'\b([A-Za-z0-9\-._№]{2,20})\b', text):
         token = match.group(1)
         if token in serials:
             continue
