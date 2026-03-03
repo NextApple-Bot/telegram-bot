@@ -73,9 +73,9 @@ def get_main_menu_keyboard():
         [InlineKeyboardButton(text="📦 Показать ассортимент", callback_data="menu:inventory"),
          InlineKeyboardButton(text="📤 Загрузить ассортимент", callback_data="menu:upload")],
         [InlineKeyboardButton(text="📊 Статистика", callback_data="menu:stats"),
-         InlineKeyboardButton(text="💰 Финансы", callback_data="menu:finances")],
-        [InlineKeyboardButton(text="📤 Выгрузить ассортимент", callback_data="menu:export_assortment"),
-         InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
+         InlineKeyboardButton(text="💰 Финансы", callback_data="menu:finance"),   # новая кнопка
+         InlineKeyboardButton(text="📤 Выгрузить ассортимент", callback_data="menu:export_assortment")],
+        [InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
          InlineKeyboardButton(text="🗑️ Очистить ассортимент", callback_data="menu:clear"),
          InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
     ])
