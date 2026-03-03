@@ -68,7 +68,10 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
             f"ИТОГО: {total:.0f} руб."
         )
-        await callback.message.answer(text)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
+        ])
+        await callback.message.answer(text, reply_markup=keyboard)
     elif action == "clear_finances":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, очистить финансы", callback_data="clear_finances:yes"),
@@ -184,6 +187,58 @@ async def process_reset_stats(callback: CallbackQuery):
             f"• Броней: {s['bookings']}\n"
             f"• Продаж: {s['sales']}\n"
             f"💰 Финансы:\n"
+            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+            f"ИТОГО: {total:.0f} руб."
+        )
+        await callback.message.edit_text(text)
+
+
+@router.callback_query(F.data.startswith("reset_finances:"))
+async def process_reset_finances(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    action = callback.data.split(":")[1]
+    if action == "confirm":
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_finances:yes"),
+             InlineKeyboardButton(text="❌ Нет", callback_data="reset_finances:no")]
+        ])
+        await callback.message.edit_text("Вы уверены, что хотите обнулить финансовые суммы?", reply_markup=keyboard)
+    elif action == "yes":
+        stats.reset_finances()
+        s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
+        text = (
+            f"💰 Финансы за {s['date']} были сброшены.\n"
+            f"Текущие суммы:\n"
+            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+            f"ИТОГО: {total:.0f} руб."
+        )
+        await callback.message.edit_text(text)
+    elif action == "no":
+        s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
+        text = (
+            f"💰 Финансы за {s['date']}:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
