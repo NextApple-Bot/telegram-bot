@@ -18,6 +18,7 @@ def load_stats():
             "preorders_terminal": 0.0,
             "preorders_qr": 0.0,
             "preorders_installment": 0.0,
+            "bookings_total": 0.0,  # общая сумма броней
             "sales_cash": 0.0,
             "sales_terminal": 0.0,
             "sales_qr": 0.0,
@@ -39,6 +40,7 @@ def check_and_reset(stats):
         stats["preorders_terminal"] = 0.0
         stats["preorders_qr"] = 0.0
         stats["preorders_installment"] = 0.0
+        stats["bookings_total"] = 0.0
         stats["sales_cash"] = 0.0
         stats["sales_terminal"] = 0.0
         stats["sales_qr"] = 0.0
@@ -55,10 +57,11 @@ def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
     stats["preorders_installment"] += installment
     save_stats(stats)
 
-def increment_booking():
+def increment_booking(amount=0.0):
     stats = load_stats()
     stats = check_and_reset(stats)
     stats["bookings"] += 1
+    stats["bookings_total"] += amount
     save_stats(stats)
 
 def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
@@ -86,6 +89,7 @@ def reset_stats():
     stats["preorders_terminal"] = 0.0
     stats["preorders_qr"] = 0.0
     stats["preorders_installment"] = 0.0
+    stats["bookings_total"] = 0.0
     stats["sales_cash"] = 0.0
     stats["sales_terminal"] = 0.0
     stats["sales_qr"] = 0.0
@@ -99,6 +103,7 @@ def reset_finances():
     stats["preorders_terminal"] = 0.0
     stats["preorders_qr"] = 0.0
     stats["preorders_installment"] = 0.0
+    stats["bookings_total"] = 0.0
     stats["sales_cash"] = 0.0
     stats["sales_terminal"] = 0.0
     stats["sales_qr"] = 0.0
