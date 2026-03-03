@@ -28,6 +28,7 @@ def extract_amount_from_line(line):
     return 0.0
 
 def extract_preorder_amounts(lines):
+    """Для предзаказа: извлекает суммы по типам оплаты."""
     cash = 0.0
     terminal = 0.0
     qr = 0.0
@@ -47,6 +48,7 @@ def extract_preorder_amounts(lines):
     return cash, terminal, qr, installment
 
 def extract_sales_amounts(lines):
+    """Для продаж: извлекает суммы по типам оплаты, игнорируя строки с П/О."""
     cash = 0.0
     terminal = 0.0
     qr = 0.0
@@ -303,34 +305,46 @@ async def handle_preorder(message: Message, bot):
         await message.react([ReactionTypeEmoji(emoji='👌')])
 
 # -------------------------------------------------------------------
-# Обработчик для топика «Продажи» (удаление по серийным номерам)
+# Обработчик для топика «Продажи» (удаление по серийным номерам + учёт сумм)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
 async def handle_sales_message(message: Message):
     logger.info(f"📩 Сообщение в топике Продажи: {message.text}")
     if not message.text:
         return
+
+    lines = message.text.splitlines()
+    # Извлекаем суммы из сообщения (игнорируя П/О)
+    cash, terminal, qr, installment = extract_sales_amounts(lines)
+
+    # Ищем серийные номера для удаления
     candidates = inventory.extract_serials_from_text(message.text)
-    if not candidates:
-        return
-    inv = inventory.load_inventory()
     found_serials = []
     not_found_serials = []
+    inv = inventory.load_inventory()
     for cand in candidates:
         inv, removed = inventory.remove_by_serial(inv, cand)
         if removed:
             found_serials.append(cand)
         else:
             not_found_serials.append(cand)
+
+    # Если были удалены товары, сохраняем инвентарь
     if found_serials:
         inventory.save_inventory(inv)
-        lines = message.text.splitlines()
-        cash, terminal, qr, installment = extract_sales_amounts(lines)
-        stats.increment_sales(count=len(found_serials), cash=cash, terminal=terminal, qr=qr, installment=installment)
+        # Ставим реакцию 🔥
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
+
+    # Увеличиваем статистику продаж (суммы всегда добавляем, если они есть)
+    if cash or terminal or qr or installment:
+        # count = количество удалённых товаров, если они были, иначе 1 (одна продажа)
+        count = len(found_serials) if found_serials else 1
+        stats.increment_sales(count=count, cash=cash, terminal=terminal, qr=qr, installment=installment)
+
+    # Сообщаем о ненайденных серийных номерах
     if not_found_serials:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
         await message.reply(text)
