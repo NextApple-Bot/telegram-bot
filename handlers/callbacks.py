@@ -30,17 +30,23 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         await start_upload_selection(callback.message, bot, state, user_id)
     elif action == "stats":
         s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
             f"• Броней: {s['bookings']}\n"
             f"• Продаж: {s['sales']}\n"
-            f"💰 Финансы за {s['date']}:\n"
+            f"💰 Финансы:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
             f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {s['sales_terminal'] + s['preorders_terminal'] + s['sales_cash'] + s['preorders_cash'] + s['sales_qr'] + s['preorders_qr'] + s['sales_installment'] + s['preorders_installment']:.0f} руб."
+            f"ИТОГО: {total:.0f} руб."
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
@@ -63,6 +69,12 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             f"ИТОГО: {total:.0f} руб."
         )
         await callback.message.answer(text)
+    elif action == "clear_finances":
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, очистить финансы", callback_data="clear_finances:yes"),
+             InlineKeyboardButton(text="❌ Нет", callback_data="clear_finances:no")]
+        ])
+        await callback.message.edit_text("Вы уверены, что хотите обнулить все финансовые суммы за сегодня?", reply_markup=keyboard)
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
@@ -139,32 +151,90 @@ async def process_reset_stats(callback: CallbackQuery):
     elif action == "yes":
         stats.reset_stats()
         s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
             f"• Броней: {s['bookings']}\n"
             f"• Продаж: {s['sales']}\n"
-            f"💰 Финансы за {s['date']}:\n"
+            f"💰 Финансы:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
             f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {s['sales_terminal'] + s['preorders_terminal'] + s['sales_cash'] + s['preorders_cash'] + s['sales_qr'] + s['preorders_qr'] + s['sales_installment'] + s['preorders_installment']:.0f} руб."
+            f"ИТОГО: {total:.0f} руб."
         )
         await callback.message.edit_text(text)
     elif action == "no":
         s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
             f"• Броней: {s['bookings']}\n"
             f"• Продаж: {s['sales']}\n"
+            f"💰 Финансы:\n"
+            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+            f"ИТОГО: {total:.0f} руб."
+        )
+        await callback.message.edit_text(text)
+
+
+@router.callback_query(F.data.startswith("clear_finances:"))
+async def process_clear_finances(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    action = callback.data.split(":")[1]
+    if action == "yes":
+        stats.reset_finances()
+        s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
+        text = (
+            f"💰 Финансы за {s['date']} были очищены.\n"
+            f"Текущие суммы:\n"
+            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+            f"ИТОГО: {total:.0f} руб."
+        )
+        await callback.message.edit_text(text)
+    else:
+        s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
+        text = (
             f"💰 Финансы за {s['date']}:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
             f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {s['sales_terminal'] + s['preorders_terminal'] + s['sales_cash'] + s['preorders_cash'] + s['sales_qr'] + s['preorders_qr'] + s['sales_installment'] + s['preorders_installment']:.0f} руб."
+            f"ИТОГО: {total:.0f} руб."
         )
         await callback.message.edit_text(text)
 
