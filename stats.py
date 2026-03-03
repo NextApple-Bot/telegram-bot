@@ -30,17 +30,23 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         await start_upload_selection(callback.message, bot, state, user_id)
     elif action == "stats":
         s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
             f"• Броней: {s['bookings']}\n"
             f"• Продаж: {s['sales']}\n"
-            f"💰 Финансы за {s['date']}:\n"
+            f"💰 Финансы:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
             f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {s['sales_terminal'] + s['preorders_terminal'] + s['sales_cash'] + s['preorders_cash'] + s['sales_qr'] + s['preorders_qr'] + s['sales_installment'] + s['preorders_installment']:.0f} руб."
+            f"ИТОГО: {total:.0f} руб."
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
@@ -64,7 +70,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         )
         await callback.message.answer(text)
     elif action == "clear_finances":
-        # Запрашиваем подтверждение
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, очистить финансы", callback_data="clear_finances:yes"),
              InlineKeyboardButton(text="❌ Нет", callback_data="clear_finances:no")]
@@ -106,49 +111,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         await callback.message.answer("Неизвестная команда")
 
 
-# ===== Новый обработчик для очистки финансов =====
-@router.callback_query(F.data.startswith("clear_finances:"))
-async def process_clear_finances(callback: CallbackQuery):
-    try:
-        await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
-    action = callback.data.split(":")[1]
-    if action == "yes":
-        stats.reset_finances()
-        s = stats.get_stats()
-        text = (
-            f"💰 Финансы за {s['date']} были очищены.\n"
-            f"Текущие суммы:\n"
-            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
-            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
-            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
-            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {s['sales_terminal'] + s['preorders_terminal'] + s['sales_cash'] + s['preorders_cash'] + s['sales_qr'] + s['preorders_qr'] + s['sales_installment'] + s['preorders_installment']:.0f} руб."
-        )
-        await callback.message.edit_text(text)
-    else:
-        # Отмена – показываем текущие финансы
-        s = stats.get_stats()
-        total = (
-            s['sales_terminal'] + s['preorders_terminal'] +
-            s['sales_cash'] + s['preorders_cash'] +
-            s['sales_qr'] + s['preorders_qr'] +
-            s['sales_installment'] + s['preorders_installment']
-        )
-        text = (
-            f"💰 Финансы за {s['date']}:\n"
-            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
-            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
-            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
-            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {total:.0f} руб."
-        )
-        await callback.message.edit_text(text)
-
-
-# ===== Остальные обработчики (без изменений) =====
 @router.callback_query(F.data.startswith("confirm_clear:"))
 async def process_confirm_clear(callback: CallbackQuery, bot):
     try:
@@ -189,35 +151,165 @@ async def process_reset_stats(callback: CallbackQuery):
     elif action == "yes":
         stats.reset_stats()
         s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
             f"• Броней: {s['bookings']}\n"
             f"• Продаж: {s['sales']}\n"
-            f"💰 Финансы за {s['date']}:\n"
+            f"💰 Финансы:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
             f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {s['sales_terminal'] + s['preorders_terminal'] + s['sales_cash'] + s['preorders_cash'] + s['sales_qr'] + s['preorders_qr'] + s['sales_installment'] + s['preorders_installment']:.0f} руб."
+            f"ИТОГО: {total:.0f} руб."
         )
         await callback.message.edit_text(text)
     elif action == "no":
         s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
             f"• Броней: {s['bookings']}\n"
             f"• Продаж: {s['sales']}\n"
+            f"💰 Финансы:\n"
+            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+            f"ИТОГО: {total:.0f} руб."
+        )
+        await callback.message.edit_text(text)
+
+
+@router.callback_query(F.data.startswith("clear_finances:"))
+async def process_clear_finances(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    action = callback.data.split(":")[1]
+    if action == "yes":
+        stats.reset_finances()
+        s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
+        text = (
+            f"💰 Финансы за {s['date']} были очищены.\n"
+            f"Текущие суммы:\n"
+            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+            f"ИТОГО: {total:.0f} руб."
+        )
+        await callback.message.edit_text(text)
+    else:
+        s = stats.get_stats()
+        total = (
+            s['sales_terminal'] + s['preorders_terminal'] +
+            s['sales_cash'] + s['preorders_cash'] +
+            s['sales_qr'] + s['preorders_qr'] +
+            s['sales_installment'] + s['preorders_installment']
+        )
+        text = (
             f"💰 Финансы за {s['date']}:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
             f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {s['sales_terminal'] + s['preorders_terminal'] + s['sales_cash'] + s['preorders_cash'] + s['sales_qr'] + s['preorders_qr'] + s['sales_installment'] + s['preorders_installment']:.0f} руб."
+            f"ИТОГО: {total:.0f} руб."
         )
         await callback.message.edit_text(text)
 
 
-# ... остальные callback-обработчики (process_mode_selection, process_done_callback, process_continue) остаются без изменений.
-# Для краткости они здесь не повторяются, но в вашем файле они должны быть.
+@router.callback_query(UploadStates.waiting_for_mode, F.data.startswith("upload_mode:"))
+async def process_mode_selection(callback: CallbackQuery, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    mode = callback.data.split(":")[1]
+
+    await state.update_data(mode=mode, parts=[])
+    await state.set_state(UploadStates.waiting_for_inventory)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Готово", callback_data="done:finish")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+    ])
+    try:
+        await callback.message.edit_text(
+            f"Режим: {'🔁 замена' if mode == 'replace' else '➕ добавление'}\n\n"
+            "Отправляйте текстовые сообщения с позициями (можно несколько, каждое будет добавлено в буфер).\n"
+            "Когда закончите, нажмите кнопку «✅ Готово» или отправьте команду /done.\n"
+            "Также можно загрузить готовый текстовый файл .txt (он обработается сразу).\n"
+            "Для отмены используйте /cancel или кнопку ниже.",
+            reply_markup=keyboard
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass
+        else:
+            raise
+
+
+@router.callback_query(UploadStates.waiting_for_inventory, F.data == "done:finish")
+async def process_done_callback(callback: CallbackQuery, bot, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    data = await state.get_data()
+    parts = data.get("parts", [])
+    mode = data.get("mode")
+    if not parts:
+        await callback.message.answer("❌ Нет накопленных частей. Отправьте текст или загрузите файл.")
+        return
+    full_text = "\n".join(parts)
+    await process_full_text(callback.message, full_text, mode, state, bot)
+
+
+@router.callback_query(UploadStates.waiting_for_continue, F.data.startswith("continue:"))
+async def process_continue(callback: CallbackQuery, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    action = callback.data.split(":")[1]
+
+    if action == "add_more":
+        await state.update_data(parts=[])
+        await state.set_state(UploadStates.waiting_for_inventory)
+        try:
+            await callback.message.edit_text(
+                "Отправляйте новый список позиций (можно несколько сообщений).\n"
+                "Когда закончите, нажмите «✅ Готово» или отправьте /done."
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                raise
+    else:
+        await state.clear()
+        await callback.message.edit_text("✅ Загрузка завершена. Ассортимент обновлён.")
+        await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
