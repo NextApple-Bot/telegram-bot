@@ -18,7 +18,7 @@ def load_stats():
             "preorders_terminal": 0.0,
             "preorders_qr": 0.0,
             "preorders_installment": 0.0,
-            "bookings_total": 0.0,  # общая сумма броней
+            "bookings_total": 0.0,
             "sales_cash": 0.0,
             "sales_terminal": 0.0,
             "sales_qr": 0.0,
