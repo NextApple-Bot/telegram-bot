@@ -119,13 +119,13 @@ def parse_lines_to_objects(lines):
     return objects
 
 def extract_serials_from_text(text):
-    """
-    Извлекает все серийные номера из текста, перебирая все скобки.
-    """
+    """Извлекает все серийные номера из текста сообщения (только в скобках)."""
     serials = set()
-    for match in re.finditer(r'\(([^)]+)\)', text):
-        token = match.group(1).strip()
-        if re.match(r'^[A-Za-z0-9\-._№]+$', token):
-            if is_likely_serial(token, in_brackets=True):
-                serials.add(token)
+    matches = re.finditer(r'\(([A-Za-z0-9\-]{5,})\)', text)
+    for match in matches:
+        candidate = match.group(1)
+        if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
+            serials.add(candidate.upper())
+        elif candidate.isdigit() and len(candidate) >= 10:
+            serials.add(candidate)
     return list(serials)
