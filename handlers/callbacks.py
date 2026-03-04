@@ -12,6 +12,10 @@ from .base import (
 )
 from .topics import export_assortment_to_topic
 
+# Хранилище ID последних сообщений статистики и финансов для каждого чата
+last_stats_message = {}
+last_finance_message = {}
+
 
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
@@ -39,7 +43,24 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
         ])
-        await callback.message.answer(text, reply_markup=keyboard)
+
+        # Пытаемся отредактировать предыдущее сообщение статистики, если оно есть
+        if chat_id in last_stats_message:
+            try:
+                await bot.edit_message_text(
+                    text,
+                    chat_id=chat_id,
+                    message_id=last_stats_message[chat_id],
+                    reply_markup=keyboard
+                )
+            except Exception:
+                # Если не получилось (сообщение удалено или устарело), отправляем новое
+                msg = await callback.message.answer(text, reply_markup=keyboard)
+                last_stats_message[chat_id] = msg.message_id
+        else:
+            msg = await callback.message.answer(text, reply_markup=keyboard)
+            last_stats_message[chat_id] = msg.message_id
+
     elif action == "finance":
         s = stats.get_stats()
         total = (
@@ -60,7 +81,22 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
         ])
-        await callback.message.answer(text, reply_markup=keyboard)
+
+        if chat_id in last_finance_message:
+            try:
+                await bot.edit_message_text(
+                    text,
+                    chat_id=chat_id,
+                    message_id=last_finance_message[chat_id],
+                    reply_markup=keyboard
+                )
+            except Exception:
+                msg = await callback.message.answer(text, reply_markup=keyboard)
+                last_finance_message[chat_id] = msg.message_id
+        else:
+            msg = await callback.message.answer(text, reply_markup=keyboard)
+            last_finance_message[chat_id] = msg.message_id
+
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
     elif action == "clear":
@@ -105,11 +141,18 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     action = callback.data.split(":")[1]
+    chat_id = callback.message.chat.id
 
     try:
         if action == "yes":
             inventory.save_inventory([])
-            await callback.message.edit_text("✅ Ассортимент полностью очищен.")
+            stats.reset_stats()  # Сбрасываем всю статистику и финансы
+            # Удаляем записи о последних сообщениях, чтобы при следующем нажатии создать новые
+            if chat_id in last_stats_message:
+                del last_stats_message[chat_id]
+            if chat_id in last_finance_message:
+                del last_finance_message[chat_id]
+            await callback.message.edit_text("✅ Ассортимент полностью очищен. Статистика и финансы сброшены.")
         else:
             await callback.message.edit_text("❌ Очистка отменена.")
     except TelegramBadRequest as e:
@@ -128,6 +171,7 @@ async def process_reset_stats(callback: CallbackQuery):
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     action = callback.data.split(":")[1]
+    chat_id = callback.message.chat.id
     if action == "confirm":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_stats:yes"),
@@ -144,6 +188,7 @@ async def process_reset_stats(callback: CallbackQuery):
             f"• Продаж: {s['sales']}"
         )
         await callback.message.edit_text(text)
+        last_stats_message[chat_id] = callback.message.message_id
     elif action == "no":
         s = stats.get_stats()
         text = (
@@ -153,6 +198,7 @@ async def process_reset_stats(callback: CallbackQuery):
             f"• Продаж: {s['sales']}"
         )
         await callback.message.edit_text(text)
+        last_stats_message[chat_id] = callback.message.message_id
 
 
 @router.callback_query(F.data.startswith("reset_finances:"))
@@ -163,6 +209,7 @@ async def process_reset_finances(callback: CallbackQuery):
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     action = callback.data.split(":")[1]
+    chat_id = callback.message.chat.id
     if action == "confirm":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_finances:yes"),
@@ -180,8 +227,7 @@ async def process_reset_finances(callback: CallbackQuery):
             s['bookings_total']
         )
         text = (
-            f"💰 Финансы за {s['date']} были сброшены.\n"
-            f"Текущие суммы:\n"
+            f"💰 Финансы за {s['date']}:\n"
             f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
             f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
             f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
@@ -189,6 +235,7 @@ async def process_reset_finances(callback: CallbackQuery):
             f"ИТОГО: {total:.0f} руб."
         )
         await callback.message.edit_text(text)
+        last_finance_message[chat_id] = callback.message.message_id
     elif action == "no":
         s = stats.get_stats()
         total = (
@@ -207,11 +254,10 @@ async def process_reset_finances(callback: CallbackQuery):
             f"ИТОГО: {total:.0f} руб."
         )
         await callback.message.edit_text(text)
+        last_finance_message[chat_id] = callback.message.message_id
 
 
-# -------------------------------------------------------------------
-# Обработчики для старого способа загрузки (накопление)
-# -------------------------------------------------------------------
+# Обработчики для старого способа загрузки (накопление) – без изменений
 @router.callback_query(UploadStates.waiting_for_mode, F.data.startswith("upload_mode:"))
 async def process_mode_selection(callback: CallbackQuery, state):
     try:
