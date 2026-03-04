@@ -20,7 +20,6 @@ from sort_assortment import sort_assortment_to_categories, build_output_text, ad
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Состояния для загрузки ассортимента (старый способ)
 class UploadStates(StatesGroup):
     waiting_for_mode = State()
     waiting_for_inventory = State()
