@@ -37,14 +37,24 @@ def is_likely_serial(token, in_brackets=False):
 
 def extract_serial(line):
     """
-    Извлекает первый подходящий серийный номер из строки, перебирая все скобки.
+    Извлекает серийный номер из строки товара.
+    Ищет содержимое в круглых скобках, которое:
+    - состоит из латинских букв, цифр, дефисов;
+    - длина не менее 5 символов;
+    - содержит хотя бы одну букву и одну цифру, либо является длинным числом (≥10 цифр).
+    Возвращает нормализованный серийный номер (в верхнем регистре) или None.
     """
-    for match in re.finditer(r'\(([^)]+)\)', line):
-        token = match.group(1).strip()
-        # Токен должен состоять только из разрешённых символов (латиница, цифры, дефис, подчёркивание, точка, №)
-        if re.match(r'^[A-Za-z0-9\-._№]+$', token):
-            if is_likely_serial(token, in_brackets=True):
-                return token
+    # Ищем все вхождения в скобках, где внутри только допустимые символы
+    matches = re.finditer(r'\(([A-Za-z0-9\-]{5,})\)', line)
+    for match in matches:
+        candidate = match.group(1)
+        # Проверяем, что есть и буква, и цифра (типичный серийник)
+        if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
+            return candidate.upper()
+        # Если это длинное число (например, IMEI) – тоже считаем серийным
+        if candidate.isdigit() and len(candidate) >= 10:
+            return candidate
+    # Если ничего не подошло
     return None
 
 def load_inventory():
