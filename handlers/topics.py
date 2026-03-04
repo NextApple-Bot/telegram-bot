@@ -18,7 +18,12 @@ from .base import (
 # ====== Вспомогательные функции для извлечения сумм ======
 def extract_amount_from_line(line):
     """Извлекает число из строки, если есть ключевое слово оплаты. Возвращает float или 0."""
-    match = re.search(r'(?:Наличные|Наличными|Терминал|П/О|ПО|QR|QR-код|Рассрочка)\s*[-–—]?\s*([\d\s]+)(?:\.|р|руб)?', line, re.IGNORECASE)
+    match = re.search(
+        r'(?:Наличные|Наличными|Терминал|П/О|ПО|'
+        r'QR[- ]?код|QR\s*код|QRCode|QrCode|QR\s*Code|'
+        r'Рассрочка)\s*[-–—]?\s*([\d\s]+)(?:\.|р|руб)?',
+        line, re.IGNORECASE
+    )
     if match:
         num_str = match.group(1).replace(' ', '')
         try:
@@ -40,7 +45,7 @@ def extract_preorder_amounts(lines):
             cash += amount
         elif re.search(r'Терминал', line, re.IGNORECASE):
             terminal += amount
-        elif re.search(r'QR|QR-код', line, re.IGNORECASE):
+        elif re.search(r'QR|QR-код|QRCode|QrCode', line, re.IGNORECASE):
             qr += amount
         elif re.search(r'Рассрочка', line, re.IGNORECASE):
             installment += amount
@@ -61,7 +66,7 @@ def extract_sales_amounts(lines):
             cash += amount
         elif re.search(r'Терминал', line, re.IGNORECASE):
             terminal += amount
-        elif re.search(r'QR|QR-код', line, re.IGNORECASE):
+        elif re.search(r'QR|QR-код|QRCode|QrCode', line, re.IGNORECASE):
             qr += amount
         elif re.search(r'Рассрочка', line, re.IGNORECASE):
             installment += amount
@@ -255,31 +260,28 @@ async def handle_preorder(message: Message, bot):
     if not lines:
         return
 
-    # Ищем индекс строки с "Бронь:" (регистр не важен)
+    # Ищем индекс строки с "Бронь:"
     booking_index = None
     for i, line in enumerate(lines):
         if re.match(r'^бронь\s*:?$', line.strip().lower()):
             booking_index = i
             break
 
-    # Если есть бронь, разделяем сообщение на две части
     if booking_index is not None:
-        # Часть до "Бронь:" – предзаказ
+        # Разделяем на предзаказ и бронь
         preorder_lines = lines[:booking_index]
-        # Часть после "Бронь:" – бронь
         booking_lines = lines[booking_index+1:]
 
-        # Обрабатываем предзаказ, если есть строки
+        # Обрабатываем предзаказ
         if preorder_lines:
             cash, terminal, qr, installment = extract_preorder_amounts(preorder_lines)
             if cash or terminal or qr or installment:
                 stats.increment_preorder(cash=cash, terminal=terminal, qr=qr, installment=installment)
-                await message.react([ReactionTypeEmoji(emoji='👌')])
             else:
-                # Если сумм нет, просто увеличиваем счётчик предзаказов без суммы
                 stats.increment_preorder()
+            await message.react([ReactionTypeEmoji(emoji='👌')])
 
-        # Обрабатываем бронь, если есть строки
+        # Обрабатываем бронь
         if booking_lines:
             # Ищем строку с серийным номером
             item_line = None
@@ -298,7 +300,7 @@ async def handle_preorder(message: Message, bot):
                 await message.reply("❌ Не удалось извлечь серийный номер.")
                 return
 
-            # Извлекаем суммы только из части брони
+            # Извлекаем суммы из части брони
             cash, terminal, qr, installment = extract_preorder_amounts(booking_lines)
             total_amount = cash + terminal + qr + installment
 
@@ -311,7 +313,6 @@ async def handle_preorder(message: Message, bot):
                         await message.reply("⚠️ Этот товар уже забронирован.")
                         return
 
-            # Удаляем старые записи с этим серийным номером
             categories, removed = inventory.remove_by_serial(categories, serial)
             today = datetime.now().strftime("%d.%m")
             new_item = f"{item_line} (Бронь от {today})"
@@ -341,10 +342,8 @@ async def handle_sales_message(message: Message):
         return
 
     lines = message.text.splitlines()
-    # Извлекаем суммы из сообщения (игнорируя П/О)
     cash, terminal, qr, installment = extract_sales_amounts(lines)
 
-    # Ищем серийные номера для удаления
     candidates = inventory.extract_serials_from_text(message.text)
     found_serials = []
     not_found_serials = []
@@ -356,22 +355,17 @@ async def handle_sales_message(message: Message):
         else:
             not_found_serials.append(cand)
 
-    # Если были удалены товары, сохраняем инвентарь
     if found_serials:
         inventory.save_inventory(inv)
-        # Ставим реакцию 🔥
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
-    # Увеличиваем статистику продаж (суммы всегда добавляем, если они есть)
     if cash or terminal or qr or installment:
-        # count = количество удалённых товаров, если они были, иначе 1 (одна продажа)
         count = len(found_serials) if found_serials else 1
         stats.increment_sales(count=count, cash=cash, terminal=terminal, qr=qr, installment=installment)
 
-    # Сообщаем о ненайденных серийных номерах
     if not_found_serials:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
         await message.reply(text)
