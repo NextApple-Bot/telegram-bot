@@ -17,13 +17,19 @@ from .base import (
 
 # ====== Вспомогательные функции для извлечения сумм ======
 def extract_amount_from_line(line):
-    """Извлекает число из строки, если есть ключевое слово оплаты. Возвращает float или 0."""
-    match = re.search(
-        r'(?:Наличные|Наличными|Терминал|П/О|ПО|'
-        r'QR[- ]?код|QR\s*код|QRCode|QrCode|QR\s*Code|'
-        r'Рассрочка)\s*[-–—]?\s*([\d\s]+)(?:\.|р|руб)?',
-        line, re.IGNORECASE
-    )
+    """Извлекает число из строки, связанное с ключевым словом оплаты. Возвращает float или 0."""
+    # Ключевые слова: наличные, терминал, П/О (с любым слешем), QR и его вариации, рассрочка
+    keywords = r'Наличные|Наличными|Терминал|П[\\/]О|ПО|QR[- ]?код|QR\s*код|QRCode|QrCode|QR\s*Code|Рассрочка'
+    # Сначала ищем ключевое слово перед числом
+    match = re.search(rf'(?:{keywords})\s*[-–—]?\s*([\d\s]+)', line, re.IGNORECASE)
+    if match:
+        num_str = match.group(1).replace(' ', '')
+        try:
+            return float(num_str)
+        except:
+            return 0.0
+    # Затем ищем число перед ключевым словом
+    match = re.search(r'([\d\s]+)\s*[-–—]?\s*(?:{keywords})', line, re.IGNORECASE)
     if match:
         num_str = match.group(1).replace(' ', '')
         try:
