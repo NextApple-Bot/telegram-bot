@@ -15,67 +15,87 @@ from .base import (
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
 )
 
-# ====== Вспомогательные функции для извлечения сумм ======
-def extract_amount_from_line(line):
-    """Извлекает число из строки, связанное с ключевым словом оплаты. Возвращает float или 0."""
-    # Ключевые слова: наличные, терминал, П/О (с любым слешем), QR и его вариации, рассрочка
-    keywords = r'Наличные|Наличными|Терминал|П[\\/]О|ПО|QR[- ]?код|QR\s*код|QRCode|QrCode|QR\s*Code|Рассрочка'
-    # Сначала ищем ключевое слово перед числом
-    match = re.search(rf'(?:{keywords})\s*[-–—]?\s*([\d\s]+)', line, re.IGNORECASE)
-    if match:
-        num_str = match.group(1).replace(' ', '')
-        try:
-            return float(num_str)
-        except:
-            return 0.0
-    # Затем ищем число перед ключевым словом
-    match = re.search(r'([\d\s]+)\s*[-–—]?\s*(?:{keywords})', line, re.IGNORECASE)
-    if match:
-        num_str = match.group(1).replace(' ', '')
-        try:
-            return float(num_str)
-        except:
-            return 0.0
-    return 0.0
+def extract_all_amounts(text):
+    """
+    Извлекает из текста все упоминания сумм с ключевыми словами.
+    Возвращает список кортежей (тип_оплаты, сумма).
+    Типы: 'cash', 'terminal', 'qr', 'installment'.
+    """
+    # Ключевые слова и соответствующие типы
+    patterns = [
+        (r'Наличные|Наличными', 'cash'),
+        (r'Терминал', 'terminal'),
+        (r'П[\\/]О|ПО', 'prepayment'),  # предоплата (не учитываем в финансах? пока оставим, но потом можно игнорировать)
+        (r'QR[- ]?код|QR\s*код|QRCode|QrCode|QR\s*Code', 'qr'),
+        (r'Рассрочка', 'installment'),
+    ]
+    results = []
+    # Ищем все числа с возможными пробелами и точкой/запятой
+    # Число может быть как целым, так и десятичным (с . или ,)
+    number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
+    for kw, typ in patterns:
+        # Ищем ключевое слово, затем необязательный дефис/тире, затем число
+        for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
+            num_str = match.group(1).replace(' ', '').replace(',', '.')
+            try:
+                amount = float(num_str)
+                results.append((typ, amount))
+            except:
+                continue
+        # Ищем число, затем необязательный дефис/тире, затем ключевое слово
+        for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
+            num_str = match.group(1).replace(' ', '').replace(',', '.')
+            try:
+                amount = float(num_str)
+                results.append((typ, amount))
+            except:
+                continue
+    return results
 
 def extract_preorder_amounts(lines):
+    """
+    Для предзаказа: суммирует все найденные суммы по типам.
+    Возвращает (cash, terminal, qr, installment).
+    """
     cash = 0.0
     terminal = 0.0
     qr = 0.0
     installment = 0.0
     for line in lines:
-        amount = extract_amount_from_line(line)
-        if amount == 0:
-            continue
-        if re.search(r'Наличные|Наличными', line, re.IGNORECASE):
-            cash += amount
-        elif re.search(r'Терминал', line, re.IGNORECASE):
-            terminal += amount
-        elif re.search(r'QR|QR-код|QRCode|QrCode', line, re.IGNORECASE):
-            qr += amount
-        elif re.search(r'Рассрочка', line, re.IGNORECASE):
-            installment += amount
+        amounts = extract_all_amounts(line)
+        for typ, val in amounts:
+            if typ == 'cash':
+                cash += val
+            elif typ == 'terminal':
+                terminal += val
+            elif typ == 'qr':
+                qr += val
+            elif typ == 'installment':
+                installment += val
+            # 'prepayment' игнорируем, так как это не окончательная оплата
     return cash, terminal, qr, installment
 
 def extract_sales_amounts(lines):
+    """
+    Для продаж: суммирует суммы по типам, игнорируя предоплату.
+    """
     cash = 0.0
     terminal = 0.0
     qr = 0.0
     installment = 0.0
     for line in lines:
-        if re.search(r'П/О|ПО', line, re.IGNORECASE):
-            continue
-        amount = extract_amount_from_line(line)
-        if amount == 0:
-            continue
-        if re.search(r'Наличные|Наличными', line, re.IGNORECASE):
-            cash += amount
-        elif re.search(r'Терминал', line, re.IGNORECASE):
-            terminal += amount
-        elif re.search(r'QR|QR-код|QRCode|QrCode', line, re.IGNORECASE):
-            qr += amount
-        elif re.search(r'Рассрочка', line, re.IGNORECASE):
-            installment += amount
+        amounts = extract_all_amounts(line)
+        for typ, val in amounts:
+            if typ == 'prepayment':
+                continue
+            if typ == 'cash':
+                cash += val
+            elif typ == 'terminal':
+                terminal += val
+            elif typ == 'qr':
+                qr += val
+            elif typ == 'installment':
+                installment += val
     return cash, terminal, qr, installment
 
 # -------------------------------------------------------------------
@@ -252,9 +272,6 @@ async def handle_arrival(message: Message, bot):
     else:
         await message.reply("⚠️ Отправьте текст или файл .txt.")
 
-# -------------------------------------------------------------------
-# Обработчик для топика «Предзаказ» (брони/предзаказы)
-# -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
 async def handle_preorder(message: Message, bot):
     logger.info(f"📥 Сообщение в топике Предзаказ от {message.from_user.id}")
@@ -266,19 +283,16 @@ async def handle_preorder(message: Message, bot):
     if not lines:
         return
 
-    # Ищем индекс строки с "Бронь:"
-    booking_index = None
+    # Находим все индексы строк, начинающихся с "Бронь:"
+    booking_indices = []
     for i, line in enumerate(lines):
         if re.match(r'^бронь\s*:?$', line.strip().lower()):
-            booking_index = i
-            break
+            booking_indices.append(i)
 
-    if booking_index is not None:
-        # Разделяем на предзаказ и бронь
-        preorder_lines = lines[:booking_index]
-        booking_lines = lines[booking_index+1:]
-
-        # Обрабатываем предзаказ
+    # Если есть брони, обрабатываем их по порядку
+    if booking_indices:
+        # Предзаказ: строки до первого "Бронь:"
+        preorder_lines = lines[:booking_indices[0]]
         if preorder_lines:
             cash, terminal, qr, installment = extract_preorder_amounts(preorder_lines)
             if cash or terminal or qr or installment:
@@ -287,9 +301,17 @@ async def handle_preorder(message: Message, bot):
                 stats.increment_preorder()
             await message.react([ReactionTypeEmoji(emoji='👌')])
 
-        # Обрабатываем бронь
-        if booking_lines:
-            # Ищем строку с серийным номером
+        # Обрабатываем каждую бронь
+        for idx in booking_indices:
+            # Определяем границы блока брони: от текущей строки до следующей брони или до конца
+            start = idx + 1
+            end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
+            booking_lines = lines[start:end]
+            if not booking_lines:
+                await message.reply("❌ Пустой блок брони.")
+                continue
+
+            # Ищем строку с серийным номером в этом блоке
             item_line = None
             for line in booking_lines:
                 line = line.strip()
@@ -299,26 +321,33 @@ async def handle_preorder(message: Message, bot):
 
             if not item_line:
                 await message.reply("❌ Не удалось найти товар с серийным номером для брони.")
-                return
+                continue
 
             serial = inventory.extract_serial(item_line)
             if not serial:
                 await message.reply("❌ Не удалось извлечь серийный номер.")
-                return
+                continue
 
-            # Извлекаем суммы из части брони
+            # Извлекаем суммы из этого блока
             cash, terminal, qr, installment = extract_preorder_amounts(booking_lines)
             total_amount = cash + terminal + qr + installment
 
             categories = inventory.load_inventory()
 
             # Проверка на уже забронированный товар
+            booked = False
             for cat in categories:
                 for item in cat['items']:
                     if inventory.extract_serial(item) == serial and "(Бронь от" in item:
-                        await message.reply("⚠️ Этот товар уже забронирован.")
-                        return
+                        await message.reply(f"⚠️ Товар {serial} уже забронирован.")
+                        booked = True
+                        break
+                if booked:
+                    break
+            if booked:
+                continue
 
+            # Удаляем старые записи с этим серийным номером
             categories, removed = inventory.remove_by_serial(categories, serial)
             today = datetime.now().strftime("%d.%m")
             new_item = f"{item_line} (Бронь от {today})"
