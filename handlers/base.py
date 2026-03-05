@@ -28,6 +28,10 @@ class UploadStates(StatesGroup):
 class AssortmentConfirmState(StatesGroup):
     waiting_for_confirm = State()
 
+# Новое состояние для подтверждения добавления в топике «Прибытие»
+class ArrivalConfirmState(StatesGroup):
+    waiting_for_confirm = State()
+
 # Вспомогательные функции
 async def show_inventory(bot: Bot, chat_id: int):
     categories = inventory.load_inventory()
@@ -158,9 +162,8 @@ async def process_full_text(message: Message, full_text: str, mode: str, state: 
         await message.answer("Хотите добавить ещё позиции?", reply_markup=keyboard)
         await state.set_state(UploadStates.waiting_for_continue)
 
-# Экспортируем всё, что нужно в других модулях
 __all__ = [
-    'router', 'UploadStates', 'AssortmentConfirmState',
+    'router', 'UploadStates', 'AssortmentConfirmState', 'ArrivalConfirmState',
     'show_inventory', 'show_help', 'cancel_action', 'start_upload_selection',
     'get_main_menu_keyboard', 'process_new_objects', 'process_full_text'
 ]
