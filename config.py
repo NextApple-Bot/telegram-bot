@@ -8,9 +8,5 @@ THREAD_ASSORTMENT = int(os.environ.get("THREAD_ASSORTMENT", 0))
 THREAD_ARRIVAL = int(os.environ.get("THREAD_ARRIVAL", 0))
 THREAD_PREORDER = int(os.environ.get("THREAD_PREORDER", 0))
 
-INVENTORY_FILE = "inventory.json"
-BACKUP_DIR = "backups"
-MAX_BACKUPS = 10
-
 if not TOKEN or not ADMIN_ID or not MAIN_GROUP_ID or not THREAD_SALES or not THREAD_ASSORTMENT:
     raise ValueError("Не заданы обязательные переменные окружения")
