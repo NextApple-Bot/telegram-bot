@@ -1,70 +1,63 @@
-import json
-import os
 import re
-import shutil
-from datetime import datetime
-from config import INVENTORY_FILE, BACKUP_DIR, MAX_BACKUPS
+from database import (
+    add_item, remove_item_by_serial, get_items_grouped_by_category,
+    get_or_create_category, get_item_id_by_serial
+)
 
 UNIT_PATTERN = re.compile(r'^\d+\s*(mm|см|дюйм|gb|tb|mb|р|руб|\$|€|%|скидка|бонус)$', re.IGNORECASE)
-TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,12}$')
-
-def is_likely_serial(token, in_brackets=False):
-    """
-    Проверяет, похож ли токен на серийный номер.
-    Если токен содержит символ '№', считаем его серийным (длина >=2).
-    Иначе применяем стандартные правила.
-    """
-    # Если есть символ №, считаем серийным, если длина >=2
-    if '№' in token:
-        return len(token) >= 2
-
-    # Проверка на допустимые символы
-    if not re.match(r'^[A-Za-z0-9\-._]+$', token):
-        return False
-    if len(token) < 5:
-        return False
-    if TELEPHONE_PATTERN.match(token):
-        return False
-    if UNIT_PATTERN.match(token):
-        return False
-    if token.isdigit():
-        return True
-    if re.search(r'\d', token) and re.search(r'[A-Z]', token):
-        return True
-    if token.isupper() and len(token) >= 8:
-        return True
-    return False
+TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,11}$')
 
 def extract_serial(line):
-    """
-    Извлекает серийный номер из строки товара.
-    Ищет содержимое в круглых скобках, которое:
-    - состоит из латинских букв, цифр, дефисов;
-    - длина не менее 5 символов;
-    - содержит хотя бы одну букву и одну цифру, либо является длинным числом (≥10 цифр).
-    Возвращает нормализованный серийный номер (в верхнем регистре) или None.
-    """
-    # Ищем все вхождения в скобках, где внутри только допустимые символы
+    """Извлекает серийный номер из строки товара (как и раньше)."""
     matches = re.finditer(r'\(([A-Za-z0-9\-]{5,})\)', line)
     for match in matches:
         candidate = match.group(1)
-        # Проверяем, что есть и буква, и цифра (типичный серийник)
         if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
             return candidate.upper()
-        # Если это длинное число (например, IMEI) – тоже считаем серийным
         if candidate.isdigit() and len(candidate) >= 10:
             return candidate
-    # Если ничего не подошло
     return None
 
-def load_inventory():
-    if not os.path.exists(INVENTORY_FILE):
-        return []
-    with open(INVENTORY_FILE, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    if isinstance(data, list) and all(isinstance(item, dict) and "text" in item for item in data):
-        items = [item["text"] for item in data]
-        new_data = [{"header": "Общее:", "items": items}]
+def extract_serials_from_text(text):
+    """Извлекает все серийные номера из текста."""
+    serials = set()
+    matches = re.finditer(r'\(([A-Za-z0-9\-]{5,})\)', text)
+    for match in matches:
+        candidate = match.group(1)
+        if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
+            serials.add(candidate.upper())
+        elif candidate.isdigit() and len(candidate) >= 10:
+            serials.add(candidate)
+    return list(serials)
+
+async def load_inventory():
+    """Возвращает список категорий с товарами в формате [{"header": cat, "items": [...]}]."""
+    grouped = await get_items_grouped_by_category()
+    categories = []
+    for cat_name, items in grouped.items():
+        categories.append({"header": cat_name, "items": items})
+    return categories
+
+async def save_inventory(categories):
+    """
+    Полностью заменяет ассортимент новыми категориями (используется при загрузке из файла).
+    """
+    # Очищаем таблицы
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('DELETE FROM items')
+        await db.execute('DELETE FROM categories')
+        await db.commit()
+
+    # Добавляем новые категории и товары
+    for cat in categories:
+        cat_id = await get_or_create_category(cat['header'])
+        for item_text in cat['items']:
+            serial = extract_serial(item_text)
+            await add_item(item_text, serial, cat['header'])
+
+async def remove_by_serial(serial: str) -> int:
+    """Удаляет товар по серийному номеру."""
+    return await remove_item_by_serial(serial)        new_data = [{"header": "Общее:", "items": items}]
         backup_current()
         save_inventory(new_data)
         return new_data
