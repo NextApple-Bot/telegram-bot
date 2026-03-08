@@ -4,7 +4,7 @@ from aiogram.filters import Command
 
 from .base import (
     router, logger, show_inventory, start_upload_selection,
-    cancel_action, get_main_menu_keyboard, process_full_text, UploadStates, show_help
+    cancel_action, get_main_menu_keyboard, show_help, UploadStates, process_full_text
 )
 
 @router.message(Command("start"))
