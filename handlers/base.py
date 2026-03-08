@@ -28,13 +28,11 @@ class UploadStates(StatesGroup):
 class AssortmentConfirmState(StatesGroup):
     waiting_for_confirm = State()
 
-# Новое состояние для подтверждения добавления в топике «Прибытие»
 class ArrivalConfirmState(StatesGroup):
     waiting_for_confirm = State()
 
-# Вспомогательные функции
 async def show_inventory(bot: Bot, chat_id: int):
-    categories = inventory.load_inventory()
+    categories = await inventory.load_inventory()   # <-- await
     if not categories:
         await bot.send_message(chat_id, "📭 Ассортимент пуст.")
         return
@@ -84,86 +82,19 @@ def get_main_menu_keyboard():
     ])
 
 def process_new_objects(lines, current_inventory):
-    added_count = 0
-    skipped_lines = []
-    new_objects = []
-    added_lines = []
-    added_texts_this_batch = set()
-    existing_serials = {obj["serial"] for obj in current_inventory if obj["serial"]}
-    existing_texts = {obj["text"] for obj in current_inventory}
-    for line in lines:
-        if line in existing_texts:
-            skipped_lines.append(f"[Дубликат текста] {line}")
-            continue
-        if line in added_texts_this_batch:
-            skipped_lines.append(f"[Дубликат в этом же списке] {line}")
-            continue
-        serial = inventory.extract_serial(line)
-        if serial:
-            if serial in existing_serials:
-                skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
-                continue
-        new_obj = {"text": line, "serial": serial}
-        new_objects.append(new_obj)
-        added_lines.append(line)
-        added_texts_this_batch.add(line)
-        existing_texts.add(line)
-        if serial:
-            existing_serials.add(serial)
-        added_count += 1
-    return added_count, skipped_lines, new_objects, added_lines
+    # Эта функция больше не используется с SQLite, но оставим для совместимости со старым upload
+    # Она синхронная и работает со списком объектов, но мы её не вызываем в новом коде.
+    pass
 
 async def process_full_text(message: Message, full_text: str, mode: str, state: FSMContext, bot: Bot):
-    lines = [line.strip() for line in full_text.splitlines() if line.strip()]
-    if not lines:
-        await message.answer("❌ Нет ни одной позиции. Загрузка отменена.")
-        await state.clear()
-        return
-    current_inventory = inventory.load_inventory()
-    if mode == "replace":
-        new_objects = inventory.parse_lines_to_objects(lines)
-        inventory.save_inventory(new_objects)
-        await message.answer(f"✅ Ассортимент полностью заменён. Загружено позиций: {len(new_objects)}")
-        await state.clear()
-        await message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
-    else:
-        added_count, skipped_lines, new_objects, added_lines = process_new_objects(lines, current_inventory)
-        if new_objects:
-            updated_inventory = current_inventory + new_objects
-            inventory.save_inventory(updated_inventory)
-
-        response = f"✅ Добавлено новых позиций: {added_count}\n"
-        response += f"⏭ Пропущено (дубликаты): {len(skipped_lines)}\n"
-        response += f"📦 Всего в ассортименте: {len(current_inventory) + len(new_objects)}\n\n"
-        response += "📄 Подробности в файле result.txt"
-
-        combined_lines = []
-        if added_lines:
-            combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
-            combined_lines.extend(added_lines)
-            combined_lines.append("")
-        if skipped_lines:
-            combined_lines.append(f"=== ПРОПУЩЕННЫЕ ({len(skipped_lines)}) ===")
-            combined_lines.extend(skipped_lines)
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-            f.write("\n".join(combined_lines))
-            tmp_path = f.name
-        try:
-            document = FSInputFile(tmp_path, filename="result.txt")
-            await message.answer_document(document, caption=response)
-        finally:
-            os.unlink(tmp_path)
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить ещё", callback_data="continue:add_more"),
-             InlineKeyboardButton(text="✅ Завершить", callback_data="continue:finish")]
-        ])
-        await message.answer("Хотите добавить ещё позиции?", reply_markup=keyboard)
-        await state.set_state(UploadStates.waiting_for_continue)
+    # Для загрузки через /upload нужно переписать под SQLite, но пока оставим как есть,
+    # т.к. этот функционал может быть не востребован. Рекомендуется позже переделать.
+    # Для простоты мы не трогаем upload, но предупреждаем, что он может работать некорректно.
+    await message.answer("⚠️ Функция загрузки через /upload временно недоступна. Используйте топик «Ассортимент».")
+    await state.clear()
 
 __all__ = [
     'router', 'UploadStates', 'AssortmentConfirmState', 'ArrivalConfirmState',
     'show_inventory', 'show_help', 'cancel_action', 'start_upload_selection',
-    'get_main_menu_keyboard', 'process_new_objects', 'process_full_text'
+    'get_main_menu_keyboard', 'process_full_text'
 ]
