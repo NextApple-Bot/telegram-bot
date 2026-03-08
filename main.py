@@ -15,7 +15,8 @@ from aiogram.types import Update
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import config
-from handlers import router  # импортируем роутер из пакета handlers
+from handlers import router
+from database import init_db  # <-- добавили импорт
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ async def setup_webhook(retries=3):
                 url=webhook_url,
                 allowed_updates=dp.resolve_used_update_types(),
                 drop_pending_updates=True,
-                max_connections=100  # увеличиваем для снижения задержек
+                max_connections=100
             )
             logger.info(f"📦 Результат set_webhook: {result}")
             if result:
@@ -65,6 +66,67 @@ async def setup_webhook(retries=3):
             else:
                 logger.warning(f"⚠️ Попытка {attempt}: set_webhook вернул False")
         except Exception as e:
+            logger.exception(f"❌ Ошибка при установке вебхука (попытка {attempt}): {e}")
+        if attempt < retries:
+            wait = 2 ** attempt
+            logger.info(f"⏳ Повтор через {wait} секунд...")
+            await asyncio.sleep(wait)
+    logger.error("❌ Не удалось установить вебхук после нескольких попыток.")
+    return False
+
+async def on_startup():
+    await init_db()          # <-- инициализация БД при старте
+    await setup_webhook()
+
+async def on_shutdown():
+    logger.info("🗑️ Удаляем вебхук...")
+    try:
+        await bot.delete_webhook()
+        logger.info("✅ Вебхук удалён")
+    except Exception as e:
+        logger.exception(f"❌ Ошибка при удалении вебхука: {e}")
+    await dp.storage.close()
+    await bot.session.close()
+
+async def webhook(request: Request) -> Response:
+    try:
+        update_data = await request.json()
+        logger.info(f"📨 Получено обновление от Telegram: update_id={update_data.get('update_id')}")
+        update = Update(**update_data)
+        await dp.feed_update(bot, update)
+        return Response(status_code=200)
+    except Exception as e:
+        logger.exception(f"❌ Ошибка при обработке вебхука: {e}")
+        return Response(status_code=500)
+
+async def health(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("OK")
+
+app = Starlette(
+    routes=[
+        Route("/webhook", webhook, methods=["POST"]),
+        Route("/health", health, methods=["GET"]),
+        Route("/", health, methods=["GET"]),
+    ],
+    on_startup=[on_startup],
+    on_shutdown=[on_shutdown],
+)
+
+app.add_middleware(LoggingMiddleware)
+
+def handle_signal(sig, frame):
+    logger.info(f"⏹️ Получен сигнал {sig}, завершаем работу...")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+    try:
+        logger.info(f"🚀 Запуск сервера на порту {PORT}")
+        uvicorn.run(app, host="0.0.0.0", port=PORT)
+    except Exception as e:
+        logger.exception(f"💥 Критическая ошибка при запуске: {e}")
+        sys.exit(1)        except Exception as e:
             logger.exception(f"❌ Ошибка при установке вебхука (попытка {attempt}): {e}")
         if attempt < retries:
             wait = 2 ** attempt
