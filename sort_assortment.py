@@ -107,6 +107,12 @@ def parse_categories(lines):
     return categories
 
 def sort_items_in_category(items, header):
+    """
+    Сортирует товары внутри категории по правилам:
+    - Для iPhone: группировка по памяти, затем по типу SIM, внутри сортировка по алфавиту
+    - Для Apple Watch: группировка по размеру, внутри сортировка по алфавиту
+    - Для остальных: просто алфавитная сортировка
+    """
     header_lower = header.lower()
     output = []
 
@@ -128,6 +134,7 @@ def sort_items_in_category(items, header):
                 groups[key] = {'eSIM': [], 'SIM+eSIM': [], 'other': []}
             groups[key][sim].append(item)
 
+        # Сортируем по объёму памяти (сначала меньший)
         sorted_keys = sorted(groups.keys(), key=lambda k: (k[0] is None, k[0] if k[0] is not None else float('inf')))
         for vol_gb, vol_str in sorted_keys:
             if vol_str is not None:
@@ -148,6 +155,7 @@ def sort_items_in_category(items, header):
         for item in items:
             size = extract_watch_size(item)
             size_groups.setdefault(size, []).append(item)
+        # Сортируем по размеру (сначала меньший)
         sorted_sizes = sorted(size_groups.keys(), key=lambda s: (s is None, s if s is not None else float('inf')))
         for size in sorted_sizes:
             if size is not None:
@@ -158,13 +166,15 @@ def sort_items_in_category(items, header):
         return output
 
     else:
+        # Для всех остальных категорий - простая алфавитная сортировка
         return sorted(items)
 
-def sort_assortment_to_categories(input_text):
-    lines = input_text.splitlines()
-    return parse_categories(lines)
-
 def build_output_text(categories):
+    """
+    Формирует текст для вывода.
+    - Категории выводятся в том порядке, в котором они были загружены
+    - Товары внутри категорий сортируются по правилам (sort_items_in_category)
+    """
     output_lines = []
     for cat in categories:
         header = cat['header']
@@ -177,6 +187,7 @@ def build_output_text(categories):
         output_lines.append('-' * dash_len)
         output_lines.append('-')
 
+        # СОРТИРУЕМ товары внутри категории
         sorted_output = sort_items_in_category(cat['items'], header)
         if isinstance(sorted_output, list):
             output_lines.extend(sorted_output)
@@ -187,6 +198,7 @@ def build_output_text(categories):
     return '\n'.join(output_lines)
 
 def find_category_for_item(item, categories):
+    """Находит подходящую категорию для товара."""
     normalized_item = normalize_name(item)
     normalized_item = normalize_model(normalized_item).lower()
     base = extract_base_name(item).lower()
@@ -208,6 +220,10 @@ def find_category_for_item(item, categories):
     return None
 
 def add_item_to_categories(item, categories):
+    """
+    Добавляет товар в существующие категории или создаёт новую.
+    Используется при обработке прибытия.
+    """
     # Специальная обработка для Б/У
     if item.strip().startswith("Б/У -") or item.strip().startswith("Б/У "):
         for idx, cat in enumerate(categories):
