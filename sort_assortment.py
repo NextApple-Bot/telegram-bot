@@ -106,6 +106,11 @@ def parse_categories(lines):
         categories.append({"header": current_header, "items": current_items})
     return categories
 
+def sort_assortment_to_categories(input_text):
+    """Парсит текст и возвращает категории с товарами (без сортировки внутри)."""
+    lines = input_text.splitlines()
+    return parse_categories(lines)
+
 def sort_items_in_category(items, header):
     """
     Сортирует товары внутри категории по правилам:
