@@ -1,5 +1,4 @@
 import aiosqlite
-import os
 from datetime import datetime
 
 DB_PATH = "inventory.db"
@@ -148,7 +147,7 @@ async def add_booking(item_id: int, total_amount: float):
         await db.commit()
 
 async def get_today_stats():
-    """Возвращает статистику за сегодня (аналог stats.json)."""
+    """Возвращает статистику за сегодня."""
     today = datetime.now().strftime('%Y-%m-%d')
     async with aiosqlite.connect(DB_PATH) as db:
         # Предзаказы
