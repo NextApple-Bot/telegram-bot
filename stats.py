@@ -1,111 +1,29 @@
-import json
-import os
-from datetime import datetime
+from database import get_today_stats, add_preorder, add_booking, add_sale, get_item_id_by_serial
 
-STATS_FILE = "stats.json"
+async def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
+    await add_preorder(cash, terminal, qr, installment)
 
-def load_stats():
-    if os.path.exists(STATS_FILE):
-        with open(STATS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    else:
-        return {
-            "date": None,
-            "preorders": 0,
-            "bookings": 0,
-            "sales": 0,
-            "preorders_cash": 0.0,
-            "preorders_terminal": 0.0,
-            "preorders_qr": 0.0,
-            "preorders_installment": 0.0,
-            "bookings_total": 0.0,
-            "sales_cash": 0.0,
-            "sales_terminal": 0.0,
-            "sales_qr": 0.0,
-            "sales_installment": 0.0,
-        }
+async def increment_booking(serial: str, amount: float):
+    """Добавляет бронь для товара с указанным серийным номером."""
+    item_id = await get_item_id_by_serial(serial)
+    if item_id:
+        await add_booking(item_id, amount)
 
-def save_stats(stats):
-    with open(STATS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(stats, f, ensure_ascii=False, indent=2)
+async def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
+    await add_sale(None, count, cash, terminal, qr, installment)
 
-def check_and_reset(stats):
-    today = datetime.now().strftime("%Y-%m-%d")
-    if stats["date"] != today:
-        stats["date"] = today
-        stats["preorders"] = 0
-        stats["bookings"] = 0
-        stats["sales"] = 0
-        stats["preorders_cash"] = 0.0
-        stats["preorders_terminal"] = 0.0
-        stats["preorders_qr"] = 0.0
-        stats["preorders_installment"] = 0.0
-        stats["bookings_total"] = 0.0
-        stats["sales_cash"] = 0.0
-        stats["sales_terminal"] = 0.0
-        stats["sales_qr"] = 0.0
-        stats["sales_installment"] = 0.0
-    return stats
+async def get_stats():
+    return await get_today_stats()
 
-def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
-    stats = load_stats()
-    stats = check_and_reset(stats)
-    stats["preorders"] += 1
-    stats["preorders_cash"] += cash
-    stats["preorders_terminal"] += terminal
-    stats["preorders_qr"] += qr
-    stats["preorders_installment"] += installment
-    save_stats(stats)
+async def reset_stats():
+    """Сброс статистики за сегодня (удаление записей)."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('DELETE FROM preorders WHERE DATE(created_at) = ?', (today,))
+        await db.execute('DELETE FROM bookings WHERE DATE(booked_at) = ?', (today,))
+        await db.execute('DELETE FROM sales WHERE DATE(sold_at) = ?', (today,))
+        await db.commit()
 
-def increment_booking(amount=0.0):
-    stats = load_stats()
-    stats = check_and_reset(stats)
-    stats["bookings"] += 1
-    stats["bookings_total"] += amount
-    save_stats(stats)
-
-def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
-    stats = load_stats()
-    stats = check_and_reset(stats)
-    stats["sales"] += count
-    stats["sales_cash"] += cash
-    stats["sales_terminal"] += terminal
-    stats["sales_qr"] += qr
-    stats["sales_installment"] += installment
-    save_stats(stats)
-
-def get_stats():
-    stats = load_stats()
-    stats = check_and_reset(stats)
-    return stats
-
-def reset_stats():
-    stats = load_stats()
-    stats = check_and_reset(stats)
-    stats["preorders"] = 0
-    stats["bookings"] = 0
-    stats["sales"] = 0
-    stats["preorders_cash"] = 0.0
-    stats["preorders_terminal"] = 0.0
-    stats["preorders_qr"] = 0.0
-    stats["preorders_installment"] = 0.0
-    stats["bookings_total"] = 0.0
-    stats["sales_cash"] = 0.0
-    stats["sales_terminal"] = 0.0
-    stats["sales_qr"] = 0.0
-    stats["sales_installment"] = 0.0
-    save_stats(stats)
-
-def reset_finances():
-    stats = load_stats()
-    stats = check_and_reset(stats)
-    stats["preorders_cash"] = 0.0
-    stats["preorders_terminal"] = 0.0
-    stats["preorders_qr"] = 0.0
-    stats["preorders_installment"] = 0.0
-    stats["bookings_total"] = 0.0
-    stats["sales_cash"] = 0.0
-    stats["sales_terminal"] = 0.0
-    stats["sales_qr"] = 0.0
-    stats["sales_installment"] = 0.0
-    save_stats(stats)
+async def reset_finances():
+    """Обнуление только финансовых сумм (здесь просто сброс всей статистики)."""
+    await reset_stats()
