@@ -96,22 +96,29 @@ async def remove_item_by_serial(serial: str) -> int:
         return cursor.rowcount
 
 async def get_all_items_with_categories():
-    """Возвращает список товаров с названиями категорий."""
+    """
+    Возвращает список товаров с названиями категорий.
+    Важно: сортировка по items.id сохраняет порядок добавления товаров.
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute('''
             SELECT items.*, categories.name as category_name
             FROM items
             JOIN categories ON items.category_id = categories.id
-            ORDER BY categories.name, items.text
+            ORDER BY items.id
         ''')
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
 async def get_items_grouped_by_category():
-    """Возвращает словарь {category_name: [items_text]} для вывода."""
+    """
+    Возвращает словарь {category_name: [items_text]}.
+    Категории сохраняют порядок первого появления (по самому раннему товару в категории).
+    """
     items = await get_all_items_with_categories()
     grouped = {}
+    # Используем OrderedDict или просто словарь, но порядок сохранится в Python 3.7+
     for item in items:
         cat = item['category_name']
         if cat not in grouped:
