@@ -2,6 +2,7 @@ import re
 import tempfile
 import os
 import aiofiles
+import aiosqlite
 from datetime import datetime
 from aiogram import F, Bot
 from aiogram.types import Message, ReactionTypeEmoji, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
