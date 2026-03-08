@@ -15,7 +15,7 @@ from aiogram.exceptions import TelegramBadRequest
 import config
 import inventory
 import stats
-from sort_assortment import sort_assortment_to_categories, build_output_text, add_item_to_categories
+from sort_assortment import sort_assortment_to_categories, build_output_text
 
 logger = logging.getLogger(__name__)
 router = Router()
