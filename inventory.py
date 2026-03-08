@@ -1,12 +1,9 @@
 import re
-import aiosqlite  # <--- ЭТО ВАЖНО! Добавьте этот импорт
+import aiosqlite
 from database import (
     add_item, remove_item_by_serial, get_items_grouped_by_category,
-    get_or_create_category, get_item_id_by_serial, DB_PATH
+    get_or_create_category, DB_PATH
 )
-
-UNIT_PATTERN = re.compile(r'^\d+\s*(mm|см|дюйм|gb|tb|mb|р|руб|\$|€|%|скидка|бонус)$', re.IGNORECASE)
-TELEPHONE_PATTERN = re.compile(r'^\+?\d{10,11}$')
 
 def extract_serial(line):
     """Извлекает серийный номер из строки товара."""
