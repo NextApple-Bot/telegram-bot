@@ -33,7 +33,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     elif action == "upload":
         await start_upload_selection(callback.message, bot, state, user_id)
     elif action == "stats":
-        s = stats.get_stats()
+        s = await stats.get_stats()   # <-- await
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
@@ -44,7 +44,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
         ])
 
-        # Пытаемся отредактировать предыдущее сообщение статистики, если оно есть
         if chat_id in last_stats_message:
             try:
                 await bot.edit_message_text(
@@ -54,7 +53,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                     reply_markup=keyboard
                 )
             except Exception:
-                # Если не получилось (сообщение удалено или устарело), отправляем новое
                 msg = await callback.message.answer(text, reply_markup=keyboard)
                 last_stats_message[chat_id] = msg.message_id
         else:
@@ -62,7 +60,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             last_stats_message[chat_id] = msg.message_id
 
     elif action == "finance":
-        s = stats.get_stats()
+        s = await stats.get_stats()   # <-- await
         total = (
             s['sales_terminal'] + s['preorders_terminal'] +
             s['sales_cash'] + s['preorders_cash'] +
@@ -145,9 +143,9 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
 
     try:
         if action == "yes":
-            inventory.save_inventory([])
-            stats.reset_stats()  # Сбрасываем всю статистику и финансы
-            # Удаляем записи о последних сообщениях, чтобы при следующем нажатии создать новые
+            # Очистка ассортимента
+            await inventory.save_inventory([])   # <-- await
+            await stats.reset_stats()            # <-- await
             if chat_id in last_stats_message:
                 del last_stats_message[chat_id]
             if chat_id in last_finance_message:
@@ -179,8 +177,8 @@ async def process_reset_stats(callback: CallbackQuery):
         ])
         await callback.message.edit_text("Вы уверены, что хотите обнулить статистику?", reply_markup=keyboard)
     elif action == "yes":
-        stats.reset_stats()
-        s = stats.get_stats()
+        await stats.reset_stats()   # <-- await
+        s = await stats.get_stats() # <-- await
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
@@ -190,7 +188,7 @@ async def process_reset_stats(callback: CallbackQuery):
         await callback.message.edit_text(text)
         last_stats_message[chat_id] = callback.message.message_id
     elif action == "no":
-        s = stats.get_stats()
+        s = await stats.get_stats() # <-- await
         text = (
             f"📊 Статистика за {s['date']}:\n"
             f"• Предзаказов: {s['preorders']}\n"
@@ -217,8 +215,8 @@ async def process_reset_finances(callback: CallbackQuery):
         ])
         await callback.message.edit_text("Вы уверены, что хотите обнулить финансовые суммы?", reply_markup=keyboard)
     elif action == "yes":
-        stats.reset_finances()
-        s = stats.get_stats()
+        await stats.reset_finances()   # <-- await
+        s = await stats.get_stats()    # <-- await
         total = (
             s['sales_terminal'] + s['preorders_terminal'] +
             s['sales_cash'] + s['preorders_cash'] +
@@ -237,7 +235,7 @@ async def process_reset_finances(callback: CallbackQuery):
         await callback.message.edit_text(text)
         last_finance_message[chat_id] = callback.message.message_id
     elif action == "no":
-        s = stats.get_stats()
+        s = await stats.get_stats()   # <-- await
         total = (
             s['sales_terminal'] + s['preorders_terminal'] +
             s['sales_cash'] + s['preorders_cash'] +
@@ -257,7 +255,9 @@ async def process_reset_finances(callback: CallbackQuery):
         last_finance_message[chat_id] = callback.message.message_id
 
 
+# -------------------------------------------------------------------
 # Обработчики для старого способа загрузки (накопление) – без изменений
+# -------------------------------------------------------------------
 @router.callback_query(UploadStates.waiting_for_mode, F.data.startswith("upload_mode:"))
 async def process_mode_selection(callback: CallbackQuery, state):
     try:
