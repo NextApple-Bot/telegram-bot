@@ -1,7 +1,7 @@
 import re
+import logging
 from utils import extract_all_amounts
 from inventory import extract_serials_from_text
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -33,24 +33,18 @@ def parse_client_data(text: str) -> dict:
             continue
 
         # --- Извлечение телефонов (исправленное регулярное выражение) ---
-        # Ищем номера в форматах: +7XXXXXXXXXX, 8XXXXXXXXXX, 7XXXXXXXXXX, с возможными разделителями
+        # Паттерн для поиска номеров: +7XXXXXXXXXX, 8XXXXXXXXXX, 7XXXXXXXXXX, с возможными разделителями
         phone_pattern = r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
-        phone_matches = re.findall(phone_pattern, line)
-        for raw_phone in phone_matches:
-            # raw_phone содержит только первую группу (код), а нужен весь номер
-            # Поэтому используем другой подход: ищем все совпадения по полному шаблону
-            full_matches = re.findall(phone_pattern, line)
-            # Но findall с такой группой вернёт только группы. Лучше использовать finditer.
-            for match in re.finditer(phone_pattern, line):
-                full_number = match.group(0)  # весь совпавший текст
-                clean_phone = re.sub(r'[\s\-\(\)]', '', full_number)
-                if clean_phone.startswith('8'):
-                    clean_phone = '+7' + clean_phone[1:]
-                elif clean_phone.startswith('7') and not clean_phone.startswith('+7'):
-                    clean_phone = '+7' + clean_phone[1:]
-                if clean_phone not in result['phones']:
-                    result['phones'].append(clean_phone)
-                    logger.info(f"📞 Найден телефон: {clean_phone}")
+        for match in re.finditer(phone_pattern, line):
+            full_number = match.group(0)  # весь совпавший текст
+            clean_phone = re.sub(r'[\s\-\(\)]', '', full_number)
+            if clean_phone.startswith('8'):
+                clean_phone = '+7' + clean_phone[1:]
+            elif clean_phone.startswith('7') and not clean_phone.startswith('+7'):
+                clean_phone = '+7' + clean_phone[1:]
+            if clean_phone not in result['phones']:
+                result['phones'].append(clean_phone)
+                logger.info(f"📞 Найден телефон: {clean_phone}")
 
         # --- Извлечение ФИО ---
         if not result['full_name']:
@@ -63,6 +57,7 @@ def parse_client_data(text: str) -> dict:
                     if match:
                         result['full_name'] = match.group(1).strip()
             else:
+                # Проверка на имя из 2-4 слов, только русские буквы
                 words = line.split()
                 if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
                     result['full_name'] = line
