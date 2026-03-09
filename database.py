@@ -322,6 +322,181 @@ async def search_clients(query: str):
             ORDER BY updated_at DESC
         ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
         rows = await cursor.fetchall()
+        return [dict(row) for row in rows]    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'INSERT INTO sales (item_id, count, cash, terminal, qr, installment) VALUES (?, ?, ?, ?, ?, ?)',
+            (item_id, count, cash, terminal, qr, installment)
+        )
+        await db.commit()
+
+async def add_preorder(cash=0, terminal=0, qr=0, installment=0):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'INSERT INTO preorders (cash, terminal, qr, installment) VALUES (?, ?, ?, ?)',
+            (cash, terminal, qr, installment)
+        )
+        await db.commit()
+
+async def add_booking(item_id: int, total_amount: float):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            'INSERT INTO bookings (item_id, total_amount) VALUES (?, ?)',
+            (item_id, total_amount)
+        )
+        await db.commit()
+
+async def get_today_stats():
+    today = datetime.now().strftime('%Y-%m-%d')
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Предзаказы
+        cursor = await db.execute(
+            'SELECT COUNT(*), SUM(cash), SUM(terminal), SUM(qr), SUM(installment) FROM preorders WHERE DATE(created_at) = ?',
+            (today,)
+        )
+        pre_count, pc, pt, pq, pi = await cursor.fetchone()
+        pre_count = pre_count or 0
+        pc = pc or 0
+        pt = pt or 0
+        pq = pq or 0
+        pi = pi or 0
+
+        # Брони
+        cursor = await db.execute(
+            'SELECT COUNT(*), SUM(total_amount) FROM bookings WHERE DATE(booked_at) = ?',
+            (today,)
+        )
+        book_count, book_total = await cursor.fetchone()
+        book_count = book_count or 0
+        book_total = book_total or 0
+
+        # Продажи
+        cursor = await db.execute(
+            'SELECT COUNT(*), SUM(cash), SUM(terminal), SUM(qr), SUM(installment) FROM sales WHERE DATE(sold_at) = ?',
+            (today,)
+        )
+        sale_count, sc, st, sq, si = await cursor.fetchone()
+        sale_count = sale_count or 0
+        sc = sc or 0
+        st = st or 0
+        sq = sq or 0
+        si = si or 0
+
+        return {
+            'date': today,
+            'preorders': pre_count,
+            'bookings': book_count,
+            'sales': sale_count,
+            'preorders_cash': pc,
+            'preorders_terminal': pt,
+            'preorders_qr': pq,
+            'preorders_installment': pi,
+            'bookings_total': book_total,
+            'sales_cash': sc,
+            'sales_terminal': st,
+            'sales_qr': sq,
+            'sales_installment': si,
+        }
+
+# ---------- НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С КЛИЕНТАМИ ----------
+
+async def get_or_create_client(phone: str = None, phones: list = None, full_name: str = None,
+                               telegram_username: str = None, social_network: str = None,
+                               referral_source: str = None) -> int:
+    """
+    Возвращает ID клиента.
+    phones: список всех найденных телефонов.
+    phone: основной телефон (если есть) — первый из списка.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Если есть основной телефон, ищем по нему
+        if phone:
+            cursor = await db.execute('SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = ?', (phone,))
+            row = await cursor.fetchone()
+            if row:
+                client_id = row[0]
+                # Обновляем поля
+                updates = []
+                params = []
+                if full_name and full_name != row[1]:
+                    updates.append("full_name = ?")
+                    params.append(full_name)
+                if telegram_username and telegram_username != row[2]:
+                    updates.append("telegram_username = ?")
+                    params.append(telegram_username)
+                if social_network and social_network != row[3]:
+                    updates.append("social_network = ?")
+                    params.append(social_network)
+                if referral_source and referral_source != row[4]:
+                    updates.append("referral_source = ?")
+                    params.append(referral_source)
+                # Если есть новые телефоны и они отличаются от старых
+                if phones:
+                    existing_phones = row[5] if row[5] else ""
+                    new_phones_str = ",".join(phones)
+                    if new_phones_str != existing_phones:
+                        updates.append("phones = ?")
+                        params.append(new_phones_str)
+                if updates:
+                    updates.append("updated_at = CURRENT_TIMESTAMP")
+                    query = f"UPDATE clients SET {', '.join(updates)} WHERE id = ?"
+                    params.append(client_id)
+                    await db.execute(query, params)
+                    await db.commit()
+                return client_id
+            else:
+                # Создаём нового
+                phones_str = ",".join(phones) if phones else None
+                cursor = await db.execute('''
+                    INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (full_name, phone, phones_str, telegram_username, social_network, referral_source))
+                await db.commit()
+                return cursor.lastrowid
+        else:
+            # Без телефона создаём запись
+            phones_str = ",".join(phones) if phones else None
+            cursor = await db.execute('''
+                INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (full_name, phones_str, telegram_username, social_network, referral_source))
+            await db.commit()
+            return cursor.lastrowid
+
+async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
+    """
+    Сохраняет запись о покупке.
+    items: список словарей с ключами 'item_text', 'price' (если известна)
+    payment_details: словарь с разбивкой по способам оплаты
+    """
+    items_json = json.dumps(items, ensure_ascii=False)
+    payment_json = json.dumps(payment_details, ensure_ascii=False)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            INSERT INTO purchases (client_id, items_json, total_amount, payment_details, purchase_type)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (client_id, items_json, total_amount, payment_json, purchase_type))
+        await db.commit()
+
+async def get_client_purchases(client_id: int):
+    """Возвращает список покупок клиента."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute('''
+            SELECT * FROM purchases WHERE client_id = ? ORDER BY created_at DESC
+        ''', (client_id,))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+async def search_clients(query: str):
+    """Поиск клиентов по имени, телефону или username."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute('''
+            SELECT * FROM clients 
+            WHERE full_name LIKE ? OR phone LIKE ? OR telegram_username LIKE ?
+            ORDER BY updated_at DESC
+        ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
+        rows = await cursor.fetchall()
         return [dict(row) for row in rows]                social_network TEXT,
                 referral_source TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
