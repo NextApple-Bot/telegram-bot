@@ -375,17 +375,30 @@ async def handle_sales_message(message: Message):
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
 
-    # -------------------------------------------------------------------
-    # ДОБАВЛЯЕМ СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА (пока заглушка, полную реализацию добавим позже)
-    # -------------------------------------------------------------------
-    # Здесь будет вызов парсера и сохранение в БД
-    # Пока просто закомментировано, чтобы не ломать код
-    # from client_parser import parse_client_data
-    # from database import get_or_create_client, add_purchase
-    # data = parse_client_data(message.text)
-    # if data['phone'] or data['full_name']:
-    #     client_id = await get_or_create_client(...)
-    #     await add_purchase(...)
+        # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА ---
+    try:
+        from client_parser import parse_client_data
+        from database import get_or_create_client, add_purchase
+        data = parse_client_data(message.text)
+        # Сохраняем, если есть телефон или имя
+        if data['phone'] or data['full_name']:
+            client_id = await get_or_create_client(
+                phone=data['phone'],
+                full_name=data['full_name'],
+                telegram_username=data['telegram_username'],
+                social_network=data['social_network'],
+                referral_source=data['referral_source']
+            )
+            await add_purchase(
+                client_id=client_id,
+                items=data['items'],
+                total_amount=data['total'],
+                payment_details=data['payments'],
+                purchase_type='sale'
+            )
+            logger.info(f"✅ Сохранены данные клиента {client_id} с покупкой")
+    except Exception as e:
+        logger.exception(f"❌ Ошибка при сохранении данных клиента: {e}")
 
 # -------------------------------------------------------------------
 # Функция для выгрузки ассортимента в топик
