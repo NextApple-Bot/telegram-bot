@@ -1,4 +1,5 @@
 import aiosqlite
+import json
 from datetime import datetime
 
 DB_PATH = "inventory.db"
@@ -6,6 +7,7 @@ DB_PATH = "inventory.db"
 async def init_db():
     """Создаёт таблицы, если их нет."""
     async with aiosqlite.connect(DB_PATH) as db:
+        # Существующие таблицы
         await db.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,12 +56,41 @@ async def init_db():
                 FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
             )
         ''')
+
+        # --- НОВЫЕ ТАБЛИЦЫ ---
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                full_name TEXT,
+                phone TEXT UNIQUE,
+                telegram_username TEXT,
+                social_network TEXT,
+                referral_source TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS purchases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                items_json TEXT,          -- список товаров с ценами в JSON
+                total_amount REAL,
+                payment_details TEXT,     -- JSON с разбивкой по способам
+                purchase_type TEXT,       -- 'sale', 'preorder', 'booking'
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+            )
+        ''')
+
+        # Индексы
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
         await db.commit()
 
-# ---------- Категории и товары ----------
+# ---------- Существующие функции (без изменений, но для полноты приведу) ----------
 
 async def get_or_create_category(name: str) -> int:
-    """Возвращает id категории, создаёт при необходимости."""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute('SELECT id FROM categories WHERE name = ?', (name,))
         row = await cursor.fetchone()
@@ -70,7 +101,6 @@ async def get_or_create_category(name: str) -> int:
         return cursor.lastrowid
 
 async def add_item(text: str, serial: str = None, category_name: str = None):
-    """Добавляет товар. Если category_name не указана, использует 'Общее:'."""
     if category_name is None:
         category_name = "Общее:"
     cat_id = await get_or_create_category(category_name)
@@ -82,24 +112,18 @@ async def add_item(text: str, serial: str = None, category_name: str = None):
         await db.commit()
 
 async def get_item_id_by_serial(serial: str) -> int | None:
-    """Возвращает id товара по серийному номеру или None."""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute('SELECT id FROM items WHERE serial = ?', (serial,))
         row = await cursor.fetchone()
         return row[0] if row else None
 
 async def remove_item_by_serial(serial: str) -> int:
-    """Удаляет товар по серийному номеру. Возвращает количество удалённых."""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute('DELETE FROM items WHERE serial = ?', (serial,))
         await db.commit()
         return cursor.rowcount
 
 async def get_all_items_with_categories():
-    """
-    Возвращает список товаров с названиями категорий.
-    Важно: сортировка по items.id сохраняет порядок добавления товаров.
-    """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute('''
@@ -112,21 +136,14 @@ async def get_all_items_with_categories():
         return [dict(row) for row in rows]
 
 async def get_items_grouped_by_category():
-    """
-    Возвращает словарь {category_name: [items_text]}.
-    Категории сохраняют порядок первого появления (по самому раннему товару в категории).
-    """
     items = await get_all_items_with_categories()
     grouped = {}
-    # Используем OrderedDict или просто словарь, но порядок сохранится в Python 3.7+
     for item in items:
         cat = item['category_name']
         if cat not in grouped:
             grouped[cat] = []
         grouped[cat].append(item['text'])
     return grouped
-
-# ---------- Статистика ----------
 
 async def add_sale(item_id: int = None, count: int = 1,
                    cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0):
@@ -154,7 +171,6 @@ async def add_booking(item_id: int, total_amount: float):
         await db.commit()
 
 async def get_today_stats():
-    """Возвращает статистику за сегодня."""
     today = datetime.now().strftime('%Y-%m-%d')
     async with aiosqlite.connect(DB_PATH) as db:
         # Предзаказы
@@ -205,3 +221,98 @@ async def get_today_stats():
             'sales_qr': sq,
             'sales_installment': si,
         }
+
+# ---------- НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С КЛИЕНТАМИ ----------
+
+async def get_or_create_client(phone: str = None, full_name: str = None,
+                               telegram_username: str = None, social_network: str = None,
+                               referral_source: str = None) -> int:
+    """
+    Возвращает ID клиента.
+    - Если телефон указан, ищет клиента по телефону.
+      Если находит, обновляет остальные поля (передавая не None значения).
+      Если не находит, создаёт нового клиента с указанными данными.
+    - Если телефон не указан, создаёт нового клиента без телефона.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        if phone:
+            # Проверяем существование
+            cursor = await db.execute('SELECT id, full_name, telegram_username, social_network, referral_source FROM clients WHERE phone = ?', (phone,))
+            row = await cursor.fetchone()
+            if row:
+                client_id = row[0]
+                # Обновляем поля, которые переданы и отличаются от текущих
+                updates = []
+                params = []
+                if full_name and full_name != row[1]:
+                    updates.append("full_name = ?")
+                    params.append(full_name)
+                if telegram_username and telegram_username != row[2]:
+                    updates.append("telegram_username = ?")
+                    params.append(telegram_username)
+                if social_network and social_network != row[3]:
+                    updates.append("social_network = ?")
+                    params.append(social_network)
+                if referral_source and referral_source != row[4]:
+                    updates.append("referral_source = ?")
+                    params.append(referral_source)
+                if updates:
+                    updates.append("updated_at = CURRENT_TIMESTAMP")
+                    query = f"UPDATE clients SET {', '.join(updates)} WHERE id = ?"
+                    params.append(client_id)
+                    await db.execute(query, params)
+                    await db.commit()
+                return client_id
+            else:
+                # Создаём нового
+                cursor = await db.execute('''
+                    INSERT INTO clients (full_name, phone, telegram_username, social_network, referral_source)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (full_name, phone, telegram_username, social_network, referral_source))
+                await db.commit()
+                return cursor.lastrowid
+        else:
+            # Без телефона создаём запись (телефон NULL)
+            cursor = await db.execute('''
+                INSERT INTO clients (full_name, telegram_username, social_network, referral_source)
+                VALUES (?, ?, ?, ?)
+            ''', (full_name, telegram_username, social_network, referral_source))
+            await db.commit()
+            return cursor.lastrowid
+
+async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
+    """
+    Сохраняет запись о покупке.
+    items: список словарей с ключами 'item_text', 'price' (если известна)
+    payment_details: словарь с разбивкой по способам оплаты
+    """
+    items_json = json.dumps(items, ensure_ascii=False)
+    payment_json = json.dumps(payment_details, ensure_ascii=False)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            INSERT INTO purchases (client_id, items_json, total_amount, payment_details, purchase_type)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (client_id, items_json, total_amount, payment_json, purchase_type))
+        await db.commit()
+
+async def get_client_purchases(client_id: int):
+    """Возвращает список покупок клиента."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute('''
+            SELECT * FROM purchases WHERE client_id = ? ORDER BY created_at DESC
+        ''', (client_id,))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+async def search_clients(query: str):
+    """Поиск клиентов по имени, телефону или username."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute('''
+            SELECT * FROM clients 
+            WHERE full_name LIKE ? OR phone LIKE ? OR telegram_username LIKE ?
+            ORDER BY updated_at DESC
+        ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
