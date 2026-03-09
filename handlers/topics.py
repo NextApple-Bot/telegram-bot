@@ -16,7 +16,7 @@ from .base import (
     router, logger, AssortmentConfirmState, ArrivalConfirmState,
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
 )
-from utils import extract_preorder_amounts, extract_sales_amounts  # <-- импортируем из utils
+from utils import extract_preorder_amounts, extract_sales_amounts
 
 # -------------------------------------------------------------------
 # Топик «Ассортимент» (замена всего)
@@ -212,7 +212,12 @@ async def process_arrival_confirm(callback: CallbackQuery, state):
     if action == "yes":
         for line in added_lines:
             serial = inventory.extract_serial(line)
-            await add_item(line, serial, category_name="Общее")
+            # Определяем категорию: если строка начинается с "Б/У -" или "Б/У ", отправляем в "Б/У:"
+            if line.strip().startswith("Б/У -") or line.strip().startswith("Б/У "):
+                category = "Б/У:"
+            else:
+                category = "Общее:"
+            await add_item(line, serial, category_name=category)
 
         combined_lines = []
         if added_lines:
@@ -375,15 +380,15 @@ async def handle_sales_message(message: Message):
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
 
-            # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА ---
+    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА ---
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
         data = parse_client_data(message.text)
-        if data['phones'] or data['full_name']:  # если есть хоть один телефон или имя
+        if data['phones'] or data['full_name']:
             client_id = await get_or_create_client(
-                phone=data['main_phone'],           # основной телефон
-                phones=data['phones'],               # список всех телефонов
+                phone=data['main_phone'],
+                phones=data['phones'],
                 full_name=data['full_name'],
                 telegram_username=data['telegram_username'],
                 social_network=data['social_network'],
