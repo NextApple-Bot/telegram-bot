@@ -41,6 +41,10 @@ def extract_base_name(item):
     return base
 
 def parse_categories(lines):
+    """
+    Парсит текст и возвращает список категорий с товарами.
+    Если заголовок категории встречается повторно, товары добавляются в существующую категорию.
+    """
     categories = []
     current_header = None
     current_items = []
@@ -54,11 +58,15 @@ def parse_categories(lines):
             i += 1
             continue
 
+        # --- Определяем заголовок категории ---
+
         # Однострочный заголовок (дефисы вокруг, есть двоеточие)
         if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
+            # Сохраняем предыдущую категорию, если она есть
             if current_header is not None and current_items:
-                categories.append({"header": current_header, "items": current_items})
+                _add_category(categories, current_header, current_items)
                 current_items = []
+            # Извлекаем имя заголовка
             header_text = trimmed.strip('- ').strip()
             if header_text.endswith(':'):
                 header_text = header_text[:-1].strip()
@@ -70,13 +78,14 @@ def parse_categories(lines):
         if (re.match(r'^\s*-+\s*$', stripped) and
             i + 1 < n and ':' in lines[i + 1] and
             i + 2 < n and re.match(r'^\s*-+\s*$', lines[i + 2])):
+            # Сохраняем предыдущую категорию
+            if current_header is not None and current_items:
+                _add_category(categories, current_header, current_items)
+                current_items = []
             header_line = lines[i + 1].strip()
             header_text = header_line.strip('- ').strip()
             if header_text.endswith(':'):
                 header_text = header_text[:-1].strip()
-            if current_header is not None and current_items:
-                categories.append({"header": current_header, "items": current_items})
-                current_items = []
             current_header = normalize_name(header_text)
             i += 3
             continue
@@ -102,9 +111,25 @@ def parse_categories(lines):
         current_items.append(stripped)
         i += 1
 
+    # Сохраняем последнюю категорию
     if current_header is not None and current_items:
-        categories.append({"header": current_header, "items": current_items})
+        _add_category(categories, current_header, current_items)
+
     return categories
+
+def _add_category(categories, header, items):
+    """
+    Вспомогательная функция: добавляет товары в категорию.
+    Если категория с таким заголовком уже существует, товары добавляются к ней.
+    Иначе создаётся новая категория.
+    """
+    # Ищем существующую категорию с таким же заголовком
+    for cat in categories:
+        if cat['header'] == header:
+            cat['items'].extend(items)
+            return
+    # Если не нашли, создаём новую
+    categories.append({"header": header, "items": items})
 
 def sort_assortment_to_categories(input_text):
     """Парсит текст и возвращает категории с товарами (без сортировки внутри)."""
@@ -139,7 +164,6 @@ def sort_items_in_category(items, header):
                 groups[key] = {'eSIM': [], 'SIM+eSIM': [], 'other': []}
             groups[key][sim].append(item)
 
-        # Сортируем по объёму памяти (сначала меньший)
         sorted_keys = sorted(groups.keys(), key=lambda k: (k[0] is None, k[0] if k[0] is not None else float('inf')))
         for vol_gb, vol_str in sorted_keys:
             if vol_str is not None:
@@ -160,7 +184,6 @@ def sort_items_in_category(items, header):
         for item in items:
             size = extract_watch_size(item)
             size_groups.setdefault(size, []).append(item)
-        # Сортируем по размеру (сначала меньший)
         sorted_sizes = sorted(size_groups.keys(), key=lambda s: (s is None, s if s is not None else float('inf')))
         for size in sorted_sizes:
             if size is not None:
@@ -171,7 +194,6 @@ def sort_items_in_category(items, header):
         return output
 
     else:
-        # Для всех остальных категорий - простая алфавитная сортировка
         return sorted(items)
 
 def build_output_text(categories):
