@@ -375,15 +375,15 @@ async def handle_sales_message(message: Message):
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
 
-        # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА ---
+            # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА ---
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
         data = parse_client_data(message.text)
-        # Сохраняем, если есть телефон или имя
-        if data['phone'] or data['full_name']:
+        if data['phones'] or data['full_name']:  # если есть хоть один телефон или имя
             client_id = await get_or_create_client(
-                phone=data['phone'],
+                phone=data['main_phone'],           # основной телефон
+                phones=data['phones'],               # список всех телефонов
                 full_name=data['full_name'],
                 telegram_username=data['telegram_username'],
                 social_network=data['social_network'],
@@ -396,7 +396,7 @@ async def handle_sales_message(message: Message):
                 payment_details=data['payments'],
                 purchase_type='sale'
             )
-            logger.info(f"✅ Сохранены данные клиента {client_id} с покупкой")
+            logger.info(f"✅ Сохранены данные клиента {client_id} с покупкой, телефоны: {data['phones']}")
     except Exception as e:
         logger.exception(f"❌ Ошибка при сохранении данных клиента: {e}")
 
