@@ -16,67 +16,7 @@ from .base import (
     router, logger, AssortmentConfirmState, ArrivalConfirmState,
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
 )
-
-# ====== Вспомогательные функции для извлечения сумм ======
-def extract_all_amounts(text):
-    """Извлекает из текста все упоминания сумм с ключевыми словами."""
-    patterns = [
-        (r'Наличные|Наличными', 'cash'),
-        (r'Терминал', 'terminal'),
-        (r'П[\\/]О|ПО', 'prepayment'),
-        (r'QR[- ]?код|QR\s*код|QRCode|QrCode|QR\s*Code', 'qr'),
-        (r'Рассрочка', 'installment'),
-    ]
-    results = []
-    number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
-    for kw, typ in patterns:
-        for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
-            num_str = match.group(1).replace(' ', '').replace(',', '.')
-            try:
-                amount = float(num_str)
-                results.append((typ, amount))
-            except:
-                continue
-        for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
-            num_str = match.group(1).replace(' ', '').replace(',', '.')
-            try:
-                amount = float(num_str)
-                results.append((typ, amount))
-            except:
-                continue
-    return results
-
-def extract_preorder_amounts(lines):
-    cash = terminal = qr = installment = 0.0
-    for line in lines:
-        amounts = extract_all_amounts(line)
-        for typ, val in amounts:
-            if typ == 'cash':
-                cash += val
-            elif typ == 'terminal':
-                terminal += val
-            elif typ == 'qr':
-                qr += val
-            elif typ == 'installment':
-                installment += val
-    return cash, terminal, qr, installment
-
-def extract_sales_amounts(lines):
-    cash = terminal = qr = installment = 0.0
-    for line in lines:
-        amounts = extract_all_amounts(line)
-        for typ, val in amounts:
-            if typ == 'prepayment':
-                continue
-            if typ == 'cash':
-                cash += val
-            elif typ == 'terminal':
-                terminal += val
-            elif typ == 'qr':
-                qr += val
-            elif typ == 'installment':
-                installment += val
-    return cash, terminal, qr, installment
+from utils import extract_preorder_amounts, extract_sales_amounts  # <-- импортируем из utils
 
 # -------------------------------------------------------------------
 # Топик «Ассортимент» (замена всего)
@@ -435,11 +375,22 @@ async def handle_sales_message(message: Message):
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
 
+    # -------------------------------------------------------------------
+    # ДОБАВЛЯЕМ СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА (пока заглушка, полную реализацию добавим позже)
+    # -------------------------------------------------------------------
+    # Здесь будет вызов парсера и сохранение в БД
+    # Пока просто закомментировано, чтобы не ломать код
+    # from client_parser import parse_client_data
+    # from database import get_or_create_client, add_purchase
+    # data = parse_client_data(message.text)
+    # if data['phone'] or data['full_name']:
+    #     client_id = await get_or_create_client(...)
+    #     await add_purchase(...)
+
 # -------------------------------------------------------------------
-# Функция для выгрузки ассортимента в топик (ВАЖНО: должна быть в конце файла)
+# Функция для выгрузки ассортимента в топик
 # -------------------------------------------------------------------
 async def export_assortment_to_topic(bot: Bot, admin_id: int):
-    """Выгружает текущий ассортимент в топик «Ассортимент» и отправляет уведомление админу."""
     categories = await inventory.load_inventory()
     if not categories:
         await bot.send_message(admin_id, "📭 Ассортимент пуст, нечего выгружать.")
