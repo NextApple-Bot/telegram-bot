@@ -120,15 +120,17 @@ def parse_categories(lines):
 def _add_category(categories, header, items):
     """
     Вспомогательная функция: добавляет товары в категорию.
-    Если категория с таким заголовком уже существует, товары добавляются к ней.
-    Иначе создаётся новая категория.
+    Если категория с таким заголовком уже существует (независимо от регистра и наличия двоеточия),
+    товары добавляются к ней. Иначе создаётся новая категория.
     """
-    # Ищем существующую категорию с таким же заголовком
+    # Нормализуем заголовок для сравнения: нижний регистр, убираем двоеточие в конце
+    normalized_header = header.lower().rstrip(':')
     for cat in categories:
-        if cat['header'] == header:
+        cat_header_norm = cat['header'].lower().rstrip(':')
+        if cat_header_norm == normalized_header:
             cat['items'].extend(items)
             return
-    # Если не нашли, создаём новую
+    # Если не нашли, создаём новую категорию с исходным заголовком (как он был в тексте)
     categories.append({"header": header, "items": items})
 
 def sort_assortment_to_categories(input_text):
