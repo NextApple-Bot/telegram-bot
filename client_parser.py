@@ -5,22 +5,21 @@ from inventory import extract_serials_from_text
 def parse_client_data(text: str) -> dict:
     """
     Извлекает из текста:
-    - телефон
+    - телефоны (список)
     - ФИО
     - Telegram username
     - Соцсети
     - Откуда узнал
     - Товары (строки с серийными номерами и ценами)
     - Суммы и способы оплаты
-    Возвращает словарь с данными клиента и списком товаров.
     """
     result = {
         'full_name': None,
-        'phone': None,
+        'phones': [],          # список всех найденных телефонов
         'telegram_username': None,
         'social_network': None,
         'referral_source': None,
-        'items': [],          # список словарей: {'item_text': str, 'price': float}
+        'items': [],
         'payments': {'cash': 0.0, 'terminal': 0.0, 'qr': 0.0, 'installment': 0.0, 'prepayment': 0.0}
     }
 
@@ -30,21 +29,20 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
-        # --- Извлечение телефона ---
-        # Ищем последовательности, похожие на телефон: +7... , 8..., 7...
-        phone_match = re.search(r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}', line)
-        if phone_match and not result['phone']:
-            raw_phone = phone_match.group(0)
+        # --- Извлечение всех телефонов ---
+        # Находим все возможные номера в строке
+        phone_matches = re.findall(r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}', line)
+        for raw_phone in phone_matches:
             clean_phone = re.sub(r'[\s\-\(\)]', '', raw_phone)
             if clean_phone.startswith('8'):
                 clean_phone = '+7' + clean_phone[1:]
             elif clean_phone.startswith('7') and not clean_phone.startswith('+7'):
                 clean_phone = '+7' + clean_phone[1:]
-            result['phone'] = clean_phone
+            if clean_phone not in result['phones']:
+                result['phones'].append(clean_phone)
 
         # --- Извлечение ФИО ---
         if not result['full_name']:
-            # Ищем после слов "ФИО", "фио"
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
                 if len(parts) > 1:
@@ -54,7 +52,6 @@ def parse_client_data(text: str) -> dict:
                     if match:
                         result['full_name'] = match.group(1).strip()
             else:
-                # Проверяем, не является ли строка именем (2-4 слова, только буквы)
                 words = line.split()
                 if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
                     result['full_name'] = line
@@ -83,9 +80,7 @@ def parse_client_data(text: str) -> dict:
 
         # --- Товары: строки с серийным номером в скобках ---
         if re.search(r'\([A-Z0-9-]{5,}\)', line):
-            # Это строка товара
             item_text = line
-            # Ищем цену в этой строке или в следующих (но проще взять из общей суммы)
             price_match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|рублей|р\.?)', line, re.IGNORECASE)
             if price_match:
                 price_str = price_match.group(1).replace(' ', '').replace(',', '.')
@@ -105,6 +100,7 @@ def parse_client_data(text: str) -> dict:
             elif typ == 'prepayment':
                 result['payments']['prepayment'] += val
 
-    # Вычисляем общую сумму как сумму всех платежей
     result['total'] = sum(result['payments'].values())
+    # Если есть телефоны, первый считаем основным
+    result['main_phone'] = result['phones'][0] if result['phones'] else None
     return result
