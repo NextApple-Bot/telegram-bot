@@ -1,7 +1,7 @@
 import csv
+import json
 import tempfile
 import os
-import json
 import aiosqlite
 from aiogram import F
 from aiogram.types import Message, FSInputFile
@@ -153,7 +153,8 @@ async def cmd_client_info(message: Message):
         else:
             text += "Нет покупок\n"
         await message.answer(text, parse_mode='Markdown')
-        @router.message(Command("export_full_report"))
+
+@router.message(Command("export_full_report"))
 async def cmd_export_full_report(message: Message):
     if message.from_user.id != config.ADMIN_ID:
         await message.answer("⛔ Доступ запрещён")
