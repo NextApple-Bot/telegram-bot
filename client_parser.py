@@ -1,6 +1,9 @@
 import re
 from utils import extract_all_amounts
 from inventory import extract_serials_from_text
+import logging
+
+logger = logging.getLogger(__name__)
 
 def parse_client_data(text: str) -> dict:
     """
@@ -15,7 +18,7 @@ def parse_client_data(text: str) -> dict:
     """
     result = {
         'full_name': None,
-        'phones': [],          # список всех найденных телефонов
+        'phones': [],
         'telegram_username': None,
         'social_network': None,
         'referral_source': None,
@@ -29,17 +32,25 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
-        # --- Извлечение всех телефонов ---
-        # Находим все возможные номера в строке
-        phone_matches = re.findall(r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}', line)
+        # --- Извлечение телефонов (исправленное регулярное выражение) ---
+        # Ищем номера в форматах: +7XXXXXXXXXX, 8XXXXXXXXXX, 7XXXXXXXXXX, с возможными разделителями
+        phone_pattern = r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
+        phone_matches = re.findall(phone_pattern, line)
         for raw_phone in phone_matches:
-            clean_phone = re.sub(r'[\s\-\(\)]', '', raw_phone)
-            if clean_phone.startswith('8'):
-                clean_phone = '+7' + clean_phone[1:]
-            elif clean_phone.startswith('7') and not clean_phone.startswith('+7'):
-                clean_phone = '+7' + clean_phone[1:]
-            if clean_phone not in result['phones']:
-                result['phones'].append(clean_phone)
+            # raw_phone содержит только первую группу (код), а нужен весь номер
+            # Поэтому используем другой подход: ищем все совпадения по полному шаблону
+            full_matches = re.findall(phone_pattern, line)
+            # Но findall с такой группой вернёт только группы. Лучше использовать finditer.
+            for match in re.finditer(phone_pattern, line):
+                full_number = match.group(0)  # весь совпавший текст
+                clean_phone = re.sub(r'[\s\-\(\)]', '', full_number)
+                if clean_phone.startswith('8'):
+                    clean_phone = '+7' + clean_phone[1:]
+                elif clean_phone.startswith('7') and not clean_phone.startswith('+7'):
+                    clean_phone = '+7' + clean_phone[1:]
+                if clean_phone not in result['phones']:
+                    result['phones'].append(clean_phone)
+                    logger.info(f"📞 Найден телефон: {clean_phone}")
 
         # --- Извлечение ФИО ---
         if not result['full_name']:
@@ -101,6 +112,7 @@ def parse_client_data(text: str) -> dict:
                 result['payments']['prepayment'] += val
 
     result['total'] = sum(result['payments'].values())
-    # Если есть телефоны, первый считаем основным
     result['main_phone'] = result['phones'][0] if result['phones'] else None
+
+    logger.info(f"📋 Распарсенные данные: {result}")
     return result
