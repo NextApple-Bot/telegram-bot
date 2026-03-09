@@ -153,3 +153,46 @@ async def cmd_client_info(message: Message):
         else:
             text += "Нет покупок\n"
         await message.answer(text, parse_mode='Markdown')
+        @router.message(Command("export_full_report"))
+async def cmd_export_full_report(message: Message):
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
+        writer = csv.writer(tmp)
+        writer.writerow(['ID клиента', 'ФИО', 'Телефон', 'Telegram', 'Дата покупки', 'Товары', 'Сумма', 'Способ оплаты'])
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute('''
+                SELECT c.id, c.full_name, c.phone, c.telegram_username,
+                       p.created_at, p.items_json, p.total_amount, p.payment_details
+                FROM clients c
+                LEFT JOIN purchases p ON c.id = p.client_id
+                ORDER BY c.id, p.created_at
+            ''')
+            rows = await cursor.fetchall()
+            for row in rows:
+                items = json.loads(row['items_json']) if row['items_json'] else []
+                items_short = ', '.join([it['item_text'][:30] + '...' for it in items])
+                writer.writerow([
+                    row['id'],
+                    row['full_name'],
+                    row['phone'],
+                    row['telegram_username'],
+                    row['created_at'],
+                    items_short,
+                    row['total_amount'],
+                    row['payment_details']
+                ])
+
+        tmp_path = tmp.name
+
+    try:
+        await message.answer_document(
+            FSInputFile(tmp_path, filename="full_report.csv"),
+            caption="📁 Полный отчёт (клиенты и покупки)"
+        )
+    finally:
+        os.unlink(tmp_path)
