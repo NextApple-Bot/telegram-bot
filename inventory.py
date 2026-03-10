@@ -2,7 +2,7 @@ import re
 import aiosqlite
 from database import (
     add_item, remove_item_by_serial, get_items_grouped_by_category,
-    get_or_create_category, DB_PATH
+    get_or_create_category, DB_PATH, update_category_items
 )
 
 def extract_serial(line):
@@ -38,20 +38,17 @@ async def load_inventory():
 
 async def save_inventory(categories):
     """
-    Полностью заменяет ассортимент новыми категориями.
+    Обновляет ассортимент, сохраняя все существующие категории.
+    - Категории, указанные в categories, обновляются (старые товары заменяются новыми).
+    - Категории, не указанные, остаются без изменений (вместе со своими товарами).
+    - Новые категории создаются.
     """
-    # Очищаем таблицы
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('DELETE FROM items')
-        await db.execute('DELETE FROM categories')
-        await db.commit()
-
-    # Добавляем новые категории и товары
     for cat in categories:
-        cat_id = await get_or_create_category(cat['header'])
-        for item_text in cat['items']:
-            serial = extract_serial(item_text)
-            await add_item(item_text, serial, cat['header'])
+        cat_name = cat['header']
+        items = cat['items']
+        await update_category_items(cat_name, items)
+
+    # Категории, которых нет в новом списке, остаются нетронутыми
 
 async def remove_by_serial(serial: str) -> int:
     """Удаляет товар по серийному номеру."""
