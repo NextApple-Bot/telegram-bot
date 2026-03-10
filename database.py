@@ -132,27 +132,37 @@ async def remove_item_by_serial(serial: str) -> int:
         await db.commit()
         return cursor.rowcount
 
-async def get_all_items_with_categories():
+async def get_all_categories_with_items():
+    """
+    Возвращает список всех категорий с их товарами.
+    Даже пустые категории включаются (с пустым списком items).
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute('''
-            SELECT items.*, categories.name as category_name
-            FROM items
-            JOIN categories ON items.category_id = categories.id
-            ORDER BY items.id
+            SELECT c.id, c.name as category_name, i.text as item_text
+            FROM categories c
+            LEFT JOIN items i ON c.id = i.category_id
+            ORDER BY c.id, i.id
         ''')
         rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        categories = {}
+        for row in rows:
+            cat = row['category_name']
+            if cat not in categories:
+                categories[cat] = []
+            if row['item_text']:
+                categories[cat].append(row['item_text'])
+        # Преобразуем в формат, ожидаемый другими функциями
+        result = [{"header": cat, "items": items} for cat, items in categories.items()]
+        return result
 
+# Для обратной совместимости оставим старую функцию, но переименуем
 async def get_items_grouped_by_category():
-    items = await get_all_items_with_categories()
-    grouped = {}
-    for item in items:
-        cat = item['category_name']
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append(item['text'])
-    return grouped
+    """Возвращает только категории с товарами (для использования в старом коде, если нужно)."""
+    items = await get_all_categories_with_items()
+    # Фильтруем только те, у которых есть товары
+    return [cat for cat in items if cat['items']]
 
 async def add_sale(item_id: int = None, count: int = 1,
                    cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0):
@@ -228,7 +238,7 @@ async def get_today_stats():
             'sales_installment': si,
         }
 
-# ---------- НОВАЯ ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЯ ТОВАРОВ В КАТЕГОРИИ ----------
+# ---------- ФУНКЦИЯ ДЛЯ ОБНОВЛЕНИЯ ТОВАРОВ В КАТЕГОРИИ ----------
 
 async def update_category_items(category_name: str, new_items: list):
     """
