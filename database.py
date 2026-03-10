@@ -1,328 +1,431 @@
+import re
+import tempfile
+import os
+import aiofiles
 import aiosqlite
-import json
-import logging
 from datetime import datetime
+from aiogram import F, Bot
+from aiogram.types import Message, ReactionTypeEmoji, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.exceptions import TelegramBadRequest
 
-logger = logging.getLogger(__name__)
-DB_PATH = "inventory.db"
+import config
+import inventory
+import stats
+from database import add_item, get_item_id_by_serial, add_booking, DB_PATH
+from .base import (
+    router, logger, AssortmentConfirmState, ArrivalConfirmState,
+    sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
+)
+from utils import extract_preorder_amounts, extract_sales_amounts
 
-async def init_db():
-    """Создаёт таблицы, если их нет."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        # Существующие таблицы
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE
-            )
-        ''')
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                text TEXT NOT NULL,
-                serial TEXT,
-                category_id INTEGER NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-            )
-        ''')
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS sales (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                item_id INTEGER,
-                count INTEGER DEFAULT 1,
-                cash REAL DEFAULT 0,
-                terminal REAL DEFAULT 0,
-                qr REAL DEFAULT 0,
-                installment REAL DEFAULT 0,
-                sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE SET NULL
-            )
-        ''')
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS preorders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cash REAL DEFAULT 0,
-                terminal REAL DEFAULT 0,
-                qr REAL DEFAULT 0,
-                installment REAL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS bookings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                item_id INTEGER NOT NULL,
-                total_amount REAL DEFAULT 0,
-                booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
-            )
-        ''')
+# -------------------------------------------------------------------
+# Топик «Ассортимент» (замена всего)
+# -------------------------------------------------------------------
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ASSORTMENT)
+async def handle_assortment_upload(message: Message, bot, state):
+    logger.info(f"📥 Загрузка ассортимента в топик Ассортимент от {message.from_user.id}")
 
-        # --- НОВЫЕ ТАБЛИЦЫ ---
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                full_name TEXT,
-                phone TEXT UNIQUE,
-                phones TEXT,
-                telegram_username TEXT,
-                social_network TEXT,
-                referral_source TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS purchases (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id INTEGER NOT NULL,
-                items_json TEXT,
-                total_amount REAL,
-                payment_details TEXT,
-                purchase_type TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
-            )
-        ''')
+    current_state = await state.get_state()
+    if current_state == AssortmentConfirmState.waiting_for_confirm.state:
+        await state.clear()
 
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
-        await db.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
-        await db.commit()
-
-# ---------- Существующие функции ----------
-
-async def get_or_create_category(name: str) -> int:
-    """
-    Возвращает id категории.
-    Ищет по нормализованному имени (нижний регистр, без двоеточия в конце).
-    Если не найдено, создаёт новую категорию с переданным именем.
-    """
-    norm_name = name.lower().rstrip(':')
-    async with aiosqlite.connect(DB_PATH) as db:
-        # Получаем все категории и сравниваем нормализованные имена
-        cursor = await db.execute('SELECT id, name FROM categories')
-        rows = await cursor.fetchall()
-        for cat_id, cat_name in rows:
-            if cat_name.lower().rstrip(':') == norm_name:
-                return cat_id
-        # Если не нашли, создаём
-        cursor = await db.execute('INSERT INTO categories (name) VALUES (?)', (name,))
-        await db.commit()
-        return cursor.lastrowid
-
-async def add_item(text: str, serial: str = None, category_name: str = None):
-    if category_name is None:
-        category_name = "Общее:"
-    cat_id = await get_or_create_category(category_name)
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            'INSERT INTO items (text, serial, category_id) VALUES (?, ?, ?)',
-            (text, serial, cat_id)
+    if message.text:
+        full_text = message.text.strip()
+        if not full_text:
+            await message.reply("❌ Пустой список.")
+            return
+        categories = sort_assortment_to_categories(full_text)
+        if not categories:
+            await message.reply("❌ Не удалось распознать ни одной категории.")
+            return
+        await state.update_data(temp_categories=categories)
+        await state.set_state(AssortmentConfirmState.waiting_for_confirm)
+        total_items = sum(len(cat['items']) for cat in categories)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Подтвердить", callback_data="assort_confirm:yes"),
+             InlineKeyboardButton(text="❌ Отмена", callback_data="assort_confirm:no")]
+        ])
+        await message.reply(
+            f"📦 Найдено категорий: {len(categories)}, всего позиций: {total_items}\n"
+            "Подтвердите загрузку (это заменит весь текущий ассортимент).",
+            reply_markup=keyboard
         )
-        await db.commit()
+    elif message.document:
+        document = message.document
+        if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
+            await message.reply("⚠️ Отправьте текстовый файл .txt")
+            return
+        file_path = f"/tmp/{document.file_name}"
+        await bot.download(document, destination=file_path)
+        try:
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+            if not content.strip():
+                await message.reply("❌ Файл пуст.")
+                return
+            categories = sort_assortment_to_categories(content)
+            if not categories:
+                await message.reply("❌ Не удалось распознать ни одной категории.")
+                return
+            await state.update_data(temp_categories=categories)
+            await state.set_state(AssortmentConfirmState.waiting_for_confirm)
+            total_items = sum(len(cat['items']) for cat in categories)
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Подтвердить", callback_data="assort_confirm:yes"),
+                 InlineKeyboardButton(text="❌ Отмена", callback_data="assort_confirm:no")]
+            ])
+            await message.reply(
+                f"📦 Найдено категорий: {len(categories)}, всего позиций: {total_items}\n"
+                "Подтвердите загрузку (это заменит весь текущий ассортимент).",
+                reply_markup=keyboard
+            )
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    else:
+        await message.reply("⚠️ Отправьте текст или файл .txt.")
 
-async def get_item_id_by_serial(serial: str) -> int | None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute('SELECT id FROM items WHERE serial = ?', (serial,))
-        row = await cursor.fetchone()
-        return row[0] if row else None
+@router.callback_query(AssortmentConfirmState.waiting_for_confirm, F.data.startswith("assort_confirm:"))
+async def process_assortment_confirm(callback: CallbackQuery, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
 
-async def remove_item_by_serial(serial: str) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute('DELETE FROM items WHERE serial = ?', (serial,))
-        await db.commit()
-        return cursor.rowcount
-
-async def get_all_items_with_categories():
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute('''
-            SELECT items.*, categories.name as category_name
-            FROM items
-            JOIN categories ON items.category_id = categories.id
-            ORDER BY items.id
-        ''')
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
-
-async def get_items_grouped_by_category():
-    items = await get_all_items_with_categories()
-    grouped = {}
-    for item in items:
-        cat = item['category_name']
-        if cat not in grouped:
-            grouped[cat] = []
-        grouped[cat].append(item['text'])
-    return grouped
-
-async def add_sale(item_id: int = None, count: int = 1,
-                   cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            'INSERT INTO sales (item_id, count, cash, terminal, qr, installment) VALUES (?, ?, ?, ?, ?, ?)',
-            (item_id, count, cash, terminal, qr, installment)
-        )
-        await db.commit()
-
-async def add_preorder(cash=0, terminal=0, qr=0, installment=0):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            'INSERT INTO preorders (cash, terminal, qr, installment) VALUES (?, ?, ?, ?)',
-            (cash, terminal, qr, installment)
-        )
-        await db.commit()
-
-async def add_booking(item_id: int, total_amount: float):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            'INSERT INTO bookings (item_id, total_amount) VALUES (?, ?)',
-            (item_id, total_amount)
-        )
-        await db.commit()
-
-async def get_today_stats():
-    today = datetime.now().strftime('%Y-%m-%d')
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            'SELECT COUNT(*), SUM(cash), SUM(terminal), SUM(qr), SUM(installment) FROM preorders WHERE DATE(created_at) = ?',
-            (today,)
-        )
-        pre_count, pc, pt, pq, pi = await cursor.fetchone()
-        pre_count = pre_count or 0
-        pc = pc or 0
-        pt = pt or 0
-        pq = pq or 0
-        pi = pi or 0
-
-        cursor = await db.execute(
-            'SELECT COUNT(*), SUM(total_amount) FROM bookings WHERE DATE(booked_at) = ?',
-            (today,)
-        )
-        book_count, book_total = await cursor.fetchone()
-        book_count = book_count or 0
-        book_total = book_total or 0
-
-        cursor = await db.execute(
-            'SELECT COUNT(*), SUM(cash), SUM(terminal), SUM(qr), SUM(installment) FROM sales WHERE DATE(sold_at) = ?',
-            (today,)
-        )
-        sale_count, sc, st, sq, si = await cursor.fetchone()
-        sale_count = sale_count or 0
-        sc = sc or 0
-        st = st or 0
-        sq = sq or 0
-        si = si or 0
-
-        return {
-            'date': today,
-            'preorders': pre_count,
-            'bookings': book_count,
-            'sales': sale_count,
-            'preorders_cash': pc,
-            'preorders_terminal': pt,
-            'preorders_qr': pq,
-            'preorders_installment': pi,
-            'bookings_total': book_total,
-            'sales_cash': sc,
-            'sales_terminal': st,
-            'sales_qr': sq,
-            'sales_installment': si,
-        }
-
-# ---------- НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С КЛИЕНТАМИ ----------
-
-async def get_or_create_client(phone: str = None, phones: list = None, full_name: str = None,
-                               telegram_username: str = None, social_network: str = None,
-                               referral_source: str = None) -> int:
-    """
-    Возвращает ID клиента.
-    phones: список всех найденных телефонов.
-    phone: основной телефон (если есть) — первый из списка.
-    """
-    logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
-    async with aiosqlite.connect(DB_PATH) as db:
-        if phone:
-            cursor = await db.execute('SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = ?', (phone,))
-            row = await cursor.fetchone()
-            if row:
-                client_id = row[0]
-                logger.info(f"👤 Найден существующий клиент ID {client_id}")
-                updates = []
-                params = []
-                if full_name and full_name != row[1]:
-                    updates.append("full_name = ?")
-                    params.append(full_name)
-                if telegram_username and telegram_username != row[2]:
-                    updates.append("telegram_username = ?")
-                    params.append(telegram_username)
-                if social_network and social_network != row[3]:
-                    updates.append("social_network = ?")
-                    params.append(social_network)
-                if referral_source and referral_source != row[4]:
-                    updates.append("referral_source = ?")
-                    params.append(referral_source)
-                if phones:
-                    existing_phones = row[5] if row[5] else ""
-                    all_phones = set(existing_phones.split(',')) if existing_phones else set()
-                    all_phones.update(phones)
-                    new_phones_str = ",".join(sorted(all_phones))
-                    if new_phones_str != existing_phones:
-                        updates.append("phones = ?")
-                        params.append(new_phones_str)
-                if updates:
-                    updates.append("updated_at = CURRENT_TIMESTAMP")
-                    query = f"UPDATE clients SET {', '.join(updates)} WHERE id = ?"
-                    params.append(client_id)
-                    await db.execute(query, params)
-                    await db.commit()
-                    logger.info(f"✅ Клиент {client_id} обновлён: {updates}")
-                return client_id
-            else:
-                phones_str = ",".join(sorted(set(phones))) if phones else None
-                logger.info(f"🆕 Создание нового клиента: phone={phone}, phones={phones_str}")
-                cursor = await db.execute('''
-                    INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (full_name, phone, phones_str, telegram_username, social_network, referral_source))
-                await db.commit()
-                return cursor.lastrowid
+    data = await state.get_data()
+    categories = data.get("temp_categories")
+    action = callback.data.split(":")[1]
+    if action == "yes":
+        if categories:
+            await inventory.save_inventory(categories)
+            await callback.message.edit_text("✅ Ассортимент успешно загружен и сохранён.")
         else:
-            phones_str = ",".join(sorted(set(phones))) if phones else None
-            logger.info(f"🆕 Создание нового клиента без основного телефона: full_name={full_name}, phones={phones_str}")
-            cursor = await db.execute('''
-                INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (full_name, phones_str, telegram_username, social_network, referral_source))
-            await db.commit()
-            return cursor.lastrowid
+            await callback.message.edit_text("❌ Ошибка: данные не найдены.")
+    else:
+        await callback.message.edit_text("❌ Загрузка отменена.")
+    await state.clear()
 
-async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
-    items_json = json.dumps(items, ensure_ascii=False)
-    payment_json = json.dumps(payment_details, ensure_ascii=False)
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute('''
-            INSERT INTO purchases (client_id, items_json, total_amount, payment_details, purchase_type)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (client_id, items_json, total_amount, payment_json, purchase_type))
-        await db.commit()
+# -------------------------------------------------------------------
+# Топик «Прибытие» (добавление товаров с подтверждением)
+# -------------------------------------------------------------------
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ARRIVAL)
+async def handle_arrival(message: Message, bot, state):
+    logger.info(f"📦 Сообщение в топике Прибытие от {message.from_user.id}")
 
-async def get_client_purchases(client_id: int):
+    current_state = await state.get_state()
+    if current_state == ArrivalConfirmState.waiting_for_confirm.state:
+        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку.")
+        return
+
+    lines = []
+    if message.text:
+        full_text = message.text.strip()
+        if not full_text:
+            await message.reply("❌ Пустой список.")
+            return
+        lines = [line.strip() for line in full_text.splitlines() if line.strip()]
+    elif message.document:
+        document = message.document
+        if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
+            await message.reply("⚠️ Отправьте текстовый файл .txt")
+            return
+        file_path = f"/tmp/{document.file_name}"
+        await bot.download(document, destination=file_path)
+        try:
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+            lines = [line.strip() for line in content.splitlines() if line.strip()]
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+    else:
+        await message.reply("⚠️ Отправьте текст или файл .txt.")
+        return
+
+    lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
+    if not lines:
+        await message.reply("❌ Нет ни одной позиции после фильтрации.")
+        return
+
+    # Получаем существующие товары для проверки дубликатов
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute('''
-            SELECT * FROM purchases WHERE client_id = ? ORDER BY created_at DESC
-        ''', (client_id,))
+        cursor = await db.execute('SELECT text, serial FROM items')
         rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        existing_items = [dict(row) for row in rows]
+    existing_texts = {item['text'] for item in existing_items}
+    existing_serials = {item['serial'] for item in existing_items if item['serial']}
 
-async def search_clients(query: str):
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute('''
-            SELECT * FROM clients 
-            WHERE full_name LIKE ? OR phone LIKE ? OR telegram_username LIKE ?
-            ORDER BY updated_at DESC
-        ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+    added_lines = []
+    skipped_lines = []
+
+    for line in lines:
+        if line in existing_texts:
+            skipped_lines.append(f"[Дубликат текста] {line}")
+            continue
+        serial = inventory.extract_serial(line)
+        if serial and serial in existing_serials:
+            skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
+            continue
+        added_lines.append(line)
+        existing_texts.add(line)
+        if serial:
+            existing_serials.add(serial)
+
+    if not added_lines:
+        await message.reply("❌ Нет новых позиций для добавления (все дубликаты).")
+        return
+
+    await state.set_state(ArrivalConfirmState.waiting_for_confirm)
+    await state.update_data(
+        added_lines=added_lines,
+        skipped_lines=skipped_lines,
+        original_lines=lines,
+        message_id=message.message_id,
+        chat_id=message.chat.id,
+        thread_id=message.message_thread_id
+    )
+
+    response = f"📦 Найдено новых позиций: {len(added_lines)}\n"
+    if skipped_lines:
+        response += f"⏭ Пропущено (дубликаты): {len(skipped_lines)}\n"
+    response += "Подтвердите добавление?"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить", callback_data="arrival_confirm:yes"),
+         InlineKeyboardButton(text="❌ Отмена", callback_data="arrival_confirm:no")]
+    ])
+    await message.reply(response, reply_markup=keyboard)
+
+@router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
+async def process_arrival_confirm(callback: CallbackQuery, state):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    action = callback.data.split(":")[1]
+    data = await state.get_data()
+    added_lines = data.get("added_lines", [])
+    skipped_lines = data.get("skipped_lines", [])
+
+    if action == "yes":
+        for line in added_lines:
+            serial = inventory.extract_serial(line)
+            # Определяем категорию: если строка начинается с "Б/У -" или "Б/У ", отправляем в "Б/У:"
+            if line.strip().startswith("Б/У -") or line.strip().startswith("Б/У "):
+                category = "Б/У:"
+            else:
+                category = "Общее:"
+            await add_item(line, serial, category_name=category)
+
+        combined_lines = []
+        if added_lines:
+            combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
+            combined_lines.extend(added_lines)
+            combined_lines.append("")
+        if skipped_lines:
+            combined_lines.append(f"=== ПРОПУЩЕННЫЕ ({len(skipped_lines)}) ===")
+            combined_lines.extend(skipped_lines)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write("\n".join(combined_lines))
+            tmp_path = f.name
+
+        today = datetime.now().strftime("%d.%m.%Y")
+        filename = f"прибытие_{today}.txt"
+        try:
+            doc = FSInputFile(tmp_path, filename=filename)
+            await callback.message.answer_document(
+                doc,
+                caption=f"✅ Добавлено: {len(added_lines)} | ⏭ Пропущено: {len(skipped_lines)}"
+            )
+        finally:
+            os.unlink(tmp_path)
+
+        await callback.message.edit_text("✅ Добавление подтверждено.")
+    else:
+        await callback.message.edit_text("❌ Добавление отменено.")
+
+    await state.clear()
+
+@router.message(ArrivalConfirmState.waiting_for_confirm, F.text.lower() == "отмена")
+async def cancel_arrival_confirm_by_text(message: Message, state):
+    data = await state.get_data()
+    if message.chat.id == data.get("chat_id") and message.message_thread_id == data.get("thread_id"):
+        await state.clear()
+        await message.reply("❌ Добавление отменено.")
+
+@router.message(ArrivalConfirmState.waiting_for_confirm)
+async def unexpected_message_in_arrival_confirm(message: Message, state):
+    data = await state.get_data()
+    if message.chat.id == data.get("chat_id") and message.message_thread_id == data.get("thread_id"):
+        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите «отмена»).")
+
+# -------------------------------------------------------------------
+# Топик «Предзаказ»
+# -------------------------------------------------------------------
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
+async def handle_preorder(message: Message, bot):
+    logger.info(f"📥 Сообщение в топике Предзаказ от {message.from_user.id}")
+
+    if not message.text:
+        return
+
+    lines = message.text.strip().splitlines()
+    if not lines:
+        return
+
+    booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
+
+    if booking_indices:
+        preorder_lines = lines[:booking_indices[0]]
+        if preorder_lines:
+            cash, terminal, qr, installment = extract_preorder_amounts(preorder_lines)
+            await stats.increment_preorder(cash, terminal, qr, installment)
+            await message.react([ReactionTypeEmoji(emoji='👌')])
+
+        for idx in booking_indices:
+            start = idx + 1
+            end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
+            booking_lines = lines[start:end]
+            if not booking_lines:
+                await message.reply("❌ Пустой блок брони.")
+                continue
+
+            item_line = None
+            for line in booking_lines:
+                if re.search(r'\([A-Z0-9-]{5,}\)', line, re.IGNORECASE):
+                    item_line = line
+                    break
+
+            if not item_line:
+                await message.reply("❌ Не удалось найти товар с серийным номером для брони.")
+                continue
+
+            serial = inventory.extract_serial(item_line)
+            if not serial:
+                await message.reply("❌ Не удалось извлечь серийный номер.")
+                continue
+
+            item_id = await get_item_id_by_serial(serial)
+            if not item_id:
+                await message.reply(f"❌ Товар с серийным номером {serial} не найден в ассортименте.")
+                continue
+
+            async with aiosqlite.connect(DB_PATH) as db:
+                cursor = await db.execute('SELECT text FROM items WHERE id = ?', (item_id,))
+                row = await cursor.fetchone()
+                if not row:
+                    await message.reply(f"❌ Товар с серийным номером {serial} не найден.")
+                    continue
+                item_text = row[0]
+
+            removed = await inventory.remove_by_serial(serial)
+            if not removed:
+                await message.reply(f"❌ Не удалось удалить товар {serial}.")
+                continue
+
+            today = datetime.now().strftime("%d.%m")
+            new_item_text = f"{item_text} (Бронь от {today})"
+            await add_item(new_item_text, serial, category_name=None)
+
+            cash, terminal, qr, installment = extract_preorder_amounts(booking_lines)
+            total_amount = cash + terminal + qr + installment
+            await stats.increment_booking(serial, total_amount)
+
+            await message.react([ReactionTypeEmoji(emoji='👍')])
+            await message.reply(f"✅ Добавлена бронь:\n{new_item_text}")
+
+    else:
+        cash, terminal, qr, installment = extract_preorder_amounts(lines)
+        await stats.increment_preorder(cash, terminal, qr, installment)
+        await message.react([ReactionTypeEmoji(emoji='👌')])
+
+# -------------------------------------------------------------------
+# Топик «Продажи»
+# -------------------------------------------------------------------
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
+async def handle_sales_message(message: Message):
+    logger.info(f"📩 Сообщение в топике Продажи: {message.text}")
+    if not message.text:
+        return
+
+    lines = message.text.splitlines()
+    cash, terminal, qr, installment = extract_sales_amounts(lines)
+
+    candidates = inventory.extract_serials_from_text(message.text)
+    found_serials = []
+    not_found_serials = []
+
+    for cand in candidates:
+        removed = await inventory.remove_by_serial(cand)
+        if removed:
+            found_serials.append(cand)
+        else:
+            not_found_serials.append(cand)
+
+    if found_serials:
+        try:
+            await message.react([ReactionTypeEmoji(emoji='🔥')])
+        except Exception as e:
+            logger.exception(f"Не удалось поставить реакцию: {e}")
+
+    if cash or terminal or qr or installment:
+        count = len(found_serials) if found_serials else 1
+        await stats.increment_sales(count=count, cash=cash, terminal=terminal, qr=qr, installment=installment)
+
+    if not_found_serials:
+        text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
+        await message.reply(text)
+        logger.info(f"❌ Не найдены: {not_found_serials}")
+
+    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА ---
+    try:
+        from client_parser import parse_client_data
+        from database import get_or_create_client, add_purchase
+        data = parse_client_data(message.text)
+        if data['phones'] or data['full_name']:
+            client_id = await get_or_create_client(
+                phone=data['main_phone'],
+                phones=data['phones'],
+                full_name=data['full_name'],
+                telegram_username=data['telegram_username'],
+                social_network=data['social_network'],
+                referral_source=data['referral_source']
+            )
+            await add_purchase(
+                client_id=client_id,
+                items=data['items'],
+                total_amount=data['total'],
+                payment_details=data['payments'],
+                purchase_type='sale'
+            )
+            logger.info(f"✅ Сохранены данные клиента {client_id} с покупкой, телефоны: {data['phones']}")
+    except Exception as e:
+        logger.exception(f"❌ Ошибка при сохранении данных клиента: {e}")
+
+# -------------------------------------------------------------------
+# Функция для выгрузки ассортимента в топик
+# -------------------------------------------------------------------
+async def export_assortment_to_topic(bot: Bot, admin_id: int):
+    categories = await inventory.load_inventory()
+    if not categories:
+        await bot.send_message(admin_id, "📭 Ассортимент пуст, нечего выгружать.")
+        return
+    text = build_output_text(categories)
+    today = datetime.now().strftime("%d.%m.%Y")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+        f.write(text)
+        tmp_path = f.name
+    try:
+        document = FSInputFile(tmp_path, filename=f"assortiment_{today}.txt")
+        await bot.send_document(
+            chat_id=config.MAIN_GROUP_ID,
+            document=document,
+            caption=f"📦 Текущий ассортимент (категорий: {len(categories)})",
+            message_thread_id=config.THREAD_ASSORTMENT
+        )
+        await bot.send_message(admin_id, "✅ Ассортимент успешно выгружен в топик «Ассортимент».")
+    finally:
+        os.unlink(tmp_path)
