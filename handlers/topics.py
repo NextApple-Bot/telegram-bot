@@ -17,6 +17,7 @@ from .base import (
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
 )
 from utils import extract_preorder_amounts, extract_sales_amounts
+from sort_assortment import add_item_to_categories  # <-- импортируем для распределения товаров
 
 # -------------------------------------------------------------------
 # Топик «Ассортимент» (замена всего)
@@ -210,15 +211,18 @@ async def process_arrival_confirm(callback: CallbackQuery, state):
     skipped_lines = data.get("skipped_lines", [])
 
     if action == "yes":
+        # Загружаем текущие категории для определения подходящей категории каждому товару
+        current_categories = await inventory.load_inventory()
+        
         for line in added_lines:
             serial = inventory.extract_serial(line)
-            # Определяем категорию: если строка начинается с "Б/У -" или "Б/У ", отправляем в "Б/У:"
-            if line.strip().startswith("Б/У -") or line.strip().startswith("Б/У "):
-                category = "Б/У:"
-            else:
-                category = "Общее:"
-            await add_item(line, serial, category_name=category)
+            # Используем add_item_to_categories для поиска/создания категории
+            updated_categories, idx = add_item_to_categories(line, current_categories)
+            current_categories = updated_categories  # обновляем для следующих товаров
+            category_name = current_categories[idx]['header']
+            await add_item(line, serial, category_name=category_name)
 
+        # Формируем отчёт
         combined_lines = []
         if added_lines:
             combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
