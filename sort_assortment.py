@@ -44,6 +44,7 @@ def parse_categories(lines):
     """
     Парсит текст и возвращает список категорий с товарами.
     Сохраняет все категории, даже пустые.
+    При повторных заголовках товары объединяются.
     """
     categories = []
     current_header = None
@@ -58,15 +59,11 @@ def parse_categories(lines):
             i += 1
             continue
 
-        # --- Определяем заголовок категории ---
-
         # Однострочный заголовок (дефисы вокруг, есть двоеточие)
         if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
-            # Сохраняем предыдущую категорию, если она есть
             if current_header is not None:
                 _add_category(categories, current_header, current_items)
                 current_items = []
-            # Извлекаем имя заголовка
             header_text = trimmed.strip('- ').strip()
             if header_text.endswith(':'):
                 header_text = header_text[:-1].strip()
@@ -78,7 +75,6 @@ def parse_categories(lines):
         if (re.match(r'^\s*-+\s*$', stripped) and
             i + 1 < n and ':' in lines[i + 1] and
             i + 2 < n and re.match(r'^\s*-+\s*$', lines[i + 2])):
-            # Сохраняем предыдущую категорию
             if current_header is not None:
                 _add_category(categories, current_header, current_items)
                 current_items = []
@@ -90,7 +86,7 @@ def parse_categories(lines):
             i += 3
             continue
 
-        # Пропускаем строки, состоящие только из дефисов (разделители)
+        # Пропускаем строки из дефисов (разделители)
         if re.match(r'^\s*-+\s*$', stripped):
             i += 1
             continue
@@ -100,7 +96,7 @@ def parse_categories(lines):
             i += 1
             continue
 
-        # Игнорируем любые строки, оканчивающиеся двоеточием (например, '128GB:', '49mm:')
+        # Игнорируем строки, оканчивающиеся двоеточием (например, '128GB:')
         if trimmed.endswith(':'):
             i += 1
             continue
@@ -120,17 +116,13 @@ def parse_categories(lines):
 def _add_category(categories, header, items):
     """
     Добавляет категорию в список.
-    Если категория с таким заголовком уже существует (независимо от регистра),
-    товары добавляются к существующей категории.
-    Если заголовок новый, создаётся новая запись.
+    Если категория с таким заголовком уже существует (нормализованно), товары добавляются к ней.
     """
-    normalized_header = header.lower().rstrip(':')
+    norm_header = header.lower().rstrip(':')
     for cat in categories:
-        cat_header_norm = cat['header'].lower().rstrip(':')
-        if cat_header_norm == normalized_header:
+        if cat['header'].lower().rstrip(':') == norm_header:
             cat['items'].extend(items)
             return
-    # Если не нашли, создаём новую категорию
     categories.append({"header": header, "items": items})
 
 def sort_assortment_to_categories(input_text):
@@ -139,7 +131,7 @@ def sort_assortment_to_categories(input_text):
     return parse_categories(lines)
 
 def sort_items_in_category(items, header):
-    """Сортирует товары внутри категории."""
+    """Сортирует товары внутри категории (iPhone, Apple Watch, остальные)."""
     header_lower = header.lower()
     output = []
 
@@ -214,14 +206,14 @@ def build_output_text(categories):
             else:
                 output_lines.append(sorted_output)
         else:
-            # Пустая категория — оставляем только разделители
+            # Пустая категория – оставляем только разделители
             pass
 
         output_lines.append('')
     return '\n'.join(output_lines)
 
 def find_category_for_item(item, categories):
-    """Находит подходящую категорию для товара."""
+    """Находит подходящую категорию для товара (используется в прибытии)."""
     normalized_item = normalize_name(item)
     normalized_item = normalize_model(normalized_item).lower()
     base = extract_base_name(item).lower()
