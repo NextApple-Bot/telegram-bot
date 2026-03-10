@@ -43,7 +43,7 @@ def extract_base_name(item):
 def parse_categories(lines):
     """
     Парсит текст и возвращает список категорий с товарами.
-    Сохраняет все категории, даже пустые.
+    Если заголовок категории встречается повторно, товары добавляются в существующую категорию.
     """
     categories = []
     current_header = None
@@ -63,7 +63,7 @@ def parse_categories(lines):
         # Однострочный заголовок (дефисы вокруг, есть двоеточие)
         if trimmed.startswith('-') and trimmed.endswith('-') and ':' in trimmed:
             # Сохраняем предыдущую категорию, если она есть
-            if current_header is not None:
+            if current_header is not None and current_items:
                 _add_category(categories, current_header, current_items)
                 current_items = []
             # Извлекаем имя заголовка
@@ -79,7 +79,7 @@ def parse_categories(lines):
             i + 1 < n and ':' in lines[i + 1] and
             i + 2 < n and re.match(r'^\s*-+\s*$', lines[i + 2])):
             # Сохраняем предыдущую категорию
-            if current_header is not None:
+            if current_header is not None and current_items:
                 _add_category(categories, current_header, current_items)
                 current_items = []
             header_line = lines[i + 1].strip()
@@ -111,35 +111,40 @@ def parse_categories(lines):
         current_items.append(stripped)
         i += 1
 
-    # Сохраняем последнюю категорию (даже если она пустая)
-    if current_header is not None:
+    # Сохраняем последнюю категорию
+    if current_header is not None and current_items:
         _add_category(categories, current_header, current_items)
 
     return categories
 
 def _add_category(categories, header, items):
     """
-    Добавляет категорию в список.
-    Если категория с таким заголовком уже существует (независимо от регистра),
-    товары добавляются к существующей категории.
-    Если заголовок новый, создаётся новая запись.
+    Вспомогательная функция: добавляет товары в категорию.
+    Если категория с таким заголовком уже существует (независимо от регистра и наличия двоеточия),
+    товары добавляются к ней. Иначе создаётся новая категория.
     """
+    # Нормализуем заголовок для сравнения: нижний регистр, убираем двоеточие в конце
     normalized_header = header.lower().rstrip(':')
     for cat in categories:
         cat_header_norm = cat['header'].lower().rstrip(':')
         if cat_header_norm == normalized_header:
             cat['items'].extend(items)
             return
-    # Если не нашли, создаём новую категорию
+    # Если не нашли, создаём новую категорию с исходным заголовком (как он был в тексте)
     categories.append({"header": header, "items": items})
 
 def sort_assortment_to_categories(input_text):
-    """Парсит текст и возвращает категории с товарами."""
+    """Парсит текст и возвращает категории с товарами (без сортировки внутри)."""
     lines = input_text.splitlines()
     return parse_categories(lines)
 
 def sort_items_in_category(items, header):
-    """Сортирует товары внутри категории."""
+    """
+    Сортирует товары внутри категории по правилам:
+    - Для iPhone: группировка по памяти, затем по типу SIM, внутри сортировка по алфавиту
+    - Для Apple Watch: группировка по размеру, внутри сортировка по алфавиту
+    - Для остальных: просто алфавитная сортировка
+    """
     header_lower = header.lower()
     output = []
 
@@ -194,7 +199,11 @@ def sort_items_in_category(items, header):
         return sorted(items)
 
 def build_output_text(categories):
-    """Формирует текст для вывода, сохраняя порядок категорий и пустые категории."""
+    """
+    Формирует текст для вывода.
+    - Категории выводятся в том порядке, в котором они были загружены
+    - Товары внутри категорий сортируются по правилам (sort_items_in_category)
+    """
     output_lines = []
     for cat in categories:
         header = cat['header']
@@ -207,15 +216,12 @@ def build_output_text(categories):
         output_lines.append('-' * dash_len)
         output_lines.append('-')
 
-        if cat['items']:
-            sorted_output = sort_items_in_category(cat['items'], header)
-            if isinstance(sorted_output, list):
-                output_lines.extend(sorted_output)
-            else:
-                output_lines.append(sorted_output)
+        # СОРТИРУЕМ товары внутри категории
+        sorted_output = sort_items_in_category(cat['items'], header)
+        if isinstance(sorted_output, list):
+            output_lines.extend(sorted_output)
         else:
-            # Пустая категория — оставляем только разделители
-            pass
+            output_lines.append(sorted_output)
 
         output_lines.append('')
     return '\n'.join(output_lines)
@@ -243,7 +249,10 @@ def find_category_for_item(item, categories):
     return None
 
 def add_item_to_categories(item, categories):
-    """Добавляет товар в существующие категории или создаёт новую."""
+    """
+    Добавляет товар в существующие категории или создаёт новую.
+    Используется при обработке прибытия.
+    """
     # Специальная обработка для Б/У
     if item.strip().startswith("Б/У -") or item.strip().startswith("Б/У "):
         for idx, cat in enumerate(categories):
