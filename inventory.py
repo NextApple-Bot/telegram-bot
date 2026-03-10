@@ -1,7 +1,7 @@
 import re
 import aiosqlite
 from database import (
-    add_item, remove_item_by_serial, get_items_grouped_by_category,
+    add_item, remove_item_by_serial, get_all_categories_with_items,
     get_or_create_category, DB_PATH, update_category_items
 )
 
@@ -29,11 +29,8 @@ def extract_serials_from_text(text):
     return list(serials)
 
 async def load_inventory():
-    """Возвращает список категорий с товарами в формате [{"header": cat, "items": [...]}]."""
-    grouped = await get_items_grouped_by_category()
-    categories = []
-    for cat_name, items in grouped.items():
-        categories.append({"header": cat_name, "items": items})
+    """Возвращает список ВСЕХ категорий с товарами (включая пустые)."""
+    categories = await get_all_categories_with_items()
     return categories
 
 async def save_inventory(categories):
