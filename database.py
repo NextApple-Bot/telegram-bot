@@ -1,7 +1,9 @@
 import aiosqlite
 import json
+import logging
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
 DB_PATH = "inventory.db"
 
 async def init_db():
@@ -89,12 +91,22 @@ async def init_db():
         await db.commit()
 
 # ---------- Существующие функции ----------
+
 async def get_or_create_category(name: str) -> int:
+    """
+    Возвращает id категории.
+    Ищет по нормализованному имени (нижний регистр, без двоеточия в конце).
+    Если не найдено, создаёт новую категорию с переданным именем.
+    """
+    norm_name = name.lower().rstrip(':')
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute('SELECT id FROM categories WHERE name = ?', (name,))
-        row = await cursor.fetchone()
-        if row:
-            return row[0]
+        # Получаем все категории и сравниваем нормализованные имена
+        cursor = await db.execute('SELECT id, name FROM categories')
+        rows = await cursor.fetchall()
+        for cat_id, cat_name in rows:
+            if cat_name.lower().rstrip(':') == norm_name:
+                return cat_id
+        # Если не нашли, создаём
         cursor = await db.execute('INSERT INTO categories (name) VALUES (?)', (name,))
         await db.commit()
         return cursor.lastrowid
@@ -223,12 +235,19 @@ async def get_today_stats():
 async def get_or_create_client(phone: str = None, phones: list = None, full_name: str = None,
                                telegram_username: str = None, social_network: str = None,
                                referral_source: str = None) -> int:
+    """
+    Возвращает ID клиента.
+    phones: список всех найденных телефонов.
+    phone: основной телефон (если есть) — первый из списка.
+    """
+    logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
     async with aiosqlite.connect(DB_PATH) as db:
         if phone:
             cursor = await db.execute('SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = ?', (phone,))
             row = await cursor.fetchone()
             if row:
                 client_id = row[0]
+                logger.info(f"👤 Найден существующий клиент ID {client_id}")
                 updates = []
                 params = []
                 if full_name and full_name != row[1]:
@@ -245,7 +264,9 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
                     params.append(referral_source)
                 if phones:
                     existing_phones = row[5] if row[5] else ""
-                    new_phones_str = ",".join(phones)
+                    all_phones = set(existing_phones.split(',')) if existing_phones else set()
+                    all_phones.update(phones)
+                    new_phones_str = ",".join(sorted(all_phones))
                     if new_phones_str != existing_phones:
                         updates.append("phones = ?")
                         params.append(new_phones_str)
@@ -255,9 +276,11 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
                     params.append(client_id)
                     await db.execute(query, params)
                     await db.commit()
+                    logger.info(f"✅ Клиент {client_id} обновлён: {updates}")
                 return client_id
             else:
-                phones_str = ",".join(phones) if phones else None
+                phones_str = ",".join(sorted(set(phones))) if phones else None
+                logger.info(f"🆕 Создание нового клиента: phone={phone}, phones={phones_str}")
                 cursor = await db.execute('''
                     INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source)
                     VALUES (?, ?, ?, ?, ?, ?)
@@ -265,7 +288,8 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
                 await db.commit()
                 return cursor.lastrowid
         else:
-            phones_str = ",".join(phones) if phones else None
+            phones_str = ",".join(sorted(set(phones))) if phones else None
+            logger.info(f"🆕 Создание нового клиента без основного телефона: full_name={full_name}, phones={phones_str}")
             cursor = await db.execute('''
                 INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source)
                 VALUES (?, ?, ?, ?, ?)
