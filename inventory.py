@@ -11,9 +11,9 @@ def extract_serial(line):
     for match in matches:
         candidate = match.group(1)
         if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
-            return candidate.upper()
+            return candidate.upper().strip()
         if candidate.isdigit() and len(candidate) >= 10:
-            return candidate
+            return candidate.strip()
     return None
 
 def extract_serials_from_text(text):
