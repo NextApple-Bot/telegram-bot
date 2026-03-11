@@ -313,28 +313,35 @@ async def handle_preorder(message: Message, bot):
                 await message.reply("❌ Не удалось извлечь серийный номер.")
                 continue
 
-            item_id = await get_item_id_by_serial(serial)
-            if not item_id:
-                await message.reply(f"❌ Товар с серийным номером {serial} не найден в ассортименте.")
-                continue
-
+            # Получаем информацию о товаре: текст и категорию
             async with aiosqlite.connect(DB_PATH) as db:
-                cursor = await db.execute('SELECT text FROM items WHERE id = ?', (item_id,))
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute('''
+                    SELECT items.text, categories.name as category_name
+                    FROM items
+                    JOIN categories ON items.category_id = categories.id
+                    WHERE items.serial = ?
+                ''', (serial,))
                 row = await cursor.fetchone()
                 if not row:
-                    await message.reply(f"❌ Товар с серийным номером {serial} не найден.")
+                    await message.reply(f"❌ Товар с серийным номером {serial} не найден в ассортименте.")
                     continue
-                item_text = row[0]
+                item_text = row['text']
+                category_name = row['category_name']
 
+            # Удаляем товар
             removed = await inventory.remove_by_serial(serial)
             if not removed:
                 await message.reply(f"❌ Не удалось удалить товар {serial}.")
                 continue
 
+            # Создаём новый текст с пометкой о брони
             today = datetime.now().strftime("%d.%m")
             new_item_text = f"{item_text} (Бронь от {today})"
-            await add_item(new_item_text, serial, category_name=None)
+            # Добавляем обратно в ту же категорию
+            await add_item(new_item_text, serial, category_name=category_name)
 
+            # Учитываем бронь в статистике
             cash, terminal, qr, installment = extract_preorder_amounts(booking_lines)
             total_amount = cash + terminal + qr + installment
             await stats.increment_booking(serial, total_amount)
