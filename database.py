@@ -113,16 +113,27 @@ async def add_item(text: str, serial: str = None, category_name: str = None):
     if category_name is None:
         category_name = "Общее:"
     cat_id = await get_or_create_category(category_name)
+    # Нормализуем серийный номер
+    normalized_serial = serial.strip().upper() if serial else None
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             'INSERT INTO items (text, serial, category_id) VALUES (?, ?, ?)',
-            (text, serial, cat_id)
+            (text, normalized_serial, cat_id)
         )
         await db.commit()
 
 async def get_item_id_by_serial(serial: str) -> int | None:
+    """
+    Возвращает id товара по серийному номеру.
+    Поиск регистронезависимый, игнорируются пробелы в начале/конце.
+    """
+    if not serial:
+        return None
+    # Нормализуем: убираем пробелы, приводим к верхнему регистру
+    normalized = serial.strip().upper()
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute('SELECT id FROM items WHERE serial = ?', (serial,))
+        # Используем UPPER в SQL для сравнения
+        cursor = await db.execute('SELECT id FROM items WHERE UPPER(serial) = ?', (normalized,))
         row = await cursor.fetchone()
         return row[0] if row else None
 
