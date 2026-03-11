@@ -129,17 +129,16 @@ async def get_item_id_by_serial(serial: str) -> int | None:
     """
     if not serial:
         return None
-    # Нормализуем: убираем пробелы, приводим к верхнему регистру
     normalized = serial.strip().upper()
     async with aiosqlite.connect(DB_PATH) as db:
-        # Используем UPPER в SQL для сравнения
         cursor = await db.execute('SELECT id FROM items WHERE UPPER(serial) = ?', (normalized,))
         row = await cursor.fetchone()
         return row[0] if row else None
 
 async def remove_item_by_serial(serial: str) -> int:
+    normalized = serial.strip().upper() if serial else None
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute('DELETE FROM items WHERE serial = ?', (serial,))
+        cursor = await db.execute('DELETE FROM items WHERE UPPER(serial) = ?', (normalized,))
         await db.commit()
         return cursor.rowcount
 
@@ -164,15 +163,12 @@ async def get_all_categories_with_items():
                 categories[cat] = []
             if row['item_text']:
                 categories[cat].append(row['item_text'])
-        # Преобразуем в формат, ожидаемый другими функциями
         result = [{"header": cat, "items": items} for cat, items in categories.items()]
         return result
 
-# Для обратной совместимости оставим старую функцию, но переименуем
 async def get_items_grouped_by_category():
-    """Возвращает только категории с товарами (для использования в старом коде, если нужно)."""
+    """Возвращает только категории с товарами (для обратной совместимости)."""
     items = await get_all_categories_with_items()
-    # Фильтруем только те, у которых есть товары
     return [cat for cat in items if cat['items']]
 
 async def add_sale(item_id: int = None, count: int = 1,
@@ -255,15 +251,19 @@ async def update_category_items(category_name: str, new_items: list):
     """
     Заменяет все товары в указанной категории новым списком.
     Старые товары удаляются.
-    Если категории не существует, она создаётся.
+    Извлекает серийные номера из текста товаров и сохраняет их.
     """
+    # Локальный импорт для избежания циклических зависимостей
+    from inventory import extract_serial
     cat_id = await get_or_create_category(category_name)
     async with aiosqlite.connect(DB_PATH) as db:
         # Удаляем старые товары в этой категории
         await db.execute('DELETE FROM items WHERE category_id = ?', (cat_id,))
         # Вставляем новые товары
         for item_text in new_items:
-            serial = None  # или можно извлекать серийник, но для простоты оставим None
+            serial = extract_serial(item_text)
+            if serial:
+                serial = serial.strip().upper()
             await db.execute(
                 'INSERT INTO items (text, serial, category_id) VALUES (?, ?, ?)',
                 (item_text, serial, cat_id)
