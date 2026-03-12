@@ -11,10 +11,8 @@ from .base import (
 )
 from .topics import export_assortment_to_topic
 
-# Хранилище ID последних сообщений статистики и финансов для каждого чата
 last_stats_message = {}
 last_finance_message = {}
-
 
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
@@ -127,7 +125,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     else:
         await callback.message.answer("Неизвестная команда")
 
-
 @router.callback_query(F.data.startswith("confirm_clear:"))
 async def process_confirm_clear(callback: CallbackQuery, bot):
     try:
@@ -155,7 +152,6 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
         else:
             raise
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
-
 
 @router.callback_query(F.data.startswith("reset_stats:"))
 async def process_reset_stats(callback: CallbackQuery):
@@ -193,7 +189,6 @@ async def process_reset_stats(callback: CallbackQuery):
         )
         await callback.message.edit_text(text)
         last_stats_message[chat_id] = callback.message.message_id
-
 
 @router.callback_query(F.data.startswith("reset_finances:"))
 async def process_reset_finances(callback: CallbackQuery):
