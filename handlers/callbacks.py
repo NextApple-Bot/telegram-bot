@@ -10,6 +10,11 @@ from .base import (
     show_inventory, show_help, cancel_action, get_main_menu_keyboard
 )
 from .topics import export_assortment_to_topic
+from database import get_available_months, get_clients_data_for_month
+import json
+import tempfile
+import os
+from aiogram.types import FSInputFile
 
 last_stats_message = {}
 last_finance_message = {}
@@ -48,7 +53,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                     reply_markup=keyboard
                 )
             except TelegramBadRequest as e:
-                # Игнорируем ошибку "message is not modified"
                 if "message is not modified" not in str(e):
                     raise
             except Exception:
@@ -88,7 +92,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                     reply_markup=keyboard
                 )
             except TelegramBadRequest as e:
-                # Игнорируем ошибку "message is not modified"
                 if "message is not modified" not in str(e):
                     raise
             except Exception:
@@ -100,6 +103,30 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
 
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
+    elif action == "clients_by_month":
+        # Проверяем, что это админ
+        if user_id != config.ADMIN_ID:
+            await callback.answer("⛔ Доступ запрещён", show_alert=True)
+            return
+        # Получаем доступные месяцы
+        months = await get_available_months()
+        if not months:
+            await callback.message.answer("📭 Нет данных за месяцы.")
+            return
+        # Создаём клавиатуру с месяцами (по 3 в ряд)
+        buttons = []
+        row = []
+        for month in months:
+            row.append(InlineKeyboardButton(text=month, callback_data=f"month:{month}"))
+            if len(row) == 3:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+        # Добавляем кнопку "Назад"
+        buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="menu:cancel")])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
     elif action == "clear":
         current_state = await state.get_state()
         if current_state is not None:
@@ -260,3 +287,92 @@ async def process_reset_finances(callback: CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка в process_reset_finances: {e}")
         await callback.message.answer("❌ Произошла ошибка")
+
+# ---------- НОВЫЙ ОБРАБОТЧИК ДЛЯ ВЫБОРА МЕСЯЦА ----------
+@router.callback_query(F.data.startswith("month:"))
+async def process_month_selection(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    month = callback.data.split(":")[1]  # например "03.2026"
+    await callback.message.edit_text(f"⏳ Формирую отчёт за {month}...")
+
+    try:
+        # Получаем данные
+        rows = await get_clients_data_for_month(month)
+
+        if not rows:
+            await callback.message.edit_text(f"📭 Нет данных за {month}.")
+            return
+
+        # Создаём CSV-файл
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
+            writer = csv.writer(tmp)
+            # Заголовки
+            writer.writerow([
+                'ID клиента', 'ФИО', 'Телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник',
+                'Дата регистрации клиента',
+                'ID покупки', 'Дата покупки', 'Товары', 'Сумма', 'Способ оплаты (JSON)', 'Тип покупки'
+            ])
+
+            for row in rows:
+                # Распарсим JSON товаров в читаемый вид
+                items_text = ''
+                if row['items_json']:
+                    try:
+                        items = json.loads(row['items_json'])
+                        items_text = '; '.join([f"{it.get('item_text', '')[:50]} ({it.get('price', '')}₽)" for it in items])
+                    except:
+                        items_text = row['items_json']
+
+                writer.writerow([
+                    row['client_id'],
+                    row['full_name'],
+                    row['phone'],
+                    row['phones'],
+                    row['telegram_username'],
+                    row['social_network'],
+                    row['referral_source'],
+                    row['client_created_at'],
+                    row['purchase_id'],
+                    row['purchase_created_at'],
+                    items_text,
+                    row['total_amount'],
+                    row['payment_details'],
+                    row['purchase_type']
+                ])
+
+            tmp_path = tmp.name
+
+        # Отправляем файл
+        await callback.message.answer_document(
+            FSInputFile(tmp_path, filename=f"clients_{month}.csv"),
+            caption=f"📁 Данные клиентов за {month}"
+        )
+        # Удаляем временный файл
+        os.unlink(tmp_path)
+
+        # Возвращаемся к выбору месяца
+        months = await get_available_months()
+        buttons = []
+        row = []
+        for m in months:
+            row.append(InlineKeyboardButton(text=m, callback_data=f"month:{m}"))
+            if len(row) == 3:
+                buttons.append(row)
+                row = []
+        if row:
+            buttons.append(row)
+        buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="menu:cancel")])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
+
+    except Exception as e:
+        logger.exception(f"Ошибка при формировании отчёта за {month}")
+        await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
