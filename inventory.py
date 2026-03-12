@@ -1,29 +1,46 @@
 import re
 import aiosqlite
 from database import (
-    add_item, remove_item_by_serial, get_all_categories_with_items,
+    add_item, remove_item_by_serial, get_items_grouped_by_category,
     get_or_create_category, DB_PATH, update_category_items
 )
 
 def extract_serial(line):
-    """Извлекает серийный номер из строки товара."""
-    matches = re.finditer(r'\(([A-Za-z0-9\-]{5,})\)', line)
+    """
+    Извлекает серийный номер из строки товара.
+    - Если в скобках есть символ '№', возвращает всё содержимое скобок.
+    - Иначе ищет комбинацию букв и цифр (длиной от 5 символов) или длинное число (≥10 цифр).
+    Возвращает нормализованный серийный номер (верхний регистр, обрезанный) или None.
+    """
+    matches = re.finditer(r'\(([^)]+)\)', line)  # всё, что в скобках
     for match in matches:
-        candidate = match.group(1)
+        candidate = match.group(1).strip()
+        # Если есть символ №, считаем это серийным номером
+        if '№' in candidate:
+            return candidate.upper()
+        # Проверяем на наличие букв и цифр (как раньше)
         if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
-            return candidate.upper().strip()
+            if len(candidate) >= 5:
+                return candidate.upper()
+        # Если это длинное число (например, IMEI)
         if candidate.isdigit() and len(candidate) >= 10:
-            return candidate.strip()
+            return candidate
     return None
 
 def extract_serials_from_text(text):
-    """Извлекает все серийные номера из текста."""
+    """
+    Извлекает все серийные номера из текста сообщения (для продаж).
+    Работает аналогично extract_serial, но возвращает список.
+    """
     serials = set()
-    matches = re.finditer(r'\(([A-Za-z0-9\-]{5,})\)', text)
+    matches = re.finditer(r'\(([^)]+)\)', text)
     for match in matches:
-        candidate = match.group(1)
-        if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
+        candidate = match.group(1).strip()
+        if '№' in candidate:
             serials.add(candidate.upper())
+        elif re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
+            if len(candidate) >= 5:
+                serials.add(candidate.upper())
         elif candidate.isdigit() and len(candidate) >= 10:
             serials.add(candidate)
     return list(serials)
@@ -44,8 +61,6 @@ async def save_inventory(categories):
         cat_name = cat['header']
         items = cat['items']
         await update_category_items(cat_name, items)
-
-    # Категории, которых нет в новом списке, остаются нетронутыми
 
 async def remove_by_serial(serial: str) -> int:
     """Удаляет товар по серийному номеру."""
