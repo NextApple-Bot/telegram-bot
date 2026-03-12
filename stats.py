@@ -1,11 +1,9 @@
-import os
 import asyncpg
 from datetime import datetime
-
-DATABASE_URL = os.environ.get('DATABASE_URL')
+import config
 
 async def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         await conn.execute('''
             INSERT INTO preorders (cash, terminal, qr, installment)
@@ -15,8 +13,7 @@ async def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
         await conn.close()
 
 async def increment_booking(serial: str, amount: float):
-    # Получаем item_id по серийному номеру
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         row = await conn.fetchrow('SELECT id FROM items WHERE UPPER(serial) = $1', serial.upper())
         if row:
@@ -27,7 +24,7 @@ async def increment_booking(serial: str, amount: float):
         await conn.close()
 
 async def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, installment=0.0, item_id=None):
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         await conn.execute('''
             INSERT INTO sales (item_id, count, cash, terminal, qr, installment)
@@ -38,7 +35,7 @@ async def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, installment=0
 
 async def get_stats():
     today = datetime.now().strftime('%Y-%m-%d')
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         pre = await conn.fetchrow('''
             SELECT COUNT(*), COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
@@ -80,7 +77,7 @@ async def get_stats():
 
 async def reset_stats():
     today = datetime.now().strftime('%Y-%m-%d')
-    conn = await asyncpg.connect(DATABASE_URL)
+    conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         async with conn.transaction():
             await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
