@@ -1,12 +1,6 @@
-# utils.py
 import re
 
 def extract_all_amounts(text):
-    """
-    Извлекает из текста все упоминания сумм с ключевыми словами.
-    Возвращает список кортежей (тип_оплаты, сумма).
-    Типы: 'cash', 'terminal', 'qr', 'installment', 'prepayment'.
-    """
     patterns = [
         (r'Наличные|Наличными', 'cash'),
         (r'Терминал', 'terminal'),
@@ -17,7 +11,6 @@ def extract_all_amounts(text):
     results = []
     number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
     for kw, typ in patterns:
-        # ключевое слово перед числом
         for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
             num_str = match.group(1).replace(' ', '').replace(',', '.')
             try:
@@ -25,7 +18,6 @@ def extract_all_amounts(text):
                 results.append((typ, amount))
             except:
                 continue
-        # число перед ключевым словом
         for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
             num_str = match.group(1).replace(' ', '').replace(',', '.')
             try:
