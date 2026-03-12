@@ -71,7 +71,7 @@ def get_main_menu_keyboard():
             InlineKeyboardButton(text="📤 Выгрузить ассортимент", callback_data="menu:export_assortment"),
         ],
         [
-            InlineKeyboardButton(text="📅 Клиенты по месяцам", callback_data="menu:clients_by_month"),  # новая кнопка
+            InlineKeyboardButton(text="📅 Клиенты по месяцам", callback_data="menu:clients_by_month"),
             InlineKeyboardButton(text="🗑️ Очистить ассортимент", callback_data="menu:clear"),
         ],
         [
