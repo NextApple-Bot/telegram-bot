@@ -1,8 +1,7 @@
 import re
-import aiosqlite
 from database import (
-    add_item, remove_item_by_serial, get_all_categories_with_items,  # <-- добавили
-    get_or_create_category, DB_PATH, update_category_items
+    add_item, remove_item_by_serial, get_all_categories_with_items,
+    get_or_create_category, update_category_items
 )
 
 def extract_serial(line):
@@ -18,7 +17,7 @@ def extract_serial(line):
         # Если есть символ №, считаем это серийным номером
         if '№' in candidate:
             return candidate.upper()
-        # Проверяем на наличие букв и цифр (как раньше)
+        # Проверяем на наличие букв и цифр
         if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
             if len(candidate) >= 5:
                 return candidate.upper()
