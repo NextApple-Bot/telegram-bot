@@ -14,14 +14,12 @@ async def init_db():
     """Создаёт таблицы и индексы, если их нет."""
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        # Таблица категорий
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE
             )
         ''')
-        # Таблица товаров
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS items (
                 id SERIAL PRIMARY KEY,
@@ -31,7 +29,6 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Таблица продаж
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS sales (
                 id SERIAL PRIMARY KEY,
@@ -44,7 +41,6 @@ async def init_db():
                 sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Таблица предзаказов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS preorders (
                 id SERIAL PRIMARY KEY,
@@ -55,7 +51,6 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Таблица броней
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
                 id SERIAL PRIMARY KEY,
@@ -64,7 +59,6 @@ async def init_db():
                 booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Таблица клиентов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS clients (
                 id SERIAL PRIMARY KEY,
@@ -78,7 +72,6 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Таблица покупок
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS purchases (
                 id SERIAL PRIMARY KEY,
@@ -90,7 +83,6 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Индексы
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
@@ -137,7 +129,6 @@ async def get_item_id_by_serial(serial: str) -> int | None:
         await conn.close()
 
 async def get_item_by_serial(serial: str) -> dict | None:
-    """Возвращает полную информацию о товаре по серийному номеру (текст и категорию)."""
     normalized = serial.strip().upper()
     conn = await asyncpg.connect(DATABASE_URL)
     try:
@@ -161,7 +152,6 @@ async def remove_item_by_serial(serial: str) -> int:
         await conn.close()
 
 async def get_all_categories_with_items():
-    """Возвращает список всех категорий с товарами (включая пустые)."""
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         rows = await conn.fetch('''
@@ -182,7 +172,6 @@ async def get_all_categories_with_items():
         await conn.close()
 
 async def get_all_items_serials():
-    """Возвращает список всех товаров с их серийными номерами (для проверки дубликатов)."""
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         rows = await conn.fetch('SELECT text, serial FROM items')
@@ -191,13 +180,11 @@ async def get_all_items_serials():
         await conn.close()
 
 async def get_items_grouped_by_category():
-    """Только категории с товарами (обратная совместимость)."""
     items = await get_all_categories_with_items()
     return [cat for cat in items if cat['items']]
 
 async def update_category_items(category_name: str, new_items: list):
-    """Заменяет все товары в категории новым списком."""
-    from inventory import extract_serial  # локальный импорт
+    from inventory import extract_serial
     cat_id = await get_or_create_category(category_name)
     conn = await asyncpg.connect(DATABASE_URL)
     try:
