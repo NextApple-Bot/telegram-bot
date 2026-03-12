@@ -1,8 +1,8 @@
 import re
 import tempfile
-import asyncpg
 import os
 import aiofiles
+import asyncpg
 from datetime import datetime
 from aiogram import F, Bot
 from aiogram.types import Message, ReactionTypeEmoji, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -17,7 +17,7 @@ from database import (
     add_booking,
     get_all_items_serials,
     get_item_by_serial,
-    get_item_by_text  # <-- добавлен импорт
+    get_item_by_text
 )
 from .base import (
     router, logger, AssortmentConfirmState, ArrivalConfirmState,
@@ -266,7 +266,7 @@ async def unexpected_message_in_arrival_confirm(message: Message, state):
         await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите «отмена»).")
 
 # -------------------------------------------------------------------
-# Топик «Предзаказ» (исправлен импорт get_item_by_text)
+# Топик «Предзаказ»
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
 async def handle_preorder(message: Message, bot):
@@ -282,43 +282,36 @@ async def handle_preorder(message: Message, bot):
     booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
 
     if booking_indices:
-        # Предзаказ (строки до первого "Бронь:")
         preorder_lines = lines[:booking_indices[0]]
         if preorder_lines:
             cash, terminal, qr, installment = extract_preorder_amounts(preorder_lines)
             await stats.increment_preorder(cash, terminal, qr, installment)
             await message.react([ReactionTypeEmoji(emoji='👌')])
 
-        # Обрабатываем каждую бронь
         for idx in booking_indices:
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
             booking_lines = lines[start:end]
 
-            # Собираем строки, из которых можно извлечь серийный номер
             item_lines = []
             for line in booking_lines:
                 line = line.strip()
                 if not line:
                     continue
-                if inventory.extract_serial(line):  # проверка на наличие серийного номера
+                if inventory.extract_serial(line):
                     item_lines.append(line)
 
             if not item_lines:
                 await message.reply("❌ Не удалось найти товары с серийными номерами для брони.")
                 continue
 
-            # Вычисляем общую сумму по блоку
             block_cash, block_terminal, block_qr, block_installment = extract_preorder_amounts(booking_lines)
             block_total = block_cash + block_terminal + block_qr + block_installment
             amount_per_item = block_total / len(item_lines) if block_total else 0
 
-            # Обрабатываем каждую товарную строку
             for item_line in item_lines:
-                # Сначала пытаемся найти по точному тексту
                 item_info = await get_item_by_text(item_line)
                 if not item_info:
-                    # Если не нашли, пробуем по серийному номеру
                     serial = inventory.extract_serial(item_line)
                     if serial:
                         item_info = await get_item_by_serial(serial)
@@ -329,20 +322,17 @@ async def handle_preorder(message: Message, bot):
 
                 item_text = item_info['text']
                 category_name = item_info['category_name']
-                serial = inventory.extract_serial(item_text)  # извлекаем серийный номер из текста (он может быть)
+                serial = inventory.extract_serial(item_text)
 
-                # Удаляем товар
                 removed = await inventory.remove_by_serial(serial)
                 if not removed:
                     await message.reply(f"❌ Не удалось удалить товар {item_text}.")
                     continue
 
-                # Добавляем с пометкой о брони
                 today = datetime.now().strftime("%d.%m")
                 new_item_text = f"{item_text} (Бронь от {today})"
                 await add_item(new_item_text, serial, category_name=category_name)
 
-                # Учитываем бронь в статистике
                 await stats.increment_booking(serial, amount_per_item)
 
                 await message.react([ReactionTypeEmoji(emoji='👍')])
@@ -354,9 +344,64 @@ async def handle_preorder(message: Message, bot):
         await message.react([ReactionTypeEmoji(emoji='👌')])
 
 # -------------------------------------------------------------------
-# Топик «Продажи» (исправлен порядок действий)
+# Топик «Продажи»
 # -------------------------------------------------------------------
-    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА (исправленная версия) ---
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
+async def handle_sales_message(message: Message):
+    logger.info(f"📩 Сообщение в топике Продажи: {message.text}")
+    if not message.text:
+        return
+
+    lines = message.text.splitlines()
+    cash, terminal, qr, installment = extract_sales_amounts(lines)
+
+    candidates = inventory.extract_serials_from_text(message.text)
+    found_serials = []
+    not_found_serials = []
+    sold_items = []
+
+    for cand in candidates:
+        item_id = await get_item_id_by_serial(cand)
+        if item_id:
+            found_serials.append(cand)
+            sold_items.append((item_id, cand))
+        else:
+            not_found_serials.append(cand)
+
+    if (cash or terminal or qr or installment) and sold_items:
+        per_item_cash = cash / len(sold_items) if cash else 0
+        per_item_terminal = terminal / len(sold_items) if terminal else 0
+        per_item_qr = qr / len(sold_items) if qr else 0
+        per_item_installment = installment / len(sold_items) if installment else 0
+        for item_id, serial in sold_items:
+            await stats.increment_sales(
+                count=1,
+                cash=per_item_cash,
+                terminal=per_item_terminal,
+                qr=per_item_qr,
+                installment=per_item_installment,
+                item_id=item_id
+            )
+            logger.info(f"✅ Продажа зарегистрирована для товара {serial} (item_id={item_id})")
+
+    for item_id, serial in sold_items:
+        removed = await inventory.remove_by_serial(serial)
+        if not removed:
+            logger.warning(f"⚠️ Не удалось удалить товар {serial} после регистрации продажи")
+        else:
+            logger.info(f"🗑️ Товар {serial} удалён из ассортимента")
+
+    if not_found_serials:
+        text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
+        await message.reply(text)
+        logger.info(f"❌ Не найдены: {not_found_serials}")
+
+    if sold_items:
+        try:
+            await message.react([ReactionTypeEmoji(emoji='🔥')])
+        except Exception as e:
+            logger.exception(f"Не удалось поставить реакцию: {e}")
+
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
