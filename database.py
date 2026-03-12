@@ -2,9 +2,9 @@ import os
 import asyncpg
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
-import config  # добавлен импорт config
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -375,28 +375,25 @@ async def search_clients(query: str):
     finally:
         await conn.close()
 
-# ---------- НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ ПО МЕСЯЦАМ ----------
+# ---------- Функции для работы по месяцам ----------
 
 async def get_available_months():
     """
-    Возвращает список строк вида 'MM.YYYY' для месяцев, 
+    Возвращает список строк вида 'MM.YYYY' для месяцев,
     в которых есть либо клиенты, либо покупки.
     """
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        # Получаем месяцы из clients (дата регистрации)
         rows1 = await conn.fetch('''
             SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
             FROM clients
             WHERE created_at IS NOT NULL
         ''')
-        # Получаем месяцы из purchases (дата покупки)
         rows2 = await conn.fetch('''
             SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
             FROM purchases
             WHERE created_at IS NOT NULL
         ''')
-        # Объединяем, сортируем по убыванию (сначала новые)
         months = sorted(set([r['month'] for r in rows1] + [r['month'] for r in rows2]), reverse=True)
         return months
     finally:
@@ -407,7 +404,6 @@ async def get_clients_data_for_month(month_str: str):
     Возвращает список словарей с данными клиентов и их покупок за указанный месяц.
     month_str: строка вида 'MM.YYYY' (например, '03.2026')
     """
-    # Преобразуем месяц в формат для SQL (начало и конец месяца)
     month, year = map(int, month_str.split('.'))
     start_date = f"{year:04d}-{month:02d}-01"
     if month == 12:
@@ -417,7 +413,6 @@ async def get_clients_data_for_month(month_str: str):
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        # Получаем всех клиентов + их покупки за месяц
         rows = await conn.fetch('''
             SELECT 
                 c.id as client_id,
@@ -437,8 +432,8 @@ async def get_clients_data_for_month(month_str: str):
             FROM clients c
             LEFT JOIN purchases p ON c.id = p.client_id 
                 AND p.created_at >= $1 AND p.created_at < $2
-            WHERE p.id IS NOT NULL  -- только клиенты с покупками в этом месяце
-               OR c.created_at >= $1 AND c.created_at < $2  -- или новые клиенты (даже без покупок)
+            WHERE p.id IS NOT NULL
+               OR c.created_at >= $1 AND c.created_at < $2
             ORDER BY c.id, p.created_at
         ''', start_date, end_date)
         return [dict(row) for row in rows]
