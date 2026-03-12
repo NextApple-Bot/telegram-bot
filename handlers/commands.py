@@ -2,13 +2,13 @@ import csv
 import json
 import tempfile
 import os
-import aiosqlite
+import asyncpg
 from aiogram import F
 from aiogram.types import Message, FSInputFile
 from aiogram.filters import Command
 
 import config
-from database import DB_PATH, search_clients, get_client_purchases
+from database import search_clients, get_client_purchases
 from .base import (
     router, logger, show_inventory, cancel_action, get_main_menu_keyboard, show_help
 )
@@ -49,10 +49,9 @@ async def cmd_export_clients(message: Message):
         writer = csv.writer(tmp)
         writer.writerow(['ID', 'ФИО', 'Основной телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник', 'Дата регистрации'])
 
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute('SELECT * FROM clients ORDER BY id')
-            rows = await cursor.fetchall()
+        conn = await asyncpg.connect(config.DATABASE_URL)
+        try:
+            rows = await conn.fetch('SELECT * FROM clients ORDER BY id')
             for row in rows:
                 writer.writerow([
                     row['id'],
@@ -64,6 +63,8 @@ async def cmd_export_clients(message: Message):
                     row['referral_source'],
                     row['created_at']
                 ])
+        finally:
+            await conn.close()
 
         tmp_path = tmp.name
 
@@ -85,10 +86,9 @@ async def cmd_export_purchases(message: Message):
         writer = csv.writer(tmp)
         writer.writerow(['ID покупки', 'ID клиента', 'Товары (JSON)', 'Сумма', 'Оплата (JSON)', 'Тип', 'Дата'])
 
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute('SELECT * FROM purchases ORDER BY id')
-            rows = await cursor.fetchall()
+        conn = await asyncpg.connect(config.DATABASE_URL)
+        try:
+            rows = await conn.fetch('SELECT * FROM purchases ORDER BY id')
             for row in rows:
                 writer.writerow([
                     row['id'],
@@ -99,6 +99,8 @@ async def cmd_export_purchases(message: Message):
                     row['purchase_type'],
                     row['created_at']
                 ])
+        finally:
+            await conn.close()
 
         tmp_path = tmp.name
 
@@ -164,16 +166,15 @@ async def cmd_export_full_report(message: Message):
         writer = csv.writer(tmp)
         writer.writerow(['ID клиента', 'ФИО', 'Телефон', 'Telegram', 'Дата покупки', 'Товары', 'Сумма', 'Способ оплаты'])
 
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute('''
+        conn = await asyncpg.connect(config.DATABASE_URL)
+        try:
+            rows = await conn.fetch('''
                 SELECT c.id, c.full_name, c.phone, c.telegram_username,
                        p.created_at, p.items_json, p.total_amount, p.payment_details
                 FROM clients c
                 LEFT JOIN purchases p ON c.id = p.client_id
                 ORDER BY c.id, p.created_at
             ''')
-            rows = await cursor.fetchall()
             for row in rows:
                 items = json.loads(row['items_json']) if row['items_json'] else []
                 items_short = ', '.join([it['item_text'][:30] + '...' for it in items])
@@ -187,6 +188,8 @@ async def cmd_export_full_report(message: Message):
                     row['total_amount'],
                     row['payment_details']
                 ])
+        finally:
+            await conn.close()
 
         tmp_path = tmp.name
 
