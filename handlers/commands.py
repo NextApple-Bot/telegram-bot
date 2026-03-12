@@ -200,3 +200,21 @@ async def cmd_export_full_report(message: Message):
         )
     finally:
         os.unlink(tmp_path)
+
+@router.message(Command("reset_clients"))
+async def cmd_reset_clients(message: Message):
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM purchases")
+            await conn.execute("DELETE FROM clients")
+        await message.answer("✅ Все данные клиентов и покупок удалены. Теперь учёт начнётся заново.")
+    except Exception as e:
+        logger.exception("Ошибка при сбросе клиентов")
+        await message.answer(f"❌ Ошибка: {e}")
+    finally:
+        await conn.close()
