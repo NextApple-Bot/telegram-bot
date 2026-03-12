@@ -369,11 +369,16 @@ async def handle_sales_message(message: Message):
     candidates = inventory.extract_serials_from_text(message.text)
     found_serials = []
     not_found_serials = []
+    sold_item_ids = []  # список id проданных товаров
 
     for cand in candidates:
+        # Сначала получаем id товара (до удаления)
+        item_id = await get_item_id_by_serial(cand)
         removed = await inventory.remove_by_serial(cand)
         if removed:
             found_serials.append(cand)
+            if item_id:
+                sold_item_ids.append(item_id)
         else:
             not_found_serials.append(cand)
 
@@ -383,9 +388,34 @@ async def handle_sales_message(message: Message):
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
+    # Передаём item_id в статистику
     if cash or terminal or qr or installment:
         count = len(found_serials) if found_serials else 1
-        await stats.increment_sales(count=count, cash=cash, terminal=terminal, qr=qr, installment=installment)
+        # Если есть конкретные id, создаём отдельные записи для каждого товара
+        if sold_item_ids:
+            per_item_cash = cash / len(sold_item_ids) if cash else 0
+            per_item_terminal = terminal / len(sold_item_ids) if terminal else 0
+            per_item_qr = qr / len(sold_item_ids) if qr else 0
+            per_item_installment = installment / len(sold_item_ids) if installment else 0
+            for item_id in sold_item_ids:
+                await stats.increment_sales(
+                    count=1,
+                    cash=per_item_cash,
+                    terminal=per_item_terminal,
+                    qr=per_item_qr,
+                    installment=per_item_installment,
+                    item_id=item_id
+                )
+        else:
+            # Если не удалось получить id, передаём None
+            await stats.increment_sales(
+                count=count,
+                cash=cash,
+                terminal=terminal,
+                qr=qr,
+                installment=installment,
+                item_id=None
+            )
 
     if not_found_serials:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
