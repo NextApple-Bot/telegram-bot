@@ -15,7 +15,8 @@ from database import (
     get_item_id_by_serial,
     add_booking,
     get_all_items_serials,
-    get_item_by_serial
+    get_item_by_serial,
+    get_item_by_text  # добавить эту строку
 )
 from .base import (
     router, logger, AssortmentConfirmState, ArrivalConfirmState,
