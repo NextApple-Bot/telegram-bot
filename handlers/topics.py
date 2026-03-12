@@ -352,55 +352,56 @@ async def handle_sales_message(message: Message):
     candidates = inventory.extract_serials_from_text(message.text)
     found_serials = []
     not_found_serials = []
-    sold_item_ids = []
+    sold_items = []  # список кортежей (item_id, serial)
 
+    # Сначала собираем информацию о найденных товарах
     for cand in candidates:
         item_id = await get_item_id_by_serial(cand)
-        removed = await inventory.remove_by_serial(cand)
-        if removed:
+        if item_id:
             found_serials.append(cand)
-            if item_id:
-                sold_item_ids.append(item_id)
+            sold_items.append((item_id, cand))
         else:
             not_found_serials.append(cand)
 
-    if found_serials:
-        try:
-            await message.react([ReactionTypeEmoji(emoji='🔥')])
-        except Exception as e:
-            logger.exception(f"Не удалось поставить реакцию: {e}")
-
-    if cash or terminal or qr or installment:
-        count = len(found_serials) if found_serials else 1
-        if sold_item_ids:
-            per_item_cash = cash / len(sold_item_ids) if cash else 0
-            per_item_terminal = terminal / len(sold_item_ids) if terminal else 0
-            per_item_qr = qr / len(sold_item_ids) if qr else 0
-            per_item_installment = installment / len(sold_item_ids) if installment else 0
-            for item_id in sold_item_ids:
-                await stats.increment_sales(
-                    count=1,
-                    cash=per_item_cash,
-                    terminal=per_item_terminal,
-                    qr=per_item_qr,
-                    installment=per_item_installment,
-                    item_id=item_id
-                )
-        else:
+    # Если есть суммы и найденные товары – распределяем суммы и создаём записи о продажах
+    if (cash or terminal or qr or installment) and sold_items:
+        per_item_cash = cash / len(sold_items) if cash else 0
+        per_item_terminal = terminal / len(sold_items) if terminal else 0
+        per_item_qr = qr / len(sold_items) if qr else 0
+        per_item_installment = installment / len(sold_items) if installment else 0
+        for item_id, serial in sold_items:
             await stats.increment_sales(
-                count=count,
-                cash=cash,
-                terminal=terminal,
-                qr=qr,
-                installment=installment,
-                item_id=None
+                count=1,
+                cash=per_item_cash,
+                terminal=per_item_terminal,
+                qr=per_item_qr,
+                installment=per_item_installment,
+                item_id=item_id  # товар ещё существует
             )
+            logger.info(f"✅ Продажа зарегистрирована для товара {serial} (item_id={item_id})")
 
+    # Теперь удаляем проданные товары
+    for item_id, serial in sold_items:
+        removed = await inventory.remove_by_serial(serial)
+        if not removed:
+            logger.warning(f"⚠️ Не удалось удалить товар {serial} после регистрации продажи")
+        else:
+            logger.info(f"🗑️ Товар {serial} удалён из ассортимента")
+
+    # Если были товары, для которых серийный номер не найден – сообщаем
     if not_found_serials:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
 
+    # Ставим реакцию, если хотя бы один товар найден
+    if sold_items:
+        try:
+            await message.react([ReactionTypeEmoji(emoji='🔥')])
+        except Exception as e:
+            logger.exception(f"Не удалось поставить реакцию: {e}")
+
+    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА (без изменений) ---
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
