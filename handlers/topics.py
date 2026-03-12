@@ -294,13 +294,13 @@ async def handle_preorder(message: Message, bot):
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
             booking_lines = lines[start:end]
 
-            # Собираем все строки, содержащие серийный номер (в скобках)
+            # Собираем строки, из которых можно извлечь серийный номер
             item_lines = []
             for line in booking_lines:
                 line = line.strip()
                 if not line:
                     continue
-                if re.search(r'\([^)]+\)', line):
+                if inventory.extract_serial(line):  # проверка на наличие серийного номера
                     item_lines.append(line)
 
             if not item_lines:
