@@ -3,3 +3,4 @@ aiofiles
 uvicorn
 starlette
 aiosqlite
+asyncpg
