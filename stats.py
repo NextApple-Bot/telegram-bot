@@ -1,5 +1,5 @@
 import asyncpg
-from datetime import datetime
+from datetime import date
 import config
 
 async def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
@@ -34,7 +34,7 @@ async def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, installment=0
         await conn.close()
 
 async def get_stats():
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = date.today()
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         pre = await conn.fetchrow('''
@@ -58,7 +58,7 @@ async def get_stats():
         sale_count, sc, st, sq, si = sale
 
         return {
-            'date': today,
+            'date': today.strftime('%Y-%m-%d'),
             'preorders': pre_count,
             'bookings': book_count,
             'sales': sale_count,
@@ -76,7 +76,7 @@ async def get_stats():
         await conn.close()
 
 async def reset_stats():
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = date.today()
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         async with conn.transaction():
