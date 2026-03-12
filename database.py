@@ -1,3 +1,4 @@
+import os
 import asyncpg
 import json
 import logging
@@ -5,12 +6,12 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Строка подключения из переменной окружения (нужно будет добавить в Render)
-# Пример: postgresql://user:pass@host:port/dbname
 DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("❌ DATABASE_URL не задан в переменных окружения!")
 
 async def init_db():
-    """Создаёт таблицы, если их нет."""
+    """Создаёт таблицы и индексы, если их нет."""
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         # Таблица категорий
@@ -92,23 +93,20 @@ async def init_db():
         # Индексы
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
-        # Индекс для быстрого поиска категорий (для оптимизации)
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_serial ON items(serial)')
     finally:
         await conn.close()
 
-# ---------- Функции для работы с категориями и товарами ----------
+# ---------- Категории и товары ----------
 
 async def get_or_create_category(name: str) -> int:
-    """Возвращает id категории. Ищет по нормализованному имени, если нет — создаёт."""
     norm_name = name.lower().rstrip(':')
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        # Ищем по нижнему регистру
         row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
         if row:
             return row['id']
-        # Создаём новую
         row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
         return row['id']
     finally:
@@ -143,7 +141,7 @@ async def remove_item_by_serial(serial: str) -> int:
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         result = await conn.execute('DELETE FROM items WHERE UPPER(serial) = $1', normalized)
-        # result — строка типа "DELETE 1", извлекаем число
+        # result — строка вида "DELETE 1"
         return int(result.split()[1]) if result.startswith('DELETE') else 0
     finally:
         await conn.close()
@@ -176,8 +174,7 @@ async def get_items_grouped_by_category():
 
 async def update_category_items(category_name: str, new_items: list):
     """Заменяет все товары в категории новым списком."""
-    # Избегаем циклического импорта
-    from inventory import extract_serial
+    from inventory import extract_serial  # локальный импорт
     cat_id = await get_or_create_category(category_name)
     conn = await asyncpg.connect(DATABASE_URL)
     try:
@@ -282,16 +279,16 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
                 updates = []
                 params = []
                 if full_name and full_name != row['full_name']:
-                    updates.append("full_name = $1")
+                    updates.append("full_name = $" + str(len(params)+1))
                     params.append(full_name)
                 if telegram_username and telegram_username != row['telegram_username']:
-                    updates.append("telegram_username = $2")
+                    updates.append("telegram_username = $" + str(len(params)+1))
                     params.append(telegram_username)
                 if social_network and social_network != row['social_network']:
-                    updates.append("social_network = $3")
+                    updates.append("social_network = $" + str(len(params)+1))
                     params.append(social_network)
                 if referral_source and referral_source != row['referral_source']:
-                    updates.append("referral_source = $4")
+                    updates.append("referral_source = $" + str(len(params)+1))
                     params.append(referral_source)
                 if phones:
                     existing_phones = row['phones'] if row['phones'] else ""
@@ -299,7 +296,7 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
                     all_phones.update(phones)
                     new_phones_str = ",".join(sorted(all_phones))
                     if new_phones_str != existing_phones:
-                        updates.append("phones = $5")
+                        updates.append("phones = $" + str(len(params)+1))
                         params.append(new_phones_str)
                 if updates:
                     set_clause = ", ".join(updates)
