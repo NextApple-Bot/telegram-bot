@@ -320,8 +320,9 @@ async def process_month_selection(callback: CallbackQuery):
                     try:
                         items = json.loads(row['items_json'])
                         items_text = '; '.join([f"{it.get('item_text', '')[:50]} ({it.get('price', '')}₽)" for it in items])
-                    except:
-                        items_text = row['items_json']
+                    except Exception as e:
+                        logger.error(f"Ошибка парсинга JSON для purchase_id {row['purchase_id']}: {e}")
+                        items_text = row['items_json']  # fallback
 
                 writer.writerow([
                     row['client_id'],
@@ -348,6 +349,7 @@ async def process_month_selection(callback: CallbackQuery):
         )
         os.unlink(tmp_path)
 
+        # Возвращаемся к выбору месяца
         months = await get_available_months()
         buttons = []
         row = []
@@ -363,5 +365,5 @@ async def process_month_selection(callback: CallbackQuery):
         await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
 
     except Exception as e:
-        logger.exception(f"Ошибка при формировании отчёта за {month}")
-        await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
+        logger.exception(f"❌ Ошибка при формировании отчёта за {month}: {e}")
+        await callback.message.edit_text(f"❌ Ошибка: {e}. Пожалуйста, сообщите администратору.")
