@@ -5,6 +5,11 @@ from database import (
 )
 
 def extract_serial(line):
+    """
+    Извлекает серийный номер из строки товара.
+    - Если в скобках есть символ '№', возвращает всё содержимое скобок.
+    - Иначе ищет комбинацию букв и цифр (длиной от 5 символов) или длинное число (≥10 цифр).
+    """
     matches = re.finditer(r'\(([^)]+)\)', line)
     for match in matches:
         candidate = match.group(1).strip()
