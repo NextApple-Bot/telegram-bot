@@ -344,7 +344,7 @@ async def handle_preorder(message: Message, bot):
         await message.react([ReactionTypeEmoji(emoji='👌')])
 
 # -------------------------------------------------------------------
-# Топик «Продажи»
+# Топик «Продажи» (ИЗМЕНЁННАЯ ВЕРСИЯ)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
 async def handle_sales_message(message: Message):
@@ -358,7 +358,7 @@ async def handle_sales_message(message: Message):
     candidates = inventory.extract_serials_from_text(message.text)
     found_serials = []
     not_found_serials = []
-    sold_items = []
+    sold_items = []  # список кортежей (item_id, serial)
 
     for cand in candidates:
         item_id = await get_item_id_by_serial(cand)
@@ -368,7 +368,8 @@ async def handle_sales_message(message: Message):
         else:
             not_found_serials.append(cand)
 
-    if (cash or terminal or qr or installment) and sold_items:
+    if sold_items:
+        # Есть основные товары (с серийными номерами)
         per_item_cash = cash / len(sold_items) if cash else 0
         per_item_terminal = terminal / len(sold_items) if terminal else 0
         per_item_qr = qr / len(sold_items) if qr else 0
@@ -380,16 +381,31 @@ async def handle_sales_message(message: Message):
                 terminal=per_item_terminal,
                 qr=per_item_qr,
                 installment=per_item_installment,
-                item_id=item_id
+                item_id=item_id,
+                is_accessory=False
             )
             logger.info(f"✅ Продажа зарегистрирована для товара {serial} (item_id={item_id})")
 
-    for item_id, serial in sold_items:
-        removed = await inventory.remove_by_serial(serial)
-        if not removed:
-            logger.warning(f"⚠️ Не удалось удалить товар {serial} после регистрации продажи")
-        else:
-            logger.info(f"🗑️ Товар {serial} удалён из ассортимента")
+        # Удаляем проданные товары
+        for item_id, serial in sold_items:
+            removed = await inventory.remove_by_serial(serial)
+            if not removed:
+                logger.warning(f"⚠️ Не удалось удалить товар {serial} после регистрации продажи")
+            else:
+                logger.info(f"🗑️ Товар {serial} удалён из ассортимента")
+
+    elif cash or terminal or qr or installment:
+        # Нет основных товаров, но есть суммы – аксессуары/услуги
+        await stats.increment_sales(
+            count=1,
+            cash=cash,
+            terminal=terminal,
+            qr=qr,
+            installment=installment,
+            item_id=None,
+            is_accessory=True
+        )
+        logger.info(f"✅ Зарегистрирована продажа аксессуаров на сумму {cash+terminal+qr+installment:.0f} руб.")
 
     if not_found_serials:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
@@ -402,6 +418,7 @@ async def handle_sales_message(message: Message):
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
+    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА (без изменений) ---
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
