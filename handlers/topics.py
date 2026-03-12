@@ -2,7 +2,6 @@ import re
 import tempfile
 import os
 import aiofiles
-import aiosqlite
 from datetime import datetime
 from aiogram import F, Bot
 from aiogram.types import Message, ReactionTypeEmoji, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -23,7 +22,7 @@ from .base import (
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
 )
 from utils import extract_preorder_amounts, extract_sales_amounts
-from sort_assortment import add_item_to_categories  # <-- функция для умного распределения товаров
+from sort_assortment import add_item_to_categories  # функция для умного распределения товаров
 
 # -------------------------------------------------------------------
 # Топик «Ассортимент» (замена всего)
@@ -154,12 +153,8 @@ async def handle_arrival(message: Message, bot, state):
         await message.reply("❌ Нет ни одной позиции после фильтрации.")
         return
 
-    # Получаем существующие товары для проверки дубликатов
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute('SELECT text, serial FROM items')
-        rows = await cursor.fetchall()
-        existing_items = [dict(row) for row in rows]
+    # Получаем существующие товары для проверки дубликатов (через новую функцию)
+    existing_items = await get_all_items_serials()
     existing_texts = {item['text'] for item in existing_items}
     existing_serials = {item['serial'] for item in existing_items if item['serial']}
 
@@ -219,7 +214,7 @@ async def process_arrival_confirm(callback: CallbackQuery, state):
     if action == "yes":
         # Загружаем текущие категории (из БД) для определения куда класть товары
         current_categories = await inventory.load_inventory()
-        
+
         for line in added_lines:
             serial = inventory.extract_serial(line)
             # Используем функцию add_item_to_categories для поиска/создания подходящей категории
@@ -319,21 +314,13 @@ async def handle_preorder(message: Message, bot):
                 await message.reply("❌ Не удалось извлечь серийный номер.")
                 continue
 
-            # Получаем информацию о товаре: текст и категорию
-            async with aiosqlite.connect(DB_PATH) as db:
-                db.row_factory = aiosqlite.Row
-                cursor = await db.execute('''
-                    SELECT items.text, categories.name as category_name
-                    FROM items
-                    JOIN categories ON items.category_id = categories.id
-                    WHERE items.serial = ?
-                ''', (serial,))
-                row = await cursor.fetchone()
-                if not row:
-                    await message.reply(f"❌ Товар с серийным номером {serial} не найден в ассортименте.")
-                    continue
-                item_text = row['text']
-                category_name = row['category_name']
+            # Получаем информацию о товаре через новую функцию
+            item_info = await get_item_by_serial(serial)
+            if not item_info:
+                await message.reply(f"❌ Товар с серийным номером {serial} не найден в ассортименте.")
+                continue
+            item_text = item_info['text']
+            category_name = item_info['category_name']
 
             # Удаляем товар
             removed = await inventory.remove_by_serial(serial)
@@ -375,7 +362,7 @@ async def handle_sales_message(message: Message):
     candidates = inventory.extract_serials_from_text(message.text)
     found_serials = []
     not_found_serials = []
-    sold_item_ids = []  # список id проданных товаров
+    sold_item_ids = []
 
     for cand in candidates:
         # Сначала получаем id товара (до удаления)
@@ -397,7 +384,6 @@ async def handle_sales_message(message: Message):
     # Передаём item_id в статистику
     if cash or terminal or qr or installment:
         count = len(found_serials) if found_serials else 1
-        # Если есть конкретные id, создаём отдельные записи для каждого товара
         if sold_item_ids:
             per_item_cash = cash / len(sold_item_ids) if cash else 0
             per_item_terminal = terminal / len(sold_item_ids) if terminal else 0
@@ -413,7 +399,6 @@ async def handle_sales_message(message: Message):
                     item_id=item_id
                 )
         else:
-            # Если не удалось получить id, передаём None
             await stats.increment_sales(
                 count=count,
                 cash=cash,
