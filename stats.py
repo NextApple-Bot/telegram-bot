@@ -1,6 +1,7 @@
 import asyncpg
 from datetime import date
 import config
+from database import add_sale, get_today_stats
 
 async def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
     conn = await asyncpg.connect(config.DATABASE_URL)
