@@ -16,12 +16,14 @@ async def init_db():
     """Создаёт таблицы и индексы, если их нет."""
     conn = await asyncpg.connect(DATABASE_URL)
     try:
+        # Таблица категорий
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE
             )
         ''')
+        # Таблица товаров
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS items (
                 id SERIAL PRIMARY KEY,
@@ -31,6 +33,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица продаж
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS sales (
                 id SERIAL PRIMARY KEY,
@@ -43,6 +46,10 @@ async def init_db():
                 sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Добавляем колонку is_accessory, если её ещё нет
+        await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_accessory BOOLEAN DEFAULT FALSE')
+
+        # Таблица предзаказов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS preorders (
                 id SERIAL PRIMARY KEY,
@@ -53,6 +60,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица броней
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
                 id SERIAL PRIMARY KEY,
@@ -61,6 +69,7 @@ async def init_db():
                 booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица клиентов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS clients (
                 id SERIAL PRIMARY KEY,
@@ -74,6 +83,7 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица покупок
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS purchases (
                 id SERIAL PRIMARY KEY,
@@ -85,6 +95,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Индексы
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
@@ -214,13 +225,14 @@ async def update_category_items(category_name: str, new_items: list):
 # ---------- Статистика ----------
 
 async def add_sale(item_id: int = None, count: int = 1,
-                   cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0):
+                   cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0,
+                   is_accessory: bool = False):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         await conn.execute('''
-            INSERT INTO sales (item_id, count, cash, terminal, qr, installment)
-            VALUES ($1, $2, $3, $4, $5, $6)
-        ''', item_id, count, cash, terminal, qr, installment)
+            INSERT INTO sales (item_id, count, cash, terminal, qr, installment, is_accessory)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ''', item_id, count, cash, terminal, qr, installment, is_accessory)
     finally:
         await conn.close()
 
@@ -247,6 +259,21 @@ async def get_today_stats():
     today = date.today()
     conn = await asyncpg.connect(DATABASE_URL)
     try:
+        # Количество продаж (только основные товары)
+        sale_count_row = await conn.fetchrow('''
+            SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1 AND is_accessory = false
+        ''', today)
+        sale_count = sale_count_row[0]
+
+        # Суммы по всем продажам (включая аксессуары)
+        sale_sums = await conn.fetchrow('''
+            SELECT COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
+                   COALESCE(SUM(qr),0), COALESCE(SUM(installment),0)
+            FROM sales WHERE DATE(sold_at) = $1
+        ''', today)
+        sc, st, sq, si = sale_sums
+
+        # Предзаказы
         pre = await conn.fetchrow('''
             SELECT COUNT(*), COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
                    COALESCE(SUM(qr),0), COALESCE(SUM(installment),0)
@@ -254,18 +281,12 @@ async def get_today_stats():
         ''', today)
         pre_count, pc, pt, pq, pi = pre
 
+        # Брони
         book = await conn.fetchrow('''
             SELECT COUNT(*), COALESCE(SUM(total_amount),0)
             FROM bookings WHERE DATE(booked_at) = $1
         ''', today)
         book_count, book_total = book
-
-        sale = await conn.fetchrow('''
-            SELECT COUNT(*), COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
-                   COALESCE(SUM(qr),0), COALESCE(SUM(installment),0)
-            FROM sales WHERE DATE(sold_at) = $1
-        ''', today)
-        sale_count, sc, st, sq, si = sale
 
         return {
             'date': today.strftime('%Y-%m-%d'),
@@ -282,6 +303,17 @@ async def get_today_stats():
             'sales_qr': sq,
             'sales_installment': si,
         }
+    finally:
+        await conn.close()
+
+async def reset_stats():
+    today = date.today()
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
+            await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
+            await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
     finally:
         await conn.close()
 
@@ -378,10 +410,6 @@ async def search_clients(query: str):
 # ---------- Функции для работы по месяцам ----------
 
 async def get_available_months():
-    """
-    Возвращает список строк вида 'MM.YYYY' для месяцев,
-    в которых есть либо клиенты, либо покупки.
-    """
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         rows1 = await conn.fetch('''
@@ -399,13 +427,7 @@ async def get_available_months():
     finally:
         await conn.close()
 
-from datetime import datetime  # уже должен быть импортирован, но если нет — добавьте
-
 async def get_clients_data_for_month(month_str: str):
-    """
-    Возвращает список словарей с данными клиентов и их покупок за указанный месяц.
-    month_str: строка вида 'MM.YYYY' (например, '03.2026')
-    """
     month, year = map(int, month_str.split('.'))
     start_date = datetime(year, month, 1).date()
     if month == 12:
