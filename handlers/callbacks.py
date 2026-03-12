@@ -34,6 +34,13 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     if action == "inventory":
         await show_inventory(bot, chat_id)
     elif action == "stats":
+        # Удаляем предыдущее сообщение статистики, если оно было
+        if chat_id in last_stats_message:
+            try:
+                await bot.delete_message(chat_id, last_stats_message[chat_id])
+            except Exception as e:
+                logger.warning(f"Не удалось удалить старое сообщение статистики: {e}")
+        # Получаем свежую статистику
         s = await stats.get_stats()
         text = (
             f"📊 Статистика за {s['date']}:\n"
@@ -44,26 +51,18 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
         ])
-
-        if chat_id in last_stats_message:
-            try:
-                await bot.edit_message_text(
-                    text,
-                    chat_id=chat_id,
-                    message_id=last_stats_message[chat_id],
-                    reply_markup=keyboard
-                )
-            except TelegramBadRequest as e:
-                if "message is not modified" not in str(e):
-                    raise
-            except Exception:
-                msg = await callback.message.answer(text, reply_markup=keyboard)
-                last_stats_message[chat_id] = msg.message_id
-        else:
-            msg = await callback.message.answer(text, reply_markup=keyboard)
-            last_stats_message[chat_id] = msg.message_id
+        # Отправляем новое сообщение и запоминаем его ID
+        msg = await callback.message.answer(text, reply_markup=keyboard)
+        last_stats_message[chat_id] = msg.message_id
 
     elif action == "finance":
+        # Удаляем предыдущее сообщение финансов, если оно было
+        if chat_id in last_finance_message:
+            try:
+                await bot.delete_message(chat_id, last_finance_message[chat_id])
+            except Exception as e:
+                logger.warning(f"Не удалось удалить старое сообщение финансов: {e}")
+        # Получаем свежие финансы
         s = await stats.get_stats()
         total = (
             s['sales_terminal'] + s['preorders_terminal'] +
@@ -83,24 +82,9 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
         ])
-
-        if chat_id in last_finance_message:
-            try:
-                await bot.edit_message_text(
-                    text,
-                    chat_id=chat_id,
-                    message_id=last_finance_message[chat_id],
-                    reply_markup=keyboard
-                )
-            except TelegramBadRequest as e:
-                if "message is not modified" not in str(e):
-                    raise
-            except Exception:
-                msg = await callback.message.answer(text, reply_markup=keyboard)
-                last_finance_message[chat_id] = msg.message_id
-        else:
-            msg = await callback.message.answer(text, reply_markup=keyboard)
-            last_finance_message[chat_id] = msg.message_id
+        # Отправляем новое сообщение и запоминаем его ID
+        msg = await callback.message.answer(text, reply_markup=keyboard)
+        last_finance_message[chat_id] = msg.message_id
 
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
@@ -320,9 +304,8 @@ async def process_month_selection(callback: CallbackQuery):
                     try:
                         items = json.loads(row['items_json'])
                         items_text = '; '.join([f"{it.get('item_text', '')[:50]} ({it.get('price', '')}₽)" for it in items])
-                    except Exception as e:
-                        logger.error(f"Ошибка парсинга JSON для purchase_id {row['purchase_id']}: {e}")
-                        items_text = row['items_json']  # fallback
+                    except:
+                        items_text = row['items_json']
 
                 writer.writerow([
                     row['client_id'],
@@ -349,7 +332,6 @@ async def process_month_selection(callback: CallbackQuery):
         )
         os.unlink(tmp_path)
 
-        # Возвращаемся к выбору месяца
         months = await get_available_months()
         buttons = []
         row = []
@@ -365,5 +347,5 @@ async def process_month_selection(callback: CallbackQuery):
         await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
 
     except Exception as e:
-        logger.exception(f"❌ Ошибка при формировании отчёта за {month}: {e}")
-        await callback.message.edit_text(f"❌ Ошибка: {e}. Пожалуйста, сообщите администратору.")
+        logger.exception(f"Ошибка при формировании отчёта за {month}")
+        await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
