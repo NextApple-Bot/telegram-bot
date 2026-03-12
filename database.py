@@ -136,12 +136,26 @@ async def get_item_id_by_serial(serial: str) -> int | None:
     finally:
         await conn.close()
 
+async def get_item_by_serial(serial: str) -> dict | None:
+    """Возвращает полную информацию о товаре по серийному номеру (текст и категорию)."""
+    normalized = serial.strip().upper()
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        row = await conn.fetchrow('''
+            SELECT i.text, c.name as category_name
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            WHERE UPPER(i.serial) = $1
+        ''', normalized)
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
 async def remove_item_by_serial(serial: str) -> int:
     normalized = serial.strip().upper() if serial else None
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         result = await conn.execute('DELETE FROM items WHERE UPPER(serial) = $1', normalized)
-        # result — строка вида "DELETE 1"
         return int(result.split()[1]) if result.startswith('DELETE') else 0
     finally:
         await conn.close()
@@ -164,6 +178,15 @@ async def get_all_categories_with_items():
             if row['item_text']:
                 categories[cat].append(row['item_text'])
         return [{"header": cat, "items": items} for cat, items in categories.items()]
+    finally:
+        await conn.close()
+
+async def get_all_items_serials():
+    """Возвращает список всех товаров с их серийными номерами (для проверки дубликатов)."""
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        rows = await conn.fetch('SELECT text, serial FROM items')
+        return [dict(row) for row in rows]
     finally:
         await conn.close()
 
