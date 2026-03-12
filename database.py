@@ -244,7 +244,7 @@ async def add_booking(item_id: int, total_amount: float):
         await conn.close()
 
 async def get_today_stats():
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = date.today()
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         pre = await conn.fetchrow('''
@@ -268,7 +268,7 @@ async def get_today_stats():
         sale_count, sc, st, sq, si = sale
 
         return {
-            'date': today,
+            'date': today.strftime('%Y-%m-%d'),
             'preorders': pre_count,
             'bookings': book_count,
             'sales': sale_count,
