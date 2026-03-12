@@ -293,44 +293,46 @@ async def handle_preorder(message: Message, bot):
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
             booking_lines = lines[start:end]
 
-            # Извлекаем все серийные номера из блока
-            serials = []
+            # Собираем все строки, содержащие серийный номер (в скобках)
+            item_lines = []
             for line in booking_lines:
                 line = line.strip()
                 if not line:
                     continue
-                # Проверяем, есть ли скобки (любые)
                 if re.search(r'\([^)]+\)', line):
-                    serial = inventory.extract_serial(line)
-                    if serial:
-                        serials.append(serial)
+                    item_lines.append(line)
 
-            if not serials:
+            if not item_lines:
                 await message.reply("❌ Не удалось найти товары с серийными номерами для брони.")
                 continue
 
             # Вычисляем общую сумму по блоку
             block_cash, block_terminal, block_qr, block_installment = extract_preorder_amounts(booking_lines)
             block_total = block_cash + block_terminal + block_qr + block_installment
+            amount_per_item = block_total / len(item_lines) if block_total else 0
 
-            # Если сумма не определена, используем 0
-            block_total = block_total or 0
-            amount_per_item = block_total / len(serials) if block_total else 0
-
-            # Для каждого серийного номера обрабатываем бронь
-            for serial in serials:
-                item_info = await get_item_by_serial(serial)
+            # Обрабатываем каждую товарную строку
+            for item_line in item_lines:
+                # Сначала пытаемся найти по точному тексту
+                item_info = await get_item_by_text(item_line)
                 if not item_info:
-                    await message.reply(f"❌ Товар с серийным номером {serial} не найден в ассортименте.")
+                    # Если не нашли, пробуем по серийному номеру
+                    serial = inventory.extract_serial(item_line)
+                    if serial:
+                        item_info = await get_item_by_serial(serial)
+
+                if not item_info:
+                    await message.reply(f"❌ Товар не найден: {item_line}")
                     continue
 
                 item_text = item_info['text']
                 category_name = item_info['category_name']
+                serial = inventory.extract_serial(item_text)  # извлекаем серийный номер из текста (он может быть)
 
                 # Удаляем товар
                 removed = await inventory.remove_by_serial(serial)
                 if not removed:
-                    await message.reply(f"❌ Не удалось удалить товар {serial}.")
+                    await message.reply(f"❌ Не удалось удалить товар {item_text}.")
                     continue
 
                 # Добавляем с пометкой о брони
@@ -338,7 +340,7 @@ async def handle_preorder(message: Message, bot):
                 new_item_text = f"{item_text} (Бронь от {today})"
                 await add_item(new_item_text, serial, category_name=category_name)
 
-                # Учитываем бронь в статистике с долей суммы
+                # Учитываем бронь в статистике
                 await stats.increment_booking(serial, amount_per_item)
 
                 await message.react([ReactionTypeEmoji(emoji='👍')])
