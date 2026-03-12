@@ -22,7 +22,6 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
-        # Телефоны
         phone_pattern = r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
         for match in re.finditer(phone_pattern, line):
             full_number = match.group(0)
@@ -35,7 +34,6 @@ def parse_client_data(text: str) -> dict:
                 result['phones'].append(clean_phone)
                 logger.info(f"📞 Найден телефон: {clean_phone}")
 
-        # ФИО
         if not result['full_name']:
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
@@ -50,13 +48,11 @@ def parse_client_data(text: str) -> dict:
                 if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
                     result['full_name'] = line
 
-        # Telegram
         if '@' in line and not result['telegram_username']:
             match = re.search(r'@(\w+)', line)
             if match:
                 result['telegram_username'] = match.group(1)
 
-        # Соцсети / площадка
         if re.search(r'соц\s*сети|social|площадка', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
@@ -66,13 +62,11 @@ def parse_client_data(text: str) -> dict:
                 if match:
                     result['social_network'] = match.group(1).strip()
 
-        # Откуда узнал
         if re.search(r'как\s+о\s+нас\s+узнал|откуда|referral', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
                 result['referral_source'] = parts[1].strip()
 
-        # Товары
         if re.search(r'\([A-Z0-9-]{5,}\)', line):
             item_text = line
             price_match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|рублей|р\.?)', line, re.IGNORECASE)
@@ -87,7 +81,6 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
-        # Суммы
         amounts = extract_all_amounts(line)
         for typ, val in amounts:
             if typ in result['payments']:
