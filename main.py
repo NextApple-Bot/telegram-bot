@@ -11,48 +11,37 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
-# Настраиваем логирование сразу, чтобы видеть ошибки
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 try:
-    # Попытка импортировать всё необходимое
     logger.info("Импортируем config...")
     import config
-
     logger.info("Импортируем router из handlers...")
     from handlers import router
-
     logger.info("Импортируем init_db из database...")
     from database import init_db
-
     logger.info("Импортируем aiogram...")
     from aiogram import Bot, Dispatcher
     from aiogram.types import Update
     from aiogram.fsm.storage.memory import MemoryStorage
-
     logger.info("Все импорты успешны.")
 except Exception as e:
-    # Если ошибка при импорте – печатаем traceback и выходим
     print("=" * 60, file=sys.stderr)
     print("CRITICAL ERROR DURING IMPORT:", file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
     print("=" * 60, file=sys.stderr)
     sys.exit(1)
 
-# Теперь создаём объекты бота
 try:
     logger.info("Создаём экземпляр Bot...")
     bot = Bot(token=config.TOKEN)
-
     logger.info("Создаём Dispatcher...")
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-
     RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
     PORT = int(os.environ.get('PORT', 8000))
     logger.info(f"RENDER_URL: {RENDER_URL}, PORT: {PORT}")
-
 except Exception as e:
     print("=" * 60, file=sys.stderr)
     print("ERROR DURING BOT INITIALIZATION:", file=sys.stderr)
@@ -113,7 +102,6 @@ async def on_startup():
         logger.info("✅ База данных инициализирована.")
     except Exception as e:
         logger.exception("❌ Ошибка при инициализации БД")
-        # Не выходим, чтобы бот попробовал запуститься, но ошибка будет в логах
     logger.info("Установка вебхука...")
     await setup_webhook()
 
