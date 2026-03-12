@@ -16,7 +16,7 @@ from database import (
     add_booking,
     get_all_items_serials,
     get_item_by_serial,
-    get_item_by_text  # добавить эту строку
+    get_item_by_text  # <-- добавлен импорт
 )
 from .base import (
     router, logger, AssortmentConfirmState, ArrivalConfirmState,
@@ -265,7 +265,7 @@ async def unexpected_message_in_arrival_confirm(message: Message, state):
         await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите «отмена»).")
 
 # -------------------------------------------------------------------
-# Топик «Предзаказ»
+# Топик «Предзаказ» (исправлен импорт get_item_by_text)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
 async def handle_preorder(message: Message, bot):
@@ -353,7 +353,7 @@ async def handle_preorder(message: Message, bot):
         await message.react([ReactionTypeEmoji(emoji='👌')])
 
 # -------------------------------------------------------------------
-# Топик «Продажи»
+# Топик «Продажи» (исправлен порядок действий)
 # -------------------------------------------------------------------
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
 async def handle_sales_message(message: Message):
@@ -369,7 +369,6 @@ async def handle_sales_message(message: Message):
     not_found_serials = []
     sold_items = []  # список кортежей (item_id, serial)
 
-    # Сначала собираем информацию о найденных товарах
     for cand in candidates:
         item_id = await get_item_id_by_serial(cand)
         if item_id:
@@ -378,7 +377,6 @@ async def handle_sales_message(message: Message):
         else:
             not_found_serials.append(cand)
 
-    # Если есть суммы и найденные товары – распределяем суммы и создаём записи о продажах
     if (cash or terminal or qr or installment) and sold_items:
         per_item_cash = cash / len(sold_items) if cash else 0
         per_item_terminal = terminal / len(sold_items) if terminal else 0
@@ -391,11 +389,10 @@ async def handle_sales_message(message: Message):
                 terminal=per_item_terminal,
                 qr=per_item_qr,
                 installment=per_item_installment,
-                item_id=item_id  # товар ещё существует
+                item_id=item_id
             )
             logger.info(f"✅ Продажа зарегистрирована для товара {serial} (item_id={item_id})")
 
-    # Теперь удаляем проданные товары
     for item_id, serial in sold_items:
         removed = await inventory.remove_by_serial(serial)
         if not removed:
@@ -403,20 +400,17 @@ async def handle_sales_message(message: Message):
         else:
             logger.info(f"🗑️ Товар {serial} удалён из ассортимента")
 
-    # Если были товары, для которых серийный номер не найден – сообщаем
     if not_found_serials:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
 
-    # Ставим реакцию, если хотя бы один товар найден
     if sold_items:
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
-    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА (без изменений) ---
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
