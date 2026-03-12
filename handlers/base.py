@@ -19,17 +19,14 @@ from sort_assortment import sort_assortment_to_categories, build_output_text
 
 logger = logging.getLogger(__name__)
 
-# ✅ СОЗДАЁМ РОУТЕР (это главный объект для регистрации обработчиков)
 router = Router()
 
-# Состояния для подтверждения ассортимента и прибытия
 class AssortmentConfirmState(StatesGroup):
     waiting_for_confirm = State()
 
 class ArrivalConfirmState(StatesGroup):
     waiting_for_confirm = State()
 
-# Вспомогательные функции
 async def show_inventory(bot: Bot, chat_id: int):
     categories = await inventory.load_inventory()
     if not categories:
@@ -80,7 +77,6 @@ def get_main_menu_keyboard():
         ]
     ])
 
-# ✅ Указываем, что будет доступно при импорте from .base import *
 __all__ = [
     'router', 'AssortmentConfirmState', 'ArrivalConfirmState',
     'show_inventory', 'show_help', 'cancel_action', 'get_main_menu_keyboard'
