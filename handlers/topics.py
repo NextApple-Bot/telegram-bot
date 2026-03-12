@@ -355,62 +355,7 @@ async def handle_preorder(message: Message, bot):
 # -------------------------------------------------------------------
 # Топик «Продажи» (исправлен порядок действий)
 # -------------------------------------------------------------------
-@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
-async def handle_sales_message(message: Message):
-    logger.info(f"📩 Сообщение в топике Продажи: {message.text}")
-    if not message.text:
-        return
-
-    lines = message.text.splitlines()
-    cash, terminal, qr, installment = extract_sales_amounts(lines)
-
-    candidates = inventory.extract_serials_from_text(message.text)
-    found_serials = []
-    not_found_serials = []
-    sold_items = []  # список кортежей (item_id, serial)
-
-    for cand in candidates:
-        item_id = await get_item_id_by_serial(cand)
-        if item_id:
-            found_serials.append(cand)
-            sold_items.append((item_id, cand))
-        else:
-            not_found_serials.append(cand)
-
-    if (cash or terminal or qr or installment) and sold_items:
-        per_item_cash = cash / len(sold_items) if cash else 0
-        per_item_terminal = terminal / len(sold_items) if terminal else 0
-        per_item_qr = qr / len(sold_items) if qr else 0
-        per_item_installment = installment / len(sold_items) if installment else 0
-        for item_id, serial in sold_items:
-            await stats.increment_sales(
-                count=1,
-                cash=per_item_cash,
-                terminal=per_item_terminal,
-                qr=per_item_qr,
-                installment=per_item_installment,
-                item_id=item_id
-            )
-            logger.info(f"✅ Продажа зарегистрирована для товара {serial} (item_id={item_id})")
-
-    for item_id, serial in sold_items:
-        removed = await inventory.remove_by_serial(serial)
-        if not removed:
-            logger.warning(f"⚠️ Не удалось удалить товар {serial} после регистрации продажи")
-        else:
-            logger.info(f"🗑️ Товар {serial} удалён из ассортимента")
-
-    if not_found_serials:
-        text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found_serials)
-        await message.reply(text)
-        logger.info(f"❌ Не найдены: {not_found_serials}")
-
-    if sold_items:
-        try:
-            await message.react([ReactionTypeEmoji(emoji='🔥')])
-        except Exception as e:
-            logger.exception(f"Не удалось поставить реакцию: {e}")
-
+    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА (исправленная версия) ---
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
@@ -432,8 +377,14 @@ async def handle_sales_message(message: Message):
                 purchase_type='sale'
             )
             logger.info(f"✅ Сохранены данные клиента {client_id} с покупкой, телефоны: {data['phones']}")
+    except ImportError as e:
+        logger.error(f"❌ Ошибка импорта в client_parser: {e}")
+    except asyncpg.exceptions.ConnectionError as e:
+        logger.error(f"❌ Ошибка подключения к БД при сохранении клиента: {e}")
+    except (ValueError, TypeError) as e:
+        logger.warning(f"⚠️ Ошибка формата данных клиента: {e}")
     except Exception as e:
-        logger.exception(f"❌ Ошибка при сохранении данных клиента: {e}")
+        logger.exception(f"❌ Неожиданная ошибка при сохранении данных клиента: {e}")
 
 # -------------------------------------------------------------------
 # Функция для выгрузки ассортимента в топик
