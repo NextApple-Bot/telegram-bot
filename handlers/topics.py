@@ -22,7 +22,7 @@ from .base import (
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
 )
 from utils import extract_preorder_amounts, extract_sales_amounts
-from sort_assortment import add_item_to_categories  # функция для умного распределения товаров
+from sort_assortment import add_item_to_categories
 
 # -------------------------------------------------------------------
 # Топик «Ассортимент» (замена всего)
@@ -153,7 +153,6 @@ async def handle_arrival(message: Message, bot, state):
         await message.reply("❌ Нет ни одной позиции после фильтрации.")
         return
 
-    # Получаем существующие товары для проверки дубликатов (через новую функцию)
     existing_items = await get_all_items_serials()
     existing_texts = {item['text'] for item in existing_items}
     existing_serials = {item['serial'] for item in existing_items if item['serial']}
@@ -212,19 +211,15 @@ async def process_arrival_confirm(callback: CallbackQuery, state):
     skipped_lines = data.get("skipped_lines", [])
 
     if action == "yes":
-        # Загружаем текущие категории (из БД) для определения куда класть товары
         current_categories = await inventory.load_inventory()
 
         for line in added_lines:
             serial = inventory.extract_serial(line)
-            # Используем функцию add_item_to_categories для поиска/создания подходящей категории
             updated_categories, idx = add_item_to_categories(line, current_categories)
-            current_categories = updated_categories  # обновляем список для следующих товаров
+            current_categories = updated_categories
             category_name = current_categories[idx]['header']
-            # Сохраняем товар в БД с определённой категорией
             await add_item(line, serial, category_name=category_name)
 
-        # Формируем отчётный файл
         combined_lines = []
         if added_lines:
             combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
@@ -314,7 +309,6 @@ async def handle_preorder(message: Message, bot):
                 await message.reply("❌ Не удалось извлечь серийный номер.")
                 continue
 
-            # Получаем информацию о товаре через новую функцию
             item_info = await get_item_by_serial(serial)
             if not item_info:
                 await message.reply(f"❌ Товар с серийным номером {serial} не найден в ассортименте.")
@@ -322,19 +316,15 @@ async def handle_preorder(message: Message, bot):
             item_text = item_info['text']
             category_name = item_info['category_name']
 
-            # Удаляем товар
             removed = await inventory.remove_by_serial(serial)
             if not removed:
                 await message.reply(f"❌ Не удалось удалить товар {serial}.")
                 continue
 
-            # Создаём новый текст с пометкой о брони
             today = datetime.now().strftime("%d.%m")
             new_item_text = f"{item_text} (Бронь от {today})"
-            # Добавляем обратно в ту же категорию
             await add_item(new_item_text, serial, category_name=category_name)
 
-            # Учитываем бронь в статистике
             cash, terminal, qr, installment = extract_preorder_amounts(booking_lines)
             total_amount = cash + terminal + qr + installment
             await stats.increment_booking(serial, total_amount)
@@ -365,7 +355,6 @@ async def handle_sales_message(message: Message):
     sold_item_ids = []
 
     for cand in candidates:
-        # Сначала получаем id товара (до удаления)
         item_id = await get_item_id_by_serial(cand)
         removed = await inventory.remove_by_serial(cand)
         if removed:
@@ -381,7 +370,6 @@ async def handle_sales_message(message: Message):
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
-    # Передаём item_id в статистику
     if cash or terminal or qr or installment:
         count = len(found_serials) if found_serials else 1
         if sold_item_ids:
@@ -413,7 +401,6 @@ async def handle_sales_message(message: Message):
         await message.reply(text)
         logger.info(f"❌ Не найдены: {not_found_serials}")
 
-    # --- СОХРАНЕНИЕ ДАННЫХ КЛИЕНТА ---
     try:
         from client_parser import parse_client_data
         from database import get_or_create_client, add_purchase
