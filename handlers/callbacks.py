@@ -12,6 +12,7 @@ from .base import (
 from .topics import export_assortment_to_topic
 from database import get_available_months, get_clients_data_for_month
 import json
+import csv
 import tempfile
 import os
 from aiogram.types import FSInputFile
@@ -104,16 +105,13 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
     elif action == "clients_by_month":
-        # Проверяем, что это админ
         if user_id != config.ADMIN_ID:
             await callback.answer("⛔ Доступ запрещён", show_alert=True)
             return
-        # Получаем доступные месяцы
         months = await get_available_months()
         if not months:
             await callback.message.answer("📭 Нет данных за месяцы.")
             return
-        # Создаём клавиатуру с месяцами (по 3 в ряд)
         buttons = []
         row = []
         for month in months:
@@ -123,7 +121,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                 row = []
         if row:
             buttons.append(row)
-        # Добавляем кнопку "Назад"
         buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="menu:cancel")])
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
@@ -288,7 +285,6 @@ async def process_reset_finances(callback: CallbackQuery):
         logger.exception(f"Ошибка в process_reset_finances: {e}")
         await callback.message.answer("❌ Произошла ошибка")
 
-# ---------- НОВЫЙ ОБРАБОТЧИК ДЛЯ ВЫБОРА МЕСЯЦА ----------
 @router.callback_query(F.data.startswith("month:"))
 async def process_month_selection(callback: CallbackQuery):
     try:
@@ -300,21 +296,18 @@ async def process_month_selection(callback: CallbackQuery):
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
 
-    month = callback.data.split(":")[1]  # например "03.2026"
+    month = callback.data.split(":")[1]
     await callback.message.edit_text(f"⏳ Формирую отчёт за {month}...")
 
     try:
-        # Получаем данные
         rows = await get_clients_data_for_month(month)
 
         if not rows:
             await callback.message.edit_text(f"📭 Нет данных за {month}.")
             return
 
-        # Создаём CSV-файл
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
             writer = csv.writer(tmp)
-            # Заголовки
             writer.writerow([
                 'ID клиента', 'ФИО', 'Телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник',
                 'Дата регистрации клиента',
@@ -322,7 +315,6 @@ async def process_month_selection(callback: CallbackQuery):
             ])
 
             for row in rows:
-                # Распарсим JSON товаров в читаемый вид
                 items_text = ''
                 if row['items_json']:
                     try:
@@ -350,15 +342,12 @@ async def process_month_selection(callback: CallbackQuery):
 
             tmp_path = tmp.name
 
-        # Отправляем файл
         await callback.message.answer_document(
             FSInputFile(tmp_path, filename=f"clients_{month}.csv"),
             caption=f"📁 Данные клиентов за {month}"
         )
-        # Удаляем временный файл
         os.unlink(tmp_path)
 
-        # Возвращаемся к выбору месяца
         months = await get_available_months()
         buttons = []
         row = []
