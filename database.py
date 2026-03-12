@@ -399,17 +399,19 @@ async def get_available_months():
     finally:
         await conn.close()
 
+from datetime import datetime  # уже должен быть импортирован, но если нет — добавьте
+
 async def get_clients_data_for_month(month_str: str):
     """
     Возвращает список словарей с данными клиентов и их покупок за указанный месяц.
     month_str: строка вида 'MM.YYYY' (например, '03.2026')
     """
     month, year = map(int, month_str.split('.'))
-    start_date = f"{year:04d}-{month:02d}-01"
+    start_date = datetime(year, month, 1).date()
     if month == 12:
-        end_date = f"{year+1:04d}-01-01"
+        end_date = datetime(year + 1, 1, 1).date()
     else:
-        end_date = f"{year:04d}-{month+1:02d}-01"
+        end_date = datetime(year, month + 1, 1).date()
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
