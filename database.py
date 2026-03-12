@@ -200,6 +200,20 @@ async def update_category_items(category_name: str, new_items: list):
     finally:
         await conn.close()
 
+async def get_item_by_text(text: str) -> dict | None:
+    """Возвращает информацию о товаре по точному совпадению текста."""
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        row = await conn.fetchrow('''
+            SELECT i.text, c.name as category_name
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            WHERE i.text = $1
+        ''', text)
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
 # ---------- Статистика ----------
 
 async def add_sale(item_id: int = None, count: int = 1,
