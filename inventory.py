@@ -1,7 +1,7 @@
 import re
 import aiosqlite
 from database import (
-    add_item, remove_item_by_serial, get_items_grouped_by_category,
+    add_item, remove_item_by_serial, get_all_categories_with_items,  # <-- добавили
     get_or_create_category, DB_PATH, update_category_items
 )
 
