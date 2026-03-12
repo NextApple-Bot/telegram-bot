@@ -11,7 +11,13 @@ from aiogram.exceptions import TelegramBadRequest
 import config
 import inventory
 import stats
-from database import add_item, get_item_id_by_serial, add_booking, DB_PATH
+from database import (
+    add_item,
+    get_item_id_by_serial,
+    add_booking,
+    get_all_items_serials,
+    get_item_by_serial
+)
 from .base import (
     router, logger, AssortmentConfirmState, ArrivalConfirmState,
     sort_assortment_to_categories, build_output_text, get_main_menu_keyboard
