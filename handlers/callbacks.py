@@ -47,6 +47,10 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                     message_id=last_stats_message[chat_id],
                     reply_markup=keyboard
                 )
+            except TelegramBadRequest as e:
+                # Игнорируем ошибку "message is not modified"
+                if "message is not modified" not in str(e):
+                    raise
             except Exception:
                 msg = await callback.message.answer(text, reply_markup=keyboard)
                 last_stats_message[chat_id] = msg.message_id
@@ -83,6 +87,10 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                     message_id=last_finance_message[chat_id],
                     reply_markup=keyboard
                 )
+            except TelegramBadRequest as e:
+                # Игнорируем ошибку "message is not modified"
+                if "message is not modified" not in str(e):
+                    raise
             except Exception:
                 msg = await callback.message.answer(text, reply_markup=keyboard)
                 last_finance_message[chat_id] = msg.message_id
@@ -107,18 +115,14 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                 reply_markup=keyboard
             )
         except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                pass
-            else:
+            if "message is not modified" not in str(e):
                 raise
     elif action == "cancel":
         await cancel_action(bot, chat_id, state)
         try:
             await callback.message.edit_text("Главное меню:", reply_markup=get_main_menu_keyboard())
         except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                pass
-            else:
+            if "message is not modified" not in str(e):
                 raise
     elif action == "help":
         await show_help(bot, chat_id)
@@ -147,9 +151,7 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
         else:
             await callback.message.edit_text("❌ Очистка отменена.")
     except TelegramBadRequest as e:
-        if "message is not modified" in str(e):
-            pass
-        else:
+        if "message is not modified" not in str(e):
             raise
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
 
@@ -162,33 +164,40 @@ async def process_reset_stats(callback: CallbackQuery):
 
     action = callback.data.split(":")[1]
     chat_id = callback.message.chat.id
-    if action == "confirm":
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_stats:yes"),
-             InlineKeyboardButton(text="❌ Нет", callback_data="reset_stats:no")]
-        ])
-        await callback.message.edit_text("Вы уверены, что хотите обнулить статистику?", reply_markup=keyboard)
-    elif action == "yes":
-        await stats.reset_stats()
-        s = await stats.get_stats()
-        text = (
-            f"📊 Статистика за {s['date']}:\n"
-            f"• Предзаказов: {s['preorders']}\n"
-            f"• Броней: {s['bookings']}\n"
-            f"• Продаж: {s['sales']}"
-        )
-        await callback.message.edit_text(text)
-        last_stats_message[chat_id] = callback.message.message_id
-    elif action == "no":
-        s = await stats.get_stats()
-        text = (
-            f"📊 Статистика за {s['date']}:\n"
-            f"• Предзаказов: {s['preorders']}\n"
-            f"• Броней: {s['bookings']}\n"
-            f"• Продаж: {s['sales']}"
-        )
-        await callback.message.edit_text(text)
-        last_stats_message[chat_id] = callback.message.message_id
+    try:
+        if action == "confirm":
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_stats:yes"),
+                 InlineKeyboardButton(text="❌ Нет", callback_data="reset_stats:no")]
+            ])
+            await callback.message.edit_text("Вы уверены, что хотите обнулить статистику?", reply_markup=keyboard)
+        elif action == "yes":
+            await stats.reset_stats()
+            s = await stats.get_stats()
+            text = (
+                f"📊 Статистика за {s['date']}:\n"
+                f"• Предзаказов: {s['preorders']}\n"
+                f"• Броней: {s['bookings']}\n"
+                f"• Продаж: {s['sales']}"
+            )
+            await callback.message.edit_text(text)
+            last_stats_message[chat_id] = callback.message.message_id
+        elif action == "no":
+            s = await stats.get_stats()
+            text = (
+                f"📊 Статистика за {s['date']}:\n"
+                f"• Предзаказов: {s['preorders']}\n"
+                f"• Броней: {s['bookings']}\n"
+                f"• Продаж: {s['sales']}"
+            )
+            await callback.message.edit_text(text)
+            last_stats_message[chat_id] = callback.message.message_id
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+    except Exception as e:
+        logger.exception(f"Ошибка в process_reset_stats: {e}")
+        await callback.message.answer("❌ Произошла ошибка")
 
 @router.callback_query(F.data.startswith("reset_finances:"))
 async def process_reset_finances(callback: CallbackQuery):
@@ -199,48 +208,55 @@ async def process_reset_finances(callback: CallbackQuery):
 
     action = callback.data.split(":")[1]
     chat_id = callback.message.chat.id
-    if action == "confirm":
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_finances:yes"),
-             InlineKeyboardButton(text="❌ Нет", callback_data="reset_finances:no")]
-        ])
-        await callback.message.edit_text("Вы уверены, что хотите обнулить финансовые суммы?", reply_markup=keyboard)
-    elif action == "yes":
-        await stats.reset_finances()
-        s = await stats.get_stats()
-        total = (
-            s['sales_terminal'] + s['preorders_terminal'] +
-            s['sales_cash'] + s['preorders_cash'] +
-            s['sales_qr'] + s['preorders_qr'] +
-            s['sales_installment'] + s['preorders_installment'] +
-            s['bookings_total']
-        )
-        text = (
-            f"💰 Финансы за {s['date']}:\n"
-            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
-            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
-            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
-            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {total:.0f} руб."
-        )
-        await callback.message.edit_text(text)
-        last_finance_message[chat_id] = callback.message.message_id
-    elif action == "no":
-        s = await stats.get_stats()
-        total = (
-            s['sales_terminal'] + s['preorders_terminal'] +
-            s['sales_cash'] + s['preorders_cash'] +
-            s['sales_qr'] + s['preorders_qr'] +
-            s['sales_installment'] + s['preorders_installment'] +
-            s['bookings_total']
-        )
-        text = (
-            f"💰 Финансы за {s['date']}:\n"
-            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
-            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
-            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
-            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {total:.0f} руб."
-        )
-        await callback.message.edit_text(text)
-        last_finance_message[chat_id] = callback.message.message_id
+    try:
+        if action == "confirm":
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_finances:yes"),
+                 InlineKeyboardButton(text="❌ Нет", callback_data="reset_finances:no")]
+            ])
+            await callback.message.edit_text("Вы уверены, что хотите обнулить финансовые суммы?", reply_markup=keyboard)
+        elif action == "yes":
+            await stats.reset_finances()
+            s = await stats.get_stats()
+            total = (
+                s['sales_terminal'] + s['preorders_terminal'] +
+                s['sales_cash'] + s['preorders_cash'] +
+                s['sales_qr'] + s['preorders_qr'] +
+                s['sales_installment'] + s['preorders_installment'] +
+                s['bookings_total']
+            )
+            text = (
+                f"💰 Финансы за {s['date']}:\n"
+                f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+                f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+                f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+                f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+                f"ИТОГО: {total:.0f} руб."
+            )
+            await callback.message.edit_text(text)
+            last_finance_message[chat_id] = callback.message.message_id
+        elif action == "no":
+            s = await stats.get_stats()
+            total = (
+                s['sales_terminal'] + s['preorders_terminal'] +
+                s['sales_cash'] + s['preorders_cash'] +
+                s['sales_qr'] + s['preorders_qr'] +
+                s['sales_installment'] + s['preorders_installment'] +
+                s['bookings_total']
+            )
+            text = (
+                f"💰 Финансы за {s['date']}:\n"
+                f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
+                f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
+                f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
+                f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
+                f"ИТОГО: {total:.0f} руб."
+            )
+            await callback.message.edit_text(text)
+            last_finance_message[chat_id] = callback.message.message_id
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+    except Exception as e:
+        logger.exception(f"Ошибка в process_reset_finances: {e}")
+        await callback.message.answer("❌ Произошла ошибка")
