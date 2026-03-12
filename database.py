@@ -4,6 +4,8 @@ import json
 import logging
 from datetime import datetime
 
+import config  # добавлен импорт config
+
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -142,6 +144,19 @@ async def get_item_by_serial(serial: str) -> dict | None:
     finally:
         await conn.close()
 
+async def get_item_by_text(text: str) -> dict | None:
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        row = await conn.fetchrow('''
+            SELECT i.text, c.name as category_name
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            WHERE i.text = $1
+        ''', text)
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
 async def remove_item_by_serial(serial: str) -> int:
     normalized = serial.strip().upper() if serial else None
     conn = await asyncpg.connect(DATABASE_URL)
@@ -179,10 +194,6 @@ async def get_all_items_serials():
     finally:
         await conn.close()
 
-async def get_items_grouped_by_category():
-    items = await get_all_categories_with_items()
-    return [cat for cat in items if cat['items']]
-
 async def update_category_items(category_name: str, new_items: list):
     from inventory import extract_serial
     cat_id = await get_or_create_category(category_name)
@@ -197,20 +208,6 @@ async def update_category_items(category_name: str, new_items: list):
                 await conn.execute('''
                     INSERT INTO items (text, serial, category_id) VALUES ($1, $2, $3)
                 ''', item_text, serial, cat_id)
-    finally:
-        await conn.close()
-
-async def get_item_by_text(text: str) -> dict | None:
-    """Возвращает информацию о товаре по точному совпадению текста."""
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        row = await conn.fetchrow('''
-            SELECT i.text, c.name as category_name
-            FROM items i
-            JOIN categories c ON i.category_id = c.id
-            WHERE i.text = $1
-        ''', text)
-        return dict(row) if row else None
     finally:
         await conn.close()
 
@@ -374,6 +371,76 @@ async def search_clients(query: str):
             WHERE full_name ILIKE $1 OR phone ILIKE $1 OR telegram_username ILIKE $1
             ORDER BY updated_at DESC
         ''', f'%{query}%')
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+# ---------- НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ ПО МЕСЯЦАМ ----------
+
+async def get_available_months():
+    """
+    Возвращает список строк вида 'MM.YYYY' для месяцев, 
+    в которых есть либо клиенты, либо покупки.
+    """
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        # Получаем месяцы из clients (дата регистрации)
+        rows1 = await conn.fetch('''
+            SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
+            FROM clients
+            WHERE created_at IS NOT NULL
+        ''')
+        # Получаем месяцы из purchases (дата покупки)
+        rows2 = await conn.fetch('''
+            SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
+            FROM purchases
+            WHERE created_at IS NOT NULL
+        ''')
+        # Объединяем, сортируем по убыванию (сначала новые)
+        months = sorted(set([r['month'] for r in rows1] + [r['month'] for r in rows2]), reverse=True)
+        return months
+    finally:
+        await conn.close()
+
+async def get_clients_data_for_month(month_str: str):
+    """
+    Возвращает список словарей с данными клиентов и их покупок за указанный месяц.
+    month_str: строка вида 'MM.YYYY' (например, '03.2026')
+    """
+    # Преобразуем месяц в формат для SQL (начало и конец месяца)
+    month, year = map(int, month_str.split('.'))
+    start_date = f"{year:04d}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year+1:04d}-01-01"
+    else:
+        end_date = f"{year:04d}-{month+1:02d}-01"
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        # Получаем всех клиентов + их покупки за месяц
+        rows = await conn.fetch('''
+            SELECT 
+                c.id as client_id,
+                c.full_name,
+                c.phone,
+                c.phones,
+                c.telegram_username,
+                c.social_network,
+                c.referral_source,
+                c.created_at as client_created_at,
+                p.id as purchase_id,
+                p.items_json,
+                p.total_amount,
+                p.payment_details,
+                p.purchase_type,
+                p.created_at as purchase_created_at
+            FROM clients c
+            LEFT JOIN purchases p ON c.id = p.client_id 
+                AND p.created_at >= $1 AND p.created_at < $2
+            WHERE p.id IS NOT NULL  -- только клиенты с покупками в этом месяце
+               OR c.created_at >= $1 AND c.created_at < $2  -- или новые клиенты (даже без покупок)
+            ORDER BY c.id, p.created_at
+        ''', start_date, end_date)
         return [dict(row) for row in rows]
     finally:
         await conn.close()
