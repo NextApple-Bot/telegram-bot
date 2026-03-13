@@ -106,7 +106,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
     elif action == "remains":
-        await process_remains(callback)  # вызов обработчика остатков
+        await process_remains(callback)
     elif action == "clear":
         current_state = await state.get_state()
         if current_state is not None:
@@ -358,10 +358,10 @@ async def process_remains(callback: CallbackQuery):
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
-    # Получаем все товары без брони (используем двойные кавычки для внешнего запроса)
+    # Получаем все товары без брони (регистронезависимо)
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
-        rows = await conn.fetch("SELECT text FROM items WHERE text NOT LIKE '%Бронь от%'")
+        rows = await conn.fetch("SELECT text FROM items WHERE text NOT ILIKE '%Бронь от%'")
     finally:
         await conn.close()
 
@@ -369,13 +369,13 @@ async def process_remains(callback: CallbackQuery):
         await callback.message.answer("📭 Нет товаров в наличии.")
         return
 
-    # Группируем товары
+    # Группируем товары: ключ = (базовое имя, тип SIM)
     groups = {}
     for row in rows:
         text = row['text']
-        base = extract_base_name(text)
-        sim = detect_sim_type(text)
-        key = f"{base} ({sim})" if sim != 'other' else base
+        base = extract_base_name(text)       # теперь возвращает чистую модель
+        sim = detect_sim_type(text)          # определяет тип SIM (eSIM, SIM+eSIM или 'other')
+        key = (base, sim)
         groups[key] = groups.get(key, 0) + 1
 
     # Создаём CSV-файл
@@ -383,16 +383,8 @@ async def process_remains(callback: CallbackQuery):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
         writer = csv.writer(tmp)
         writer.writerow(['Модель', 'Тип SIM', 'Количество'])
-        for key, count in sorted(groups.items()):
-            # Разделяем ключ на модель и тип SIM (если есть)
-            if key.endswith(')'):
-                # Предполагаем формат "Модель (тип SIM)"
-                model = key[:-1].rsplit(' (', 1)[0]
-                sim_type = key[:-1].rsplit(' (', 1)[1] if '(' in key else ''
-            else:
-                model = key
-                sim_type = ''
-            writer.writerow([model, sim_type, count])
+        for (base, sim), count in sorted(groups.items()):
+            writer.writerow([base, sim if sim != 'other' else '', count])
 
         tmp_path = tmp.name
 
@@ -401,9 +393,4 @@ async def process_remains(callback: CallbackQuery):
         FSInputFile(tmp_path, filename=f"remains_{today}.csv"),
         caption=f"📦 Остатки на {today}"
     )
-
-    # Удаляем временный файл
     os.unlink(tmp_path)
-
-# ---------- Обработчики для очистки категорий (если были добавлены ранее) ----------
-# ... (можно добавить сюда, если они есть)
