@@ -86,9 +86,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
     elif action == "clients_by_month":
-        if user_id != config.ADMIN_ID:
-            await callback.answer("⛔ Доступ запрещён", show_alert=True)
-            return
+        # Теперь доступно всем пользователям (проверка ADMIN_ID убрана)
         months = await get_available_months()
         if not months:
             await callback.message.answer("📭 Нет данных за месяцы.")
@@ -276,10 +274,7 @@ async def process_month_selection(callback: CallbackQuery):
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
-    if callback.from_user.id != config.ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещён", show_alert=True)
-        return
-
+    # Доступно всем (проверка ADMIN_ID убрана)
     month = callback.data.split(":")[1]
     await callback.message.edit_text(f"⏳ Формирую отчёт за {month}...")
 
@@ -350,7 +345,7 @@ async def process_month_selection(callback: CallbackQuery):
         logger.exception(f"Ошибка при формировании отчёта за {month}")
         await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
 
-# ---------- НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ «ОСТАТКИ» ----------
+# ---------- Обработчик для кнопки «Остатки» ----------
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
     try:
@@ -373,8 +368,8 @@ async def process_remains(callback: CallbackQuery):
     groups = {}
     for row in rows:
         text = row['text']
-        base = extract_base_name(text)       # теперь возвращает чистую модель
-        sim = detect_sim_type(text)          # определяет тип SIM (eSIM, SIM+eSIM или 'other')
+        base = extract_base_name(text)
+        sim = detect_sim_type(text)
         key = (base, sim)
         groups[key] = groups.get(key, 0) + 1
 
