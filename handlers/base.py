@@ -9,8 +9,6 @@ from aiogram.types import Message, FSInputFile, Document, CallbackQuery, Reactio
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.exceptions import TelegramBadRequest
 
 import config
 import inventory
@@ -21,13 +19,11 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-class AssortmentConfirmState(StatesGroup):
-    waiting_for_confirm = State()
-
-class ArrivalConfirmState(StatesGroup):
-    waiting_for_confirm = State()
-
 async def show_inventory(bot: Bot, chat_id: int) -> Message | None:
+    """
+    Отправляет файл с текущим ассортиментом в указанный чат.
+    Возвращает отправленное сообщение или None.
+    """
     categories = await inventory.load_inventory()
     if not categories:
         return await bot.send_message(chat_id, "📭 Ассортимент пуст.")
@@ -47,6 +43,7 @@ async def show_inventory(bot: Bot, chat_id: int) -> Message | None:
         os.unlink(tmp_path)
 
 async def show_help(bot: Bot, chat_id: int):
+    """Отправляет справочное сообщение со списком команд."""
     help_text = """
 👋 **Справка по командам бота**
 
@@ -87,10 +84,12 @@ async def show_help(bot: Bot, chat_id: int):
     await bot.send_message(chat_id, help_text, parse_mode='Markdown')
 
 async def cancel_action(bot: Bot, chat_id: int, state: FSMContext):
+    """Отменяет текущее состояние FSM и отправляет подтверждение."""
     await state.clear()
     await bot.send_message(chat_id, "✅ Действие отменено.")
 
 def get_main_menu_keyboard():
+    """Возвращает inline-клавиатуру главного меню."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📦 Показать ассортимент", callback_data="menu:inventory"),
@@ -112,6 +111,9 @@ def get_main_menu_keyboard():
     ])
 
 __all__ = [
-    'router', 'AssortmentConfirmState', 'ArrivalConfirmState',
-    'show_inventory', 'show_help', 'cancel_action', 'get_main_menu_keyboard'
+    'router',
+    'show_inventory',
+    'show_help',
+    'cancel_action',
+    'get_main_menu_keyboard'
 ]
