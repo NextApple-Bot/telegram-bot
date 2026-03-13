@@ -4,7 +4,7 @@ import tempfile
 import os
 import asyncpg
 from aiogram import F
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
 import config
@@ -216,5 +216,104 @@ async def cmd_reset_clients(message: Message):
     except Exception as e:
         logger.exception("Ошибка при сбросе клиентов")
         await message.answer(f"❌ Ошибка: {e}")
+    finally:
+        await conn.close()
+
+# ---------- Команды для управления категориями ----------
+@router.message(Command("show_categories"))
+async def cmd_show_categories(message: Message):
+    """Показать все категории с ID и количеством товаров."""
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        rows = await conn.fetch('''
+            SELECT c.id, c.name, COUNT(i.id) as item_count
+            FROM categories c
+            LEFT JOIN items i ON c.id = i.category_id
+            GROUP BY c.id, c.name
+            ORDER BY c.id
+        ''')
+        if not rows:
+            await message.answer("📭 В базе нет категорий.")
+            return
+
+        text = "📋 **Список категорий:**\n\n"
+        for r in rows:
+            text += f"🆔 `{r['id']}` — **{r['name']}** (товаров: {r['item_count']})\n"
+        await message.answer(text, parse_mode='Markdown')
+    finally:
+        await conn.close()
+
+@router.message(Command("clean_empty"))
+async def cmd_clean_empty(message: Message):
+    """Удалить все пустые категории (с подтверждением)."""
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        rows = await conn.fetch('''
+            SELECT c.id, c.name
+            FROM categories c
+            LEFT JOIN items i ON c.id = i.category_id
+            WHERE i.id IS NULL
+        ''')
+        if not rows:
+            await message.answer("✅ Пустых категорий нет.")
+            return
+
+        categories_list = "\n".join([f"• {r['name']} (ID {r['id']})" for r in rows])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, удалить все", callback_data="clean_empty:confirm")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+        ])
+        await message.answer(
+            f"⚠️ Найдены пустые категории:\n{categories_list}\n\nУдалить их?",
+            reply_markup=keyboard
+        )
+    finally:
+        await conn.close()
+
+@router.message(Command("delete_category"))
+async def cmd_delete_category(message: Message):
+    """Удалить категорию по ID (только если она пуста)."""
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("❌ Используйте: /delete_category <ID>")
+        return
+    try:
+        cat_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ ID должен быть числом")
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        cat = await conn.fetchrow('SELECT name FROM categories WHERE id = $1', cat_id)
+        if not cat:
+            await message.answer(f"❌ Категория с ID {cat_id} не найдена.")
+            return
+
+        count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', cat_id)
+        if count > 0:
+            await message.answer(f"❌ Категория «{cat['name']}» содержит {count} товаров. Удаление невозможно.")
+            return
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_cat:{cat_id}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+        ])
+        await message.answer(
+            f"⚠️ Точно удалить пустую категорию «{cat['name']}» (ID {cat_id})?",
+            reply_markup=keyboard
+        )
     finally:
         await conn.close()
