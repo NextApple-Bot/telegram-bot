@@ -20,7 +20,6 @@ import asyncpg
 from datetime import datetime
 from aiogram.types import FSInputFile
 
-# Хранилища последних сообщений для разных типов операций
 last_stats_message = {}
 last_finance_message = {}
 last_inventory_message = {}
@@ -287,7 +286,6 @@ async def process_month_selection(callback: CallbackQuery):
     month = callback.data.split(":")[1]
     chat_id = callback.message.chat.id
 
-    # Удаляем предыдущее сообщение с отчётом, если оно было
     if chat_id in last_clients_month_message:
         try:
             await callback.bot.delete_message(chat_id, last_clients_month_message[chat_id])
@@ -344,7 +342,6 @@ async def process_month_selection(callback: CallbackQuery):
 
         await safe_delete(callback.message)
 
-        # Отправляем файл и сохраняем ID
         sent = await callback.message.answer_document(
             FSInputFile(tmp_path, filename=f"clients_{month}.csv"),
             caption=f"📁 Данные клиентов за {month}"
@@ -373,7 +370,6 @@ async def process_remains(callback: CallbackQuery):
 
     chat_id = callback.message.chat.id
 
-    # Удаляем предыдущее сообщение с остатками, если оно было
     if chat_id in last_remains_message:
         try:
             await callback.bot.delete_message(chat_id, last_remains_message[chat_id])
@@ -417,7 +413,6 @@ async def process_remains(callback: CallbackQuery):
 
     await safe_delete(callback.message)
 
-    # Отправляем файл и сохраняем ID
     sent = await callback.message.answer_document(
         FSInputFile(tmp_path, filename=f"remains_{today}.csv"),
         caption=f"📦 Остатки на {today}"
@@ -429,12 +424,114 @@ async def process_remains(callback: CallbackQuery):
     keyboard = get_main_menu_keyboard()
     await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
-# ---------- Вспомогательная функция для безопасного удаления сообщения ----------
-async def safe_delete(message):
+# ---------- Обработчики для подтверждения удаления (категории, ассортимент и т.д.) ----------
+@router.callback_query(F.data.startswith("clean_empty:"))
+async def process_clean_empty(callback: CallbackQuery):
     try:
-        await message.delete()
+        await callback.answer()
     except Exception as e:
-        logger.warning(f"Не удалось удалить сообщение: {e}")
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    action = callback.data.split(":")[1]
+    if action != "confirm":
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        result = await conn.execute('''
+            DELETE FROM categories
+            WHERE id NOT IN (SELECT DISTINCT category_id FROM items WHERE category_id IS NOT NULL)
+        ''')
+        deleted = int(result.split()[1]) if result.startswith('DELETE') else 0
+        await callback.message.edit_text(f"✅ Удалено пустых категорий: {deleted}")
+    except Exception as e:
+        logger.exception("Ошибка при очистке пустых категорий")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
+
+@router.callback_query(F.data.startswith("delete_cat:"))
+async def process_delete_category(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    cat_id = int(callback.data.split(":")[1])
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', cat_id)
+        if count > 0:
+            await callback.message.edit_text(f"❌ В категории появились товары, удаление отменено.")
+            return
+        await conn.execute('DELETE FROM categories WHERE id = $1', cat_id)
+        await callback.message.edit_text(f"✅ Категория ID {cat_id} удалена.")
+    except Exception as e:
+        logger.exception("Ошибка при удалении категории")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
+
+@router.callback_query(F.data.startswith("merge:"))
+async def process_merge_categories(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    _, from_id, to_id = callback.data.split(':')
+    from_id = int(from_id)
+    to_id = int(to_id)
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute('UPDATE items SET category_id = $1 WHERE category_id = $2', to_id, from_id)
+            await conn.execute('DELETE FROM categories WHERE id = $1', from_id)
+        await callback.message.edit_text(f"✅ Товары перенесены, категория {from_id} удалена.")
+    except Exception as e:
+        logger.exception("Ошибка при слиянии")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
+
+@router.callback_query(F.data.startswith("reset_assortment:"))
+async def process_reset_assortment(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    action = callback.data.split(":")[1]
+    if action != "confirm":
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM categories")
+        await callback.message.edit_text("✅ Ассортимент полностью очищен.")
+    except Exception as e:
+        logger.exception("Ошибка при сбросе ассортимента")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
 
 # ---------- Подтверждение удаления клиента ----------
 @router.callback_query(F.data.startswith("delete_client:"))
@@ -452,9 +549,7 @@ async def process_delete_client(callback: CallbackQuery):
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         async with conn.transaction():
-            # Удаляем все покупки клиента
             await conn.execute('DELETE FROM purchases WHERE client_id = $1', client_id)
-            # Удаляем самого клиента
             await conn.execute('DELETE FROM clients WHERE id = $1', client_id)
         await callback.message.edit_text(f"✅ Клиент ID {client_id} и все его покупки удалены.")
     except Exception as e:
@@ -485,3 +580,10 @@ async def process_delete_purchase(callback: CallbackQuery):
         await callback.message.edit_text("❌ Произошла ошибка.")
     finally:
         await conn.close()
+
+# ---------- Вспомогательная функция для безопасного удаления сообщения ----------
+async def safe_delete(message):
+    try:
+        await message.delete()
+    except Exception as e:
+        logger.warning(f"Не удалось удалить сообщение: {e}")
