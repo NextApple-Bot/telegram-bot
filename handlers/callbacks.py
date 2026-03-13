@@ -106,7 +106,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
     elif action == "remains":
-        await process_remains(callback)  # новый обработчик
+        await process_remains(callback)  # вызов обработчика остатков
     elif action == "clear":
         current_state = await state.get_state()
         if current_state is not None:
@@ -358,10 +358,10 @@ async def process_remains(callback: CallbackQuery):
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
-    # Получаем все товары без брони
+    # Получаем все товары без брони (используем двойные кавычки для внешнего запроса)
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
-        rows = await conn.fetch('SELECT text FROM items WHERE text NOT LIKE ''%Бронь от%''')
+        rows = await conn.fetch("SELECT text FROM items WHERE text NOT LIKE '%Бронь от%'")
     finally:
         await conn.close()
 
@@ -404,3 +404,6 @@ async def process_remains(callback: CallbackQuery):
 
     # Удаляем временный файл
     os.unlink(tmp_path)
+
+# ---------- Обработчики для очистки категорий (если были добавлены ранее) ----------
+# ... (можно добавить сюда, если они есть)
