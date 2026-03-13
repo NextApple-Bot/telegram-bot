@@ -337,24 +337,3 @@ async def cmd_delete_category(message: Message):
         )
     finally:
         await conn.close()
-
-@router.message(Command("migrate"))
-async def cmd_migrate(message: Message):
-    if message.from_user.id != config.ADMIN_ID:
-        await message.answer("⛔ Доступ запрещён")
-        return
-
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
-        # Добавляем поле is_booked
-        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS is_booked BOOLEAN DEFAULT FALSE')
-        # Обновляем забронированные товары
-        result = await conn.execute("UPDATE items SET is_booked = TRUE WHERE text ILIKE '%Бронь от%'")
-        updated = result.split()[-1]
-        # Создаём индекс
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
-        await message.answer(f"✅ Миграция выполнена!\nОбновлено записей: {updated}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-    finally:
-        await conn.close()
