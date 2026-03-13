@@ -6,10 +6,9 @@ import config
 import inventory
 import stats
 from .base import (
-    router, logger, AssortmentConfirmState,
-    show_inventory, show_help, cancel_action, get_main_menu_keyboard
+    router, logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
 )
-from .topics import export_assortment_to_topic
+from .topics.common import export_assortment_to_topic
 from database import get_available_months, get_clients_data_for_month
 from sort_assortment import extract_base_name, detect_sim_type, get_full_model_name
 import json
@@ -19,6 +18,8 @@ import os
 import asyncpg
 from datetime import datetime
 from aiogram.types import FSInputFile
+
+# ... (весь остальной код callbacks.py без изменений, кроме удалённого импорта состояний)
 
 last_stats_message = {}
 last_finance_message = {}
