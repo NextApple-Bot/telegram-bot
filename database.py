@@ -52,6 +52,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
 _pool = None
 
 async def get_pool():
+    """Возвращает пул соединений (создаёт при первом вызове)."""
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(
