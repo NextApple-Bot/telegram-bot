@@ -48,16 +48,3 @@ async def save_inventory(categories):
 
 async def remove_by_serial(serial: str) -> int:
     return await remove_item_by_serial(serial)
-
-def normalize_item_text(text):
-    """
-    Удаляет из текста товара серийный номер и пометки о брони,
-    оставляя только описание модели для группировки.
-    """
-    # Удаляем серийный номер (если он есть)
-    serial = extract_serial(text)
-    if serial:
-        text = re.sub(rf'\s*\({re.escape(serial)}\)', '', text)
-    # Удаляем пометки о брони вида (Бронь от ...)
-    text = re.sub(r'\s*\(Бронь от \d{2}\.\d{2}\)', '', text, flags=re.IGNORECASE)
-    return text.strip()
