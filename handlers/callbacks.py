@@ -11,11 +11,13 @@ from .base import (
 )
 from .topics import export_assortment_to_topic
 from database import get_available_months, get_clients_data_for_month
+from sort_assortment import extract_base_name, detect_sim_type  # для остатков
 import json
 import csv
 import tempfile
 import os
 import asyncpg
+from datetime import datetime
 from aiogram.types import FSInputFile
 
 last_stats_message = {}
@@ -35,13 +37,11 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     if action == "inventory":
         await show_inventory(bot, chat_id)
     elif action == "stats":
-        # Удаляем предыдущее сообщение статистики, если оно было
         if chat_id in last_stats_message:
             try:
                 await bot.delete_message(chat_id, last_stats_message[chat_id])
             except Exception as e:
                 logger.warning(f"Не удалось удалить старое сообщение статистики: {e}")
-        # Получаем свежую статистику
         s = await stats.get_stats()
         text = (
             f"📊 Статистика за {s['date']}:\n"
@@ -52,18 +52,15 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
         ])
-        # Отправляем новое сообщение и запоминаем его ID
         msg = await callback.message.answer(text, reply_markup=keyboard)
         last_stats_message[chat_id] = msg.message_id
 
     elif action == "finance":
-        # Удаляем предыдущее сообщение финансов, если оно было
         if chat_id in last_finance_message:
             try:
                 await bot.delete_message(chat_id, last_finance_message[chat_id])
             except Exception as e:
                 logger.warning(f"Не удалось удалить старое сообщение финансов: {e}")
-        # Получаем свежие финансы
         s = await stats.get_stats()
         total = (
             s['sales_terminal'] + s['preorders_terminal'] +
@@ -83,7 +80,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
         ])
-        # Отправляем новое сообщение и запоминаем его ID
         msg = await callback.message.answer(text, reply_markup=keyboard)
         last_finance_message[chat_id] = msg.message_id
 
@@ -109,6 +105,8 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="menu:cancel")])
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
+    elif action == "remains":
+        await process_remains(callback)  # новый обработчик
     elif action == "clear":
         current_state = await state.get_state()
         if current_state is not None:
@@ -270,6 +268,7 @@ async def process_reset_finances(callback: CallbackQuery):
         logger.exception(f"Ошибка в process_reset_finances: {e}")
         await callback.message.answer("❌ Произошла ошибка")
 
+# ---------- Обработчик для выбора месяца (клиенты) ----------
 @router.callback_query(F.data.startswith("month:"))
 async def process_month_selection(callback: CallbackQuery):
     try:
@@ -351,86 +350,57 @@ async def process_month_selection(callback: CallbackQuery):
         logger.exception(f"Ошибка при формировании отчёта за {month}")
         await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
 
-# ---------- Callback для подтверждения удаления всех пустых категорий ----------
-@router.callback_query(F.data.startswith("clean_empty:"))
-async def process_clean_empty(callback: CallbackQuery):
+# ---------- НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ «ОСТАТКИ» ----------
+@router.callback_query(F.data == "menu:remains")
+async def process_remains(callback: CallbackQuery):
     try:
-        await callback.answer()
+        await callback.answer("⏳ Формирую отчёт по остаткам...")
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
-    if callback.from_user.id != config.ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещён", show_alert=True)
-        return
-
-    action = callback.data.split(":")[1]
-    if action != "confirm":
-        return
-
+    # Получаем все товары без брони
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
-        result = await conn.execute('''
-            DELETE FROM categories
-            WHERE id NOT IN (SELECT DISTINCT category_id FROM items WHERE category_id IS NOT NULL)
-        ''')
-        deleted = int(result.split()[1]) if result.startswith('DELETE') else 0
-        await callback.message.edit_text(f"✅ Удалено пустых категорий: {deleted}")
-    except Exception as e:
-        logger.exception("Ошибка при очистке пустых категорий")
-        await callback.message.edit_text("❌ Произошла ошибка.")
+        rows = await conn.fetch('SELECT text FROM items WHERE text NOT LIKE ''%Бронь от%''')
     finally:
         await conn.close()
 
-# ---------- Callback для подтверждения удаления одной категории ----------
-@router.callback_query(F.data.startswith("delete_cat:"))
-async def process_delete_category(callback: CallbackQuery):
-    try:
-        await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
-    if callback.from_user.id != config.ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+    if not rows:
+        await callback.message.answer("📭 Нет товаров в наличии.")
         return
 
-    cat_id = int(callback.data.split(":")[1])
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
-        count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', cat_id)
-        if count > 0:
-            await callback.message.edit_text(f"❌ В категории появились товары, удаление отменено.")
-            return
-        await conn.execute('DELETE FROM categories WHERE id = $1', cat_id)
-        await callback.message.edit_text(f"✅ Категория ID {cat_id} удалена.")
-    except Exception as e:
-        logger.exception("Ошибка при удалении категории")
-        await callback.message.edit_text("❌ Произошла ошибка.")
-    finally:
-        await conn.close()
+    # Группируем товары
+    groups = {}
+    for row in rows:
+        text = row['text']
+        base = extract_base_name(text)
+        sim = detect_sim_type(text)
+        key = f"{base} ({sim})" if sim != 'other' else base
+        groups[key] = groups.get(key, 0) + 1
 
-@router.callback_query(F.data.startswith("reset_assortment:"))
-async def process_reset_assortment(callback: CallbackQuery):
-    try:
-        await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
+    # Создаём CSV-файл
+    today = datetime.now().strftime("%Y-%m-%d")
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
+        writer = csv.writer(tmp)
+        writer.writerow(['Модель', 'Тип SIM', 'Количество'])
+        for key, count in sorted(groups.items()):
+            # Разделяем ключ на модель и тип SIM (если есть)
+            if key.endswith(')'):
+                # Предполагаем формат "Модель (тип SIM)"
+                model = key[:-1].rsplit(' (', 1)[0]
+                sim_type = key[:-1].rsplit(' (', 1)[1] if '(' in key else ''
+            else:
+                model = key
+                sim_type = ''
+            writer.writerow([model, sim_type, count])
 
-    if callback.from_user.id != config.ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещён", show_alert=True)
-        return
+        tmp_path = tmp.name
 
-    action = callback.data.split(":")[1]
-    if action != "confirm":
-        return
+    # Отправляем файл
+    await callback.message.answer_document(
+        FSInputFile(tmp_path, filename=f"remains_{today}.csv"),
+        caption=f"📦 Остатки на {today}"
+    )
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
-        async with conn.transaction():
-            # Удаляем все категории (товары удалятся каскадно)
-            await conn.execute("DELETE FROM categories")
-        await callback.message.edit_text("✅ Ассортимент полностью очищен. Теперь можно загрузить новый файл.")
-    except Exception as e:
-        logger.exception("Ошибка при сбросе ассортимента")
-        await callback.message.edit_text("❌ Произошла ошибка.")
-    finally:
-        await conn.close()
+    # Удаляем временный файл
+    os.unlink(tmp_path)
