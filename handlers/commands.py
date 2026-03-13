@@ -2,13 +2,12 @@ import csv
 import json
 import tempfile
 import os
-import asyncpg
 from aiogram import F
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
 import config
-from database import search_clients, get_client_purchases
+from database import search_clients, get_client_purchases, get_pool
 from .base import (
     router, logger, show_inventory, cancel_action, get_main_menu_keyboard, show_help
 )
@@ -45,27 +44,24 @@ async def cmd_export_clients(message: Message):
         await message.answer("⛔ Доступ запрещён")
         return
 
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('SELECT * FROM clients ORDER BY id')
+
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
         writer = csv.writer(tmp)
         writer.writerow(['ID', 'ФИО', 'Основной телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник', 'Дата регистрации'])
-
-        conn = await asyncpg.connect(config.DATABASE_URL)
-        try:
-            rows = await conn.fetch('SELECT * FROM clients ORDER BY id')
-            for row in rows:
-                writer.writerow([
-                    row['id'],
-                    row['full_name'],
-                    row['phone'],
-                    row['phones'],
-                    row['telegram_username'],
-                    row['social_network'],
-                    row['referral_source'],
-                    row['created_at']
-                ])
-        finally:
-            await conn.close()
-
+        for row in rows:
+            writer.writerow([
+                row['id'],
+                row['full_name'],
+                row['phone'],
+                row['phones'],
+                row['telegram_username'],
+                row['social_network'],
+                row['referral_source'],
+                row['created_at']
+            ])
         tmp_path = tmp.name
 
     try:
@@ -82,26 +78,23 @@ async def cmd_export_purchases(message: Message):
         await message.answer("⛔ Доступ запрещён")
         return
 
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('SELECT * FROM purchases ORDER BY id')
+
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
         writer = csv.writer(tmp)
         writer.writerow(['ID покупки', 'ID клиента', 'Товары (JSON)', 'Сумма', 'Оплата (JSON)', 'Тип', 'Дата'])
-
-        conn = await asyncpg.connect(config.DATABASE_URL)
-        try:
-            rows = await conn.fetch('SELECT * FROM purchases ORDER BY id')
-            for row in rows:
-                writer.writerow([
-                    row['id'],
-                    row['client_id'],
-                    row['items_json'],
-                    row['total_amount'],
-                    row['payment_details'],
-                    row['purchase_type'],
-                    row['created_at']
-                ])
-        finally:
-            await conn.close()
-
+        for row in rows:
+            writer.writerow([
+                row['id'],
+                row['client_id'],
+                row['items_json'],
+                row['total_amount'],
+                row['payment_details'],
+                row['purchase_type'],
+                row['created_at']
+            ])
         tmp_path = tmp.name
 
     try:
@@ -162,35 +155,32 @@ async def cmd_export_full_report(message: Message):
         await message.answer("⛔ Доступ запрещён")
         return
 
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('''
+            SELECT c.id, c.full_name, c.phone, c.telegram_username,
+                   p.created_at, p.items_json, p.total_amount, p.payment_details
+            FROM clients c
+            LEFT JOIN purchases p ON c.id = p.client_id
+            ORDER BY c.id, p.created_at
+        ''')
+
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
         writer = csv.writer(tmp)
         writer.writerow(['ID клиента', 'ФИО', 'Телефон', 'Telegram', 'Дата покупки', 'Товары', 'Сумма', 'Способ оплаты'])
-
-        conn = await asyncpg.connect(config.DATABASE_URL)
-        try:
-            rows = await conn.fetch('''
-                SELECT c.id, c.full_name, c.phone, c.telegram_username,
-                       p.created_at, p.items_json, p.total_amount, p.payment_details
-                FROM clients c
-                LEFT JOIN purchases p ON c.id = p.client_id
-                ORDER BY c.id, p.created_at
-            ''')
-            for row in rows:
-                items = json.loads(row['items_json']) if row['items_json'] else []
-                items_short = ', '.join([it['item_text'][:30] + '...' for it in items])
-                writer.writerow([
-                    row['id'],
-                    row['full_name'],
-                    row['phone'],
-                    row['telegram_username'],
-                    row['created_at'],
-                    items_short,
-                    row['total_amount'],
-                    row['payment_details']
-                ])
-        finally:
-            await conn.close()
-
+        for row in rows:
+            items = json.loads(row['items_json']) if row['items_json'] else []
+            items_short = ', '.join([it['item_text'][:30] + '...' for it in items])
+            writer.writerow([
+                row['id'],
+                row['full_name'],
+                row['phone'],
+                row['telegram_username'],
+                row['created_at'],
+                items_short,
+                row['total_amount'],
+                row['payment_details']
+            ])
         tmp_path = tmp.name
 
     try:
@@ -208,8 +198,8 @@ async def cmd_show_categories(message: Message):
         await message.answer("⛔ Доступ запрещён")
         return
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows = await conn.fetch('''
             SELECT c.id, c.name, COUNT(i.id) as item_count
             FROM categories c
@@ -225,8 +215,6 @@ async def cmd_show_categories(message: Message):
         for r in rows:
             text += f"🆔 `{r['id']}` — **{r['name']}** (товаров: {r['item_count']})\n"
         await message.answer(text, parse_mode='Markdown')
-    finally:
-        await conn.close()
 
 @router.message(Command("clean_empty"))
 async def cmd_clean_empty(message: Message):
@@ -234,8 +222,8 @@ async def cmd_clean_empty(message: Message):
         await message.answer("⛔ Доступ запрещён")
         return
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows = await conn.fetch('''
             SELECT c.id, c.name
             FROM categories c
@@ -255,8 +243,6 @@ async def cmd_clean_empty(message: Message):
             f"⚠️ Найдены пустые категории:\n{categories_list}\n\nУдалить их?",
             reply_markup=keyboard
         )
-    finally:
-        await conn.close()
 
 @router.message(Command("delete_category"))
 async def cmd_delete_category(message: Message):
@@ -274,8 +260,8 @@ async def cmd_delete_category(message: Message):
         await message.answer("❌ ID должен быть числом")
         return
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         cat = await conn.fetchrow('SELECT name FROM categories WHERE id = $1', cat_id)
         if not cat:
             await message.answer(f"❌ Категория с ID {cat_id} не найдена.")
@@ -294,8 +280,6 @@ async def cmd_delete_category(message: Message):
             f"⚠️ Точно удалить пустую категорию «{cat['name']}» (ID {cat_id})?",
             reply_markup=keyboard
         )
-    finally:
-        await conn.close()
 
 @router.message(Command("merge_categories"))
 async def cmd_merge_categories(message: Message):
@@ -318,8 +302,8 @@ async def cmd_merge_categories(message: Message):
         await message.answer("❌ ID должны быть разными")
         return
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         from_cat = await conn.fetchrow('SELECT name FROM categories WHERE id = $1', from_id)
         to_cat = await conn.fetchrow('SELECT name FROM categories WHERE id = $1', to_id)
         if not from_cat or not to_cat:
@@ -340,8 +324,6 @@ async def cmd_merge_categories(message: Message):
             f"После этого категория {from_id} будет удалена.",
             reply_markup=keyboard
         )
-    finally:
-        await conn.close()
 
 @router.message(Command("reset_assortment"))
 async def cmd_reset_assortment(message: Message):
@@ -378,14 +360,13 @@ async def cmd_delete_client(message: Message):
         await message.answer("❌ ID должен быть числом")
         return
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         client = await conn.fetchrow('SELECT full_name FROM clients WHERE id = $1', client_id)
         if not client:
             await message.answer(f"❌ Клиент с ID {client_id} не найден.")
             return
 
-        # Проверяем, есть ли у клиента покупки
         purchases = await conn.fetchval('SELECT COUNT(*) FROM purchases WHERE client_id = $1', client_id)
         if purchases:
             warning = f"\n⚠️ У клиента есть {purchases} покупок — они будут удалены вместе с клиентом."
@@ -400,8 +381,6 @@ async def cmd_delete_client(message: Message):
             f"⚠️ Удалить клиента «{client['full_name'] or 'Без имени'}» (ID {client_id})?{warning}",
             reply_markup=keyboard
         )
-    finally:
-        await conn.close()
 
 @router.message(Command("delete_purchase"))
 async def cmd_delete_purchase(message: Message):
@@ -419,8 +398,8 @@ async def cmd_delete_purchase(message: Message):
         await message.answer("❌ ID должен быть числом")
         return
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         purchase = await conn.fetchrow('SELECT id, total_amount FROM purchases WHERE id = $1', purchase_id)
         if not purchase:
             await message.answer(f"❌ Покупка с ID {purchase_id} не найдена.")
@@ -434,8 +413,6 @@ async def cmd_delete_purchase(message: Message):
             f"⚠️ Удалить покупку ID {purchase_id} на сумму {purchase['total_amount']} ₽?",
             reply_markup=keyboard
         )
-    finally:
-        await conn.close()
 
 # ---------- Команда миграции (одноразовая) ----------
 @router.message(Command("migrate"))
@@ -444,14 +421,13 @@ async def cmd_migrate(message: Message):
         await message.answer("⛔ Доступ запрещён")
         return
 
-    conn = await asyncpg.connect(config.DATABASE_URL)
-    try:
-        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS is_booked BOOLEAN DEFAULT FALSE')
-        result = await conn.execute("UPDATE items SET is_booked = TRUE WHERE text ILIKE '%Бронь от%'")
-        updated = result.split()[-1]
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
-        await message.answer(f"✅ Миграция выполнена!\nОбновлено записей: {updated}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-    finally:
-        await conn.close()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        try:
+            await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS is_booked BOOLEAN DEFAULT FALSE')
+            result = await conn.execute("UPDATE items SET is_booked = TRUE WHERE text ILIKE '%Бронь от%'")
+            updated = result.split()[-1]
+            await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
+            await message.answer(f"✅ Миграция выполнена!\nОбновлено записей: {updated}")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {e}")
