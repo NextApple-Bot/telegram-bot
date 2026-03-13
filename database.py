@@ -4,68 +4,47 @@ import json
 import logging
 from datetime import date, datetime
 
-import config
-
-logger = logging.getLogger(__name__)
-
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL:
-    raise ValueError("❌ DATABASE_URL не задан в переменных окружения!")
-
-# Глобальный пул соединений (инициализируется при старте)
-_pool = None
-
-async def get_pool():
-    """Возвращает глобальный пул соединений, создавая его при необходимости."""
-    global _pool
-    if _pool is None:
-        _pool = await asyncpg.create_pool(
-            DATABASE_URL,
-            min_size=5,
-            max_size=20,
-            command_timeout=60,
-            max_inactive_connection_lifetime=300
-        )
-        logger.info("✅ Пул соединений создан")
-    return _pool
+# ... (остальные импорты и DATABASE_URL)
 
 async def init_db():
-    """Создаёт таблицы и индексы, если их нет. Использует пул."""
+    """Создаёт таблицы и индексы, если их нет."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Таблица категорий
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS categories (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE
-            )
-        ''')
-        # Таблица товаров
+        # ... (создание остальных таблиц)
+
+        # Таблица товаров с новым полем is_booked
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS items (
                 id SERIAL PRIMARY KEY,
                 text TEXT NOT NULL,
                 serial TEXT,
                 category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+                is_booked BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Таблица продаж
+
+        # ... (остальные таблицы и индексы)
+
+        # Индекс для быстрого поиска по is_booked
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
+        # ... (остальные индексы)
+
+async def add_item(text: str, serial: str = None, category_name: str = None):
+    """Добавляет товар. Автоматически определяет is_booked по наличию 'Бронь от' в тексте."""
+    if category_name is None:
+        category_name = "Общее:"
+    cat_id = await get_or_create_category(category_name)
+    normalized_serial = serial.strip().upper() if serial else None
+    is_booked = 'Бронь от' in text  # определяем признак брони
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         await conn.execute('''
-            CREATE TABLE IF NOT EXISTS sales (
-                id SERIAL PRIMARY KEY,
-                item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
-                count INTEGER DEFAULT 1,
-                cash REAL DEFAULT 0,
-                terminal REAL DEFAULT 0,
-                qr REAL DEFAULT 0,
-                installment REAL DEFAULT 0,
-                is_accessory BOOLEAN DEFAULT FALSE,
-                sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        # Таблица предзаказов
-        await conn.execute('''
+            INSERT INTO items (text, serial, category_id, is_booked)
+            VALUES ($1, $2, $3, $4)
+        ''', text, normalized_serial, cat_id, is_booked)
+
+# ... (остальные функции)        await conn.execute('''
             CREATE TABLE IF NOT EXISTS preorders (
                 id SERIAL PRIMARY KEY,
                 cash REAL DEFAULT 0,
