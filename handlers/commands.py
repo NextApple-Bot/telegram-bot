@@ -278,6 +278,26 @@ async def cmd_clean_empty(message: Message):
     finally:
         await conn.close()
 
+@router.message(Command("reset_assortment"))
+async def cmd_reset_assortment(message: Message):
+    """Полностью очистить ассортимент (удалить все товары и категории)."""
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    # Спрашиваем подтверждение
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ ДА, УДАЛИТЬ ВСЁ", callback_data="reset_assortment:confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+    ])
+    await message.answer(
+        "⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит** все товары и категории из ассортимента.\n"
+        "Данные о клиентах, покупках, статистике и бронях сохранятся.\n\n"
+        "Вы уверены?",
+        reply_markup=keyboard,
+        parse_mode='Markdown'
+    )
+    
 @router.message(Command("delete_category"))
 async def cmd_delete_category(message: Message):
     """Удалить категорию по ID (только если она пуста)."""
