@@ -2,7 +2,9 @@ import os
 import asyncpg
 import json
 import logging
+import asyncio
 from datetime import date, datetime
+from functools import wraps
 
 import config
 
@@ -12,6 +14,41 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("❌ DATABASE_URL не задан в переменных окружения!")
 
+# ---------- Декоратор для повторных попыток ----------
+def retry_on_db_error(retries=3, delay=1, backoff=2):
+    """
+    Декоратор для асинхронных функций, выполняющих запросы к БД.
+    При ошибках соединения (ConnectionFailureError и подобные) повторяет вызов до retries раз.
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(retries):
+                try:
+                    return await func(*args, **kwargs)
+                except (asyncpg.exceptions.ConnectionFailureError,
+                        asyncpg.exceptions.ConnectionDoesNotExistError,
+                        asyncpg.exceptions.InterfaceError,
+                        asyncpg.exceptions.ConnectionRejectedError,
+                        asyncpg.exceptions.ConnectionNotInitializedError,
+                        asyncpg.exceptions.PostgresConnectionError) as e:
+                    last_exception = e
+                    if attempt < retries - 1:
+                        wait = delay * (backoff ** attempt)
+                        logger.warning(f"Ошибка БД (попытка {attempt+1}/{retries}): {e}. Повтор через {wait}с")
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.error(f"Все попытки исчерпаны: {e}")
+                        raise
+                except Exception as e:
+                    # Другие ошибки не повторяем
+                    raise
+            raise last_exception
+        return wrapper
+    return decorator
+
+# ---------- Пул соединений ----------
 _pool = None
 
 async def get_pool():
@@ -28,7 +65,7 @@ async def get_pool():
     return _pool
 
 async def init_db():
-    """Создаёт таблицы и индексы, если их нет."""
+    """Создаёт таблицы и индексы, если их нет. Не оборачиваем декоратором, т.к. вызывается один раз при старте."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Таблица категорий
@@ -120,6 +157,7 @@ async def init_db():
 
 # ---------- Категории и товары ----------
 
+@retry_on_db_error()
 async def get_or_create_category(name: str) -> int:
     norm_name = name.lower().rstrip(':')
     pool = await get_pool()
@@ -130,6 +168,7 @@ async def get_or_create_category(name: str) -> int:
         row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
         return row['id']
 
+@retry_on_db_error()
 async def add_item(text: str, serial: str = None, category_name: str = None):
     if category_name is None:
         category_name = "Общее:"
@@ -143,6 +182,7 @@ async def add_item(text: str, serial: str = None, category_name: str = None):
             VALUES ($1, $2, $3, $4)
         ''', text, normalized_serial, cat_id, is_booked)
 
+@retry_on_db_error()
 async def get_item_id_by_serial(serial: str) -> int | None:
     if not serial:
         return None
@@ -152,6 +192,7 @@ async def get_item_id_by_serial(serial: str) -> int | None:
         row = await conn.fetchrow('SELECT id FROM items WHERE UPPER(serial) = $1', normalized)
         return row['id'] if row else None
 
+@retry_on_db_error()
 async def get_item_by_serial(serial: str) -> dict | None:
     normalized = serial.strip().upper()
     pool = await get_pool()
@@ -164,6 +205,7 @@ async def get_item_by_serial(serial: str) -> dict | None:
         ''', normalized)
         return dict(row) if row else None
 
+@retry_on_db_error()
 async def get_item_by_text(text: str) -> dict | None:
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -175,6 +217,7 @@ async def get_item_by_text(text: str) -> dict | None:
         ''', text)
         return dict(row) if row else None
 
+@retry_on_db_error()
 async def remove_item_by_serial(serial: str) -> int:
     normalized = serial.strip().upper() if serial else None
     pool = await get_pool()
@@ -182,6 +225,7 @@ async def remove_item_by_serial(serial: str) -> int:
         result = await conn.execute('DELETE FROM items WHERE UPPER(serial) = $1', normalized)
         return int(result.split()[1]) if result.startswith('DELETE') else 0
 
+@retry_on_db_error()
 async def get_all_categories_with_items():
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -200,12 +244,14 @@ async def get_all_categories_with_items():
                 categories[cat].append(row['item_text'])
         return [{"header": cat, "items": items} for cat, items in categories.items()]
 
+@retry_on_db_error()
 async def get_all_items_serials():
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch('SELECT text, serial FROM items')
         return [dict(row) for row in rows]
 
+# Функция с транзакцией – повтор не применяем, чтобы не нарушить атомарность.
 async def update_category_items(category_name: str, new_items: list):
     from serial_utils import extract_serial
     cat_id = await get_or_create_category(category_name)
@@ -223,6 +269,7 @@ async def update_category_items(category_name: str, new_items: list):
                     VALUES ($1, $2, $3, $4)
                 ''', item_text, serial, cat_id, is_booked)
 
+@retry_on_db_error()
 async def clear_all_inventory():
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -230,6 +277,7 @@ async def clear_all_inventory():
 
 # ---------- Статистика ----------
 
+@retry_on_db_error()
 async def add_sale(item_id: int = None, count: int = 1,
                    cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0,
                    is_accessory: bool = False):
@@ -240,6 +288,7 @@ async def add_sale(item_id: int = None, count: int = 1,
             VALUES ($1, $2, $3, $4, $5, $6, $7)
         ''', item_id, count, cash, terminal, qr, installment, is_accessory)
 
+@retry_on_db_error()
 async def add_preorder(cash=0, terminal=0, qr=0, installment=0):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -248,6 +297,7 @@ async def add_preorder(cash=0, terminal=0, qr=0, installment=0):
             VALUES ($1, $2, $3, $4)
         ''', cash, terminal, qr, installment)
 
+@retry_on_db_error()
 async def add_booking(item_id: int, total_amount: float):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -255,6 +305,7 @@ async def add_booking(item_id: int, total_amount: float):
             INSERT INTO bookings (item_id, total_amount) VALUES ($1, $2)
         ''', item_id, total_amount)
 
+@retry_on_db_error()
 async def get_today_stats():
     today = date.today()
     pool = await get_pool()
@@ -301,6 +352,7 @@ async def get_today_stats():
 
 # ---------- Клиенты и покупки ----------
 
+@retry_on_db_error()
 async def get_or_create_client(phone: str = None, phones: list = None, full_name: str = None,
                                telegram_username: str = None, social_network: str = None,
                                referral_source: str = None) -> int:
@@ -355,6 +407,7 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
             ''', full_name, phones_str, telegram_username, social_network, referral_source)
             return row['id']
 
+@retry_on_db_error()
 async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
     items_json = json.dumps(items, ensure_ascii=False)
     payment_json = json.dumps(payment_details, ensure_ascii=False)
@@ -365,12 +418,14 @@ async def add_purchase(client_id: int, items: list, total_amount: float, payment
             VALUES ($1, $2, $3, $4, $5)
         ''', client_id, items_json, total_amount, payment_json, purchase_type)
 
+@retry_on_db_error()
 async def get_client_purchases(client_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
         return [dict(row) for row in rows]
 
+@retry_on_db_error()
 async def search_clients(query: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -383,6 +438,7 @@ async def search_clients(query: str):
 
 # ---------- Функции для работы по месяцам ----------
 
+@retry_on_db_error()
 async def get_available_months():
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -399,6 +455,7 @@ async def get_available_months():
         months = sorted(set([r['month'] for r in rows1] + [r['month'] for r in rows2]), reverse=True)
         return months
 
+@retry_on_db_error()
 async def get_clients_data_for_month(month_str: str):
     month, year = map(int, month_str.split('.'))
     start_date = datetime(year, month, 1).date()
