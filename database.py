@@ -18,7 +18,7 @@ if not DATABASE_URL:
 def retry_on_db_error(retries=3, delay=1, backoff=2):
     """
     Декоратор для асинхронных функций, выполняющих запросы к БД.
-    При ошибках соединения (ConnectionFailureError и подобные) повторяет вызов до retries раз.
+    При ошибках соединения повторяет вызов до retries раз.
     """
     def decorator(func):
         @wraps(func)
@@ -30,7 +30,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
                 except (asyncpg.exceptions.ConnectionFailureError,
                         asyncpg.exceptions.ConnectionDoesNotExistError,
                         asyncpg.exceptions.InterfaceError,
-                        asyncpg.exceptions.ConnectionRejectedError,
+                        asyncpg.exceptions.ConnectionRejectionError,
                         asyncpg.exceptions.ConnectionNotInitializedError,
                         asyncpg.exceptions.PostgresConnectionError) as e:
                     last_exception = e
@@ -65,7 +65,7 @@ async def get_pool():
     return _pool
 
 async def init_db():
-    """Создаёт таблицы и индексы, если их нет. Не оборачиваем декоратором, т.к. вызывается один раз при старте."""
+    """Создаёт таблицы и индексы, если их нет."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Таблица категорий
@@ -251,7 +251,6 @@ async def get_all_items_serials():
         rows = await conn.fetch('SELECT text, serial FROM items')
         return [dict(row) for row in rows]
 
-# Функция с транзакцией – повтор не применяем, чтобы не нарушить атомарность.
 async def update_category_items(category_name: str, new_items: list):
     from serial_utils import extract_serial
     cat_id = await get_or_create_category(category_name)
