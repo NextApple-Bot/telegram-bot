@@ -407,3 +407,30 @@ async def process_delete_category(callback: CallbackQuery):
         await callback.message.edit_text("❌ Произошла ошибка.")
     finally:
         await conn.close()
+
+@router.callback_query(F.data.startswith("reset_assortment:"))
+async def process_reset_assortment(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    action = callback.data.split(":")[1]
+    if action != "confirm":
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        async with conn.transaction():
+            # Удаляем все категории (товары удалятся каскадно)
+            await conn.execute("DELETE FROM categories")
+        await callback.message.edit_text("✅ Ассортимент полностью очищен. Теперь можно загрузить новый файл.")
+    except Exception as e:
+        logger.exception("Ошибка при сбросе ассортимента")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
