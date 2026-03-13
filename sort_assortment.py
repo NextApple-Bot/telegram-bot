@@ -27,15 +27,23 @@ def detect_sim_type(text):
     return 'other'
 
 def extract_base_name(item):
-    if ',' in item:
-        model_part = item.split(',', 1)[0].strip()
+    # Удаляем всё, что в круглых скобках (серийные номера, пометки, "Бронь от" и т.п.)
+    without_brackets = re.sub(r'\([^)]*\)', '', item)
+    
+    # Разделяем по запятой, если есть (обычно после запятой идёт цвет/доп. характеристики)
+    if ',' in without_brackets:
+        model_part = without_brackets.split(',', 1)[0].strip()
     else:
-        model_part = item.strip()
-    memory = extract_memory(item)
+        model_part = without_brackets.strip()
+    
+    # Извлекаем память (из очищенной строки)
+    memory = extract_memory(without_brackets)
     if memory:
         base = f"{model_part} {memory}"
     else:
         base = model_part
+    
+    # Нормализуем имя (убираем лишние пробелы, исправляем модель)
     base = normalize_name(base)
     base = normalize_model(base)
     return base
