@@ -463,3 +463,11 @@ async def get_clients_data_for_month(month_str: str):
         return [dict(row) for row in rows]
     finally:
         await conn.close()
+
+async def clear_all_inventory():
+    """Удаляет все категории и товары (каскадно)"""
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        await conn.execute('DELETE FROM categories')
+    finally:
+        await conn.close()
