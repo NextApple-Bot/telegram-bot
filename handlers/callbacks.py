@@ -15,6 +15,7 @@ import json
 import csv
 import tempfile
 import os
+import asyncpg
 from aiogram.types import FSInputFile
 
 last_stats_message = {}
