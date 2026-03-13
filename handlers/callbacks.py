@@ -350,3 +350,60 @@ async def process_month_selection(callback: CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка при формировании отчёта за {month}")
         await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
+
+# ---------- Callback для подтверждения удаления всех пустых категорий ----------
+@router.callback_query(F.data.startswith("clean_empty:"))
+async def process_clean_empty(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    action = callback.data.split(":")[1]
+    if action != "confirm":
+        return
+
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        result = await conn.execute('''
+            DELETE FROM categories
+            WHERE id NOT IN (SELECT DISTINCT category_id FROM items WHERE category_id IS NOT NULL)
+        ''')
+        deleted = int(result.split()[1]) if result.startswith('DELETE') else 0
+        await callback.message.edit_text(f"✅ Удалено пустых категорий: {deleted}")
+    except Exception as e:
+        logger.exception("Ошибка при очистке пустых категорий")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
+
+# ---------- Callback для подтверждения удаления одной категории ----------
+@router.callback_query(F.data.startswith("delete_cat:"))
+async def process_delete_category(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    cat_id = int(callback.data.split(":")[1])
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', cat_id)
+        if count > 0:
+            await callback.message.edit_text(f"❌ В категории появились товары, удаление отменено.")
+            return
+        await conn.execute('DELETE FROM categories WHERE id = $1', cat_id)
+        await callback.message.edit_text(f"✅ Категория ID {cat_id} удалена.")
+    except Exception as e:
+        logger.exception("Ошибка при удалении категории")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
