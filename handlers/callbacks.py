@@ -20,8 +20,12 @@ import asyncpg
 from datetime import datetime
 from aiogram.types import FSInputFile
 
+# Хранилища последних сообщений для разных типов операций
 last_stats_message = {}
 last_finance_message = {}
+last_inventory_message = {}
+last_remains_message = {}
+last_clients_month_message = {}
 
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
@@ -35,7 +39,14 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     chat_id = callback.message.chat.id
 
     if action == "inventory":
-        await show_inventory(bot, chat_id)
+        if chat_id in last_inventory_message:
+            try:
+                await bot.delete_message(chat_id, last_inventory_message[chat_id])
+            except Exception as e:
+                logger.warning(f"Не удалось удалить старое сообщение ассортимента: {e}")
+        msg = await show_inventory(bot, chat_id)
+        if msg:
+            last_inventory_message[chat_id] = msg.message_id
     elif action == "stats":
         if chat_id in last_stats_message:
             try:
@@ -274,6 +285,15 @@ async def process_month_selection(callback: CallbackQuery):
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     month = callback.data.split(":")[1]
+    chat_id = callback.message.chat.id
+
+    # Удаляем предыдущее сообщение с отчётом, если оно было
+    if chat_id in last_clients_month_message:
+        try:
+            await callback.bot.delete_message(chat_id, last_clients_month_message[chat_id])
+        except Exception as e:
+            logger.warning(f"Не удалось удалить старое сообщение отчёта: {e}")
+
     await callback.message.edit_text(f"⏳ Формирую отчёт за {month}...")
 
     try:
@@ -323,10 +343,14 @@ async def process_month_selection(callback: CallbackQuery):
             tmp_path = tmp.name
 
         await safe_delete(callback.message)
-        await callback.message.answer_document(
+
+        # Отправляем файл и сохраняем ID
+        sent = await callback.message.answer_document(
             FSInputFile(tmp_path, filename=f"clients_{month}.csv"),
             caption=f"📁 Данные клиентов за {month}"
         )
+        last_clients_month_message[chat_id] = sent.message_id
+
         os.unlink(tmp_path)
 
         keyboard = get_main_menu_keyboard()
@@ -339,7 +363,7 @@ async def process_month_selection(callback: CallbackQuery):
         keyboard = get_main_menu_keyboard()
         await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
-# ---------- Обработчик для кнопки «Остатки» (с исключением категорий Б/У и NS) ----------
+# ---------- Обработчик для кнопки «Остатки» ----------
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
     try:
@@ -347,7 +371,15 @@ async def process_remains(callback: CallbackQuery):
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
-    # Получаем все товары без брони, исключая категории Б/У и NS
+    chat_id = callback.message.chat.id
+
+    # Удаляем предыдущее сообщение с остатками, если оно было
+    if chat_id in last_remains_message:
+        try:
+            await callback.bot.delete_message(chat_id, last_remains_message[chat_id])
+        except Exception as e:
+            logger.warning(f"Не удалось удалить старое сообщение остатков: {e}")
+
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
         rows = await conn.fetch('''
@@ -381,14 +413,17 @@ async def process_remains(callback: CallbackQuery):
         writer.writerow(['Модель', 'Тип SIM', 'Количество'])
         for (full_name, sim), count in sorted(groups.items()):
             writer.writerow([full_name, sim if sim != 'other' else '', count])
-
         tmp_path = tmp.name
 
     await safe_delete(callback.message)
-    await callback.message.answer_document(
+
+    # Отправляем файл и сохраняем ID
+    sent = await callback.message.answer_document(
         FSInputFile(tmp_path, filename=f"remains_{today}.csv"),
         caption=f"📦 Остатки на {today}"
     )
+    last_remains_message[chat_id] = sent.message_id
+
     os.unlink(tmp_path)
 
     keyboard = get_main_menu_keyboard()
