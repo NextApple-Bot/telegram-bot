@@ -350,6 +350,9 @@ async def process_remains(callback: CallbackQuery):
 
     if not rows:
         await callback.message.answer("📭 Нет товаров в наличии.")
+        # ✅ Возвращаем главное меню
+        keyboard = get_main_menu_keyboard()
+        await callback.message.answer("Выберите действие:", reply_markup=keyboard)
         return
 
     # Группируем товары: ключ = (полное имя, тип SIM)
@@ -377,6 +380,10 @@ async def process_remains(callback: CallbackQuery):
         caption=f"📦 Остатки на {today}"
     )
     os.unlink(tmp_path)
+
+    # ✅ Возвращаем главное меню
+    keyboard = get_main_menu_keyboard()
+    await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
 # ---------- Команды для управления категориями (если нужны) ----------
 # (При необходимости можно добавить обработчики clean_empty и delete_category,
