@@ -280,10 +280,8 @@ async def process_month_selection(callback: CallbackQuery):
         rows = await get_clients_data_for_month(month)
 
         if not rows:
-            # Удаляем сообщение с прогрессом
             await safe_delete(callback.message)
             await callback.message.answer("📭 Нет данных за этот месяц.")
-            # Показываем главное меню
             keyboard = get_main_menu_keyboard()
             await callback.message.answer("Выберите действие:", reply_markup=keyboard)
             return
@@ -324,17 +322,13 @@ async def process_month_selection(callback: CallbackQuery):
 
             tmp_path = tmp.name
 
-        # Удаляем сообщение с прогрессом
         await safe_delete(callback.message)
-
-        # Отправляем файл
         await callback.message.answer_document(
             FSInputFile(tmp_path, filename=f"clients_{month}.csv"),
             caption=f"📁 Данные клиентов за {month}"
         )
         os.unlink(tmp_path)
 
-        # Показываем главное меню
         keyboard = get_main_menu_keyboard()
         await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -342,11 +336,10 @@ async def process_month_selection(callback: CallbackQuery):
         logger.exception(f"Ошибка при формировании отчёта за {month}")
         await safe_delete(callback.message)
         await callback.message.answer("❌ Произошла ошибка при формировании отчёта.")
-        # Показываем главное меню
         keyboard = get_main_menu_keyboard()
         await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
-# ---------- Обработчик для кнопки «Остатки» ----------
+# ---------- Обработчик для кнопки «Остатки» (с исключением категорий Б/У и NS) ----------
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
     try:
@@ -354,23 +347,26 @@ async def process_remains(callback: CallbackQuery):
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
-    # Получаем все товары без брони (регистронезависимо)
+    # Получаем все товары без брони, исключая категории Б/У и NS
     conn = await asyncpg.connect(config.DATABASE_URL)
     try:
-        rows = await conn.fetch("SELECT text FROM items WHERE text NOT ILIKE '%Бронь от%'")
+        rows = await conn.fetch('''
+            SELECT i.text 
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            WHERE i.is_booked = false 
+              AND c.name NOT IN ('Б/У:', 'Б/У', 'NS:', 'NS')
+        ''')
     finally:
         await conn.close()
 
     if not rows:
-        # Удаляем сообщение с прогрессом
         await safe_delete(callback.message)
         await callback.message.answer("📭 Нет товаров в наличии.")
-        # Показываем главное меню
         keyboard = get_main_menu_keyboard()
         await callback.message.answer("Выберите действие:", reply_markup=keyboard)
         return
 
-    # Группируем товары: ключ = (полное имя, тип SIM)
     groups = {}
     for row in rows:
         text = row['text']
@@ -379,7 +375,6 @@ async def process_remains(callback: CallbackQuery):
         key = (full_name, sim)
         groups[key] = groups.get(key, 0) + 1
 
-    # Создаём CSV-файл
     today = datetime.now().strftime("%Y-%m-%d")
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
         writer = csv.writer(tmp)
@@ -389,17 +384,13 @@ async def process_remains(callback: CallbackQuery):
 
         tmp_path = tmp.name
 
-    # Удаляем сообщение с прогрессом
     await safe_delete(callback.message)
-
-    # Отправляем файл
     await callback.message.answer_document(
         FSInputFile(tmp_path, filename=f"remains_{today}.csv"),
         caption=f"📦 Остатки на {today}"
     )
     os.unlink(tmp_path)
 
-    # Показываем главное меню
     keyboard = get_main_menu_keyboard()
     await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
