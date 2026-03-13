@@ -11,7 +11,7 @@ from .base import (
 )
 from .topics import export_assortment_to_topic
 from database import get_available_months, get_clients_data_for_month
-from sort_assortment import extract_base_name, detect_sim_type, get_full_model_name  # добавлен get_full_model_name
+from sort_assortment import extract_base_name, detect_sim_type, get_full_model_name
 import json
 import csv
 import tempfile
@@ -325,25 +325,15 @@ async def process_month_selection(callback: CallbackQuery):
         )
         os.unlink(tmp_path)
 
-        months = await get_available_months()
-        buttons = []
-        row = []
-        for m in months:
-            row.append(InlineKeyboardButton(text=m, callback_data=f"month:{m}"))
-            if len(row) == 3:
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
-        buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="menu:cancel")])
-        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.edit_text("📅 Выберите месяц:", reply_markup=keyboard)
+        # Возвращаем главное меню
+        keyboard = get_main_menu_keyboard()
+        await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
     except Exception as e:
         logger.exception(f"Ошибка при формировании отчёта за {month}")
         await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
 
-# ---------- Обработчик для кнопки «Остатки» (исправленная версия) ----------
+# ---------- Обработчик для кнопки «Остатки» ----------
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
     try:
@@ -366,7 +356,7 @@ async def process_remains(callback: CallbackQuery):
     groups = {}
     for row in rows:
         text = row['text']
-        full_name = get_full_model_name(text)   # ← используем новую функцию
+        full_name = get_full_model_name(text)
         sim = detect_sim_type(text)
         key = (full_name, sim)
         groups[key] = groups.get(key, 0) + 1
@@ -387,3 +377,7 @@ async def process_remains(callback: CallbackQuery):
         caption=f"📦 Остатки на {today}"
     )
     os.unlink(tmp_path)
+
+# ---------- Команды для управления категориями (если нужны) ----------
+# (При необходимости можно добавить обработчики clean_empty и delete_category,
+#  они уже были описаны ранее, но здесь не включены для краткости)
