@@ -12,10 +12,27 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("❌ DATABASE_URL не задан в переменных окружения!")
 
+# Глобальный пул соединений (инициализируется при старте)
+_pool = None
+
+async def get_pool():
+    """Возвращает глобальный пул соединений, создавая его при необходимости."""
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            min_size=5,
+            max_size=20,
+            command_timeout=60,
+            max_inactive_connection_lifetime=300
+        )
+        logger.info("✅ Пул соединений создан")
+    return _pool
+
 async def init_db():
-    """Создаёт таблицы и индексы, если их нет."""
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    """Создаёт таблицы и индексы, если их нет. Использует пул."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         # Таблица категорий
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS categories (
@@ -43,12 +60,10 @@ async def init_db():
                 terminal REAL DEFAULT 0,
                 qr REAL DEFAULT 0,
                 installment REAL DEFAULT 0,
+                is_accessory BOOLEAN DEFAULT FALSE,
                 sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Добавляем колонку is_accessory, если её ещё нет
-        await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_accessory BOOLEAN DEFAULT FALSE')
-
         # Таблица предзаказов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS preorders (
@@ -100,51 +115,46 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_serial ON items(serial)')
-    finally:
-        await conn.close()
+        # ✅ Новые индексы на даты (пункт 2)
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_created_at ON clients(created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)')
 
 # ---------- Категории и товары ----------
 
 async def get_or_create_category(name: str) -> int:
     norm_name = name.lower().rstrip(':')
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
         if row:
             return row['id']
         row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
         return row['id']
-    finally:
-        await conn.close()
 
 async def add_item(text: str, serial: str = None, category_name: str = None):
     if category_name is None:
         category_name = "Общее:"
     cat_id = await get_or_create_category(category_name)
     normalized_serial = serial.strip().upper() if serial else None
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         await conn.execute('''
             INSERT INTO items (text, serial, category_id) VALUES ($1, $2, $3)
         ''', text, normalized_serial, cat_id)
-    finally:
-        await conn.close()
 
 async def get_item_id_by_serial(serial: str) -> int | None:
     if not serial:
         return None
     normalized = serial.strip().upper()
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         row = await conn.fetchrow('SELECT id FROM items WHERE UPPER(serial) = $1', normalized)
         return row['id'] if row else None
-    finally:
-        await conn.close()
 
 async def get_item_by_serial(serial: str) -> dict | None:
     normalized = serial.strip().upper()
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         row = await conn.fetchrow('''
             SELECT i.text, c.name as category_name
             FROM items i
@@ -152,12 +162,10 @@ async def get_item_by_serial(serial: str) -> dict | None:
             WHERE UPPER(i.serial) = $1
         ''', normalized)
         return dict(row) if row else None
-    finally:
-        await conn.close()
 
 async def get_item_by_text(text: str) -> dict | None:
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         row = await conn.fetchrow('''
             SELECT i.text, c.name as category_name
             FROM items i
@@ -165,21 +173,17 @@ async def get_item_by_text(text: str) -> dict | None:
             WHERE i.text = $1
         ''', text)
         return dict(row) if row else None
-    finally:
-        await conn.close()
 
 async def remove_item_by_serial(serial: str) -> int:
     normalized = serial.strip().upper() if serial else None
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         result = await conn.execute('DELETE FROM items WHERE UPPER(serial) = $1', normalized)
         return int(result.split()[1]) if result.startswith('DELETE') else 0
-    finally:
-        await conn.close()
 
 async def get_all_categories_with_items():
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows = await conn.fetch('''
             SELECT c.name as category_name, i.text as item_text
             FROM categories c
@@ -194,22 +198,18 @@ async def get_all_categories_with_items():
             if row['item_text']:
                 categories[cat].append(row['item_text'])
         return [{"header": cat, "items": items} for cat, items in categories.items()]
-    finally:
-        await conn.close()
 
 async def get_all_items_serials():
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows = await conn.fetch('SELECT text, serial FROM items')
         return [dict(row) for row in rows]
-    finally:
-        await conn.close()
 
 async def update_category_items(category_name: str, new_items: list):
     from inventory import extract_serial
     cat_id = await get_or_create_category(category_name)
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute('DELETE FROM items WHERE category_id = $1', cat_id)
             for item_text in new_items:
@@ -219,53 +219,47 @@ async def update_category_items(category_name: str, new_items: list):
                 await conn.execute('''
                     INSERT INTO items (text, serial, category_id) VALUES ($1, $2, $3)
                 ''', item_text, serial, cat_id)
-    finally:
-        await conn.close()
+
+async def clear_all_inventory():
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute('DELETE FROM categories')
 
 # ---------- Статистика ----------
 
 async def add_sale(item_id: int = None, count: int = 1,
                    cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0,
                    is_accessory: bool = False):
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         await conn.execute('''
             INSERT INTO sales (item_id, count, cash, terminal, qr, installment, is_accessory)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
         ''', item_id, count, cash, terminal, qr, installment, is_accessory)
-    finally:
-        await conn.close()
 
 async def add_preorder(cash=0, terminal=0, qr=0, installment=0):
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         await conn.execute('''
             INSERT INTO preorders (cash, terminal, qr, installment)
             VALUES ($1, $2, $3, $4)
         ''', cash, terminal, qr, installment)
-    finally:
-        await conn.close()
 
 async def add_booking(item_id: int, total_amount: float):
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         await conn.execute('''
             INSERT INTO bookings (item_id, total_amount) VALUES ($1, $2)
         ''', item_id, total_amount)
-    finally:
-        await conn.close()
 
 async def get_today_stats():
     today = date.today()
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        # Количество продаж (только основные товары)
-        sale_count_row = await conn.fetchrow('''
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        sale_count = await conn.fetchval('''
             SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1 AND is_accessory = false
-        ''', today)
-        sale_count = sale_count_row[0]
+        ''', today) or 0
 
-        # Суммы по всем продажам (включая аксессуары)
         sale_sums = await conn.fetchrow('''
             SELECT COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
                    COALESCE(SUM(qr),0), COALESCE(SUM(installment),0)
@@ -273,7 +267,6 @@ async def get_today_stats():
         ''', today)
         sc, st, sq, si = sale_sums
 
-        # Предзаказы
         pre = await conn.fetchrow('''
             SELECT COUNT(*), COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
                    COALESCE(SUM(qr),0), COALESCE(SUM(installment),0)
@@ -281,7 +274,6 @@ async def get_today_stats():
         ''', today)
         pre_count, pc, pt, pq, pi = pre
 
-        # Брони
         book = await conn.fetchrow('''
             SELECT COUNT(*), COALESCE(SUM(total_amount),0)
             FROM bookings WHERE DATE(booked_at) = $1
@@ -303,19 +295,6 @@ async def get_today_stats():
             'sales_qr': sq,
             'sales_installment': si,
         }
-    finally:
-        await conn.close()
-
-async def reset_stats():
-    today = date.today()
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        async with conn.transaction():
-            await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
-            await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
-            await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
-    finally:
-        await conn.close()
 
 # ---------- Клиенты и покупки ----------
 
@@ -323,8 +302,8 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
                                telegram_username: str = None, social_network: str = None,
                                referral_source: str = None) -> int:
     logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         if phone:
             row = await conn.fetchrow('SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = $1', phone)
             if row:
@@ -372,46 +351,38 @@ async def get_or_create_client(phone: str = None, phones: list = None, full_name
                 VALUES ($1, $2, $3, $4, $5) RETURNING id
             ''', full_name, phones_str, telegram_username, social_network, referral_source)
             return row['id']
-    finally:
-        await conn.close()
 
 async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
     items_json = json.dumps(items, ensure_ascii=False)
     payment_json = json.dumps(payment_details, ensure_ascii=False)
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         await conn.execute('''
             INSERT INTO purchases (client_id, items_json, total_amount, payment_details, purchase_type)
             VALUES ($1, $2, $3, $4, $5)
         ''', client_id, items_json, total_amount, payment_json, purchase_type)
-    finally:
-        await conn.close()
 
 async def get_client_purchases(client_id: int):
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
         return [dict(row) for row in rows]
-    finally:
-        await conn.close()
 
 async def search_clients(query: str):
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows = await conn.fetch('''
             SELECT * FROM clients 
             WHERE full_name ILIKE $1 OR phone ILIKE $1 OR telegram_username ILIKE $1
             ORDER BY updated_at DESC
         ''', f'%{query}%')
         return [dict(row) for row in rows]
-    finally:
-        await conn.close()
 
 # ---------- Функции для работы по месяцам ----------
 
 async def get_available_months():
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows1 = await conn.fetch('''
             SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
             FROM clients
@@ -424,8 +395,6 @@ async def get_available_months():
         ''')
         months = sorted(set([r['month'] for r in rows1] + [r['month'] for r in rows2]), reverse=True)
         return months
-    finally:
-        await conn.close()
 
 async def get_clients_data_for_month(month_str: str):
     month, year = map(int, month_str.split('.'))
@@ -435,8 +404,8 @@ async def get_clients_data_for_month(month_str: str):
     else:
         end_date = datetime(year, month + 1, 1).date()
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         rows = await conn.fetch('''
             SELECT 
                 c.id as client_id,
@@ -456,18 +425,7 @@ async def get_clients_data_for_month(month_str: str):
             FROM clients c
             LEFT JOIN purchases p ON c.id = p.client_id 
                 AND p.created_at >= $1 AND p.created_at < $2
-            WHERE p.id IS NOT NULL
-               OR c.created_at >= $1 AND c.created_at < $2
+            WHERE (p.id IS NOT NULL) OR (c.created_at >= $1 AND c.created_at < $2)
             ORDER BY c.id, p.created_at
         ''', start_date, end_date)
         return [dict(row) for row in rows]
-    finally:
-        await conn.close()
-
-async def clear_all_inventory():
-    """Удаляет все категории и товары (каскадно)"""
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        await conn.execute('DELETE FROM categories')
-    finally:
-        await conn.close()
