@@ -11,7 +11,7 @@ from .base import (
 )
 from .topics import export_assortment_to_topic
 from database import get_available_months, get_clients_data_for_month
-from sort_assortment import extract_base_name, detect_sim_type  # для остатков
+from sort_assortment import extract_base_name, detect_sim_type, get_full_model_name  # добавлен get_full_model_name
 import json
 import csv
 import tempfile
@@ -86,7 +86,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
     elif action == "clients_by_month":
-        # Теперь доступно всем пользователям (проверка ADMIN_ID убрана)
         months = await get_available_months()
         if not months:
             await callback.message.answer("📭 Нет данных за месяцы.")
@@ -274,7 +273,6 @@ async def process_month_selection(callback: CallbackQuery):
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
-    # Доступно всем (проверка ADMIN_ID убрана)
     month = callback.data.split(":")[1]
     await callback.message.edit_text(f"⏳ Формирую отчёт за {month}...")
 
@@ -345,7 +343,7 @@ async def process_month_selection(callback: CallbackQuery):
         logger.exception(f"Ошибка при формировании отчёта за {month}")
         await callback.message.edit_text("❌ Произошла ошибка при формировании отчёта.")
 
-# ---------- Обработчик для кнопки «Остатки» ----------
+# ---------- Обработчик для кнопки «Остатки» (исправленная версия) ----------
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
     try:
@@ -364,13 +362,13 @@ async def process_remains(callback: CallbackQuery):
         await callback.message.answer("📭 Нет товаров в наличии.")
         return
 
-    # Группируем товары: ключ = (базовое имя, тип SIM)
+    # Группируем товары: ключ = (полное имя, тип SIM)
     groups = {}
     for row in rows:
         text = row['text']
-        base = extract_base_name(text)
+        full_name = get_full_model_name(text)   # ← используем новую функцию
         sim = detect_sim_type(text)
-        key = (base, sim)
+        key = (full_name, sim)
         groups[key] = groups.get(key, 0) + 1
 
     # Создаём CSV-файл
@@ -378,8 +376,8 @@ async def process_remains(callback: CallbackQuery):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
         writer = csv.writer(tmp)
         writer.writerow(['Модель', 'Тип SIM', 'Количество'])
-        for (base, sim), count in sorted(groups.items()):
-            writer.writerow([base, sim if sim != 'other' else '', count])
+        for (full_name, sim), count in sorted(groups.items()):
+            writer.writerow([full_name, sim if sim != 'other' else '', count])
 
         tmp_path = tmp.name
 
