@@ -435,3 +435,53 @@ async def safe_delete(message):
         await message.delete()
     except Exception as e:
         logger.warning(f"Не удалось удалить сообщение: {e}")
+
+# ---------- Подтверждение удаления клиента ----------
+@router.callback_query(F.data.startswith("delete_client:"))
+async def process_delete_client(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    client_id = int(callback.data.split(":")[1])
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        async with conn.transaction():
+            # Удаляем все покупки клиента
+            await conn.execute('DELETE FROM purchases WHERE client_id = $1', client_id)
+            # Удаляем самого клиента
+            await conn.execute('DELETE FROM clients WHERE id = $1', client_id)
+        await callback.message.edit_text(f"✅ Клиент ID {client_id} и все его покупки удалены.")
+    except Exception as e:
+        logger.exception("Ошибка при удалении клиента")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
+
+# ---------- Подтверждение удаления покупки ----------
+@router.callback_query(F.data.startswith("delete_purchase:"))
+async def process_delete_purchase(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+    if callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    purchase_id = int(callback.data.split(":")[1])
+    conn = await asyncpg.connect(config.DATABASE_URL)
+    try:
+        await conn.execute('DELETE FROM purchases WHERE id = $1', purchase_id)
+        await callback.message.edit_text(f"✅ Покупка ID {purchase_id} удалена.")
+    except Exception as e:
+        logger.exception("Ошибка при удалении покупки")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+    finally:
+        await conn.close()
