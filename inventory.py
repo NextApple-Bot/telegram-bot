@@ -1,7 +1,7 @@
 import re
 from database import (
     add_item, remove_item_by_serial, get_all_categories_with_items,
-    get_or_create_category, update_category_items
+    get_or_create_category, update_category_items, clear_all_inventory  # добавили clear_all_inventory
 )
 
 def extract_serial(line):
@@ -41,6 +41,12 @@ async def load_inventory():
     return categories
 
 async def save_inventory(categories):
+    """Обновляет ассортимент. Если передан пустой список, полностью очищает его."""
+    if not categories:
+        # Полная очистка ассортимента
+        await clear_all_inventory()
+        return
+
     for cat in categories:
         cat_name = cat['header']
         items = cat['items']
