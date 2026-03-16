@@ -16,10 +16,6 @@ if not DATABASE_URL:
 
 # ---------- Декоратор для повторных попыток ----------
 def retry_on_db_error(retries=3, delay=1, backoff=2):
-    """
-    Декоратор для асинхронных функций, выполняющих запросы к БД.
-    При ошибках соединения повторяет вызов до retries раз.
-    """
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -42,7 +38,6 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
                         logger.error(f"Все попытки исчерпаны: {e}")
                         raise
                 except Exception as e:
-                    # Другие ошибки не повторяем
                     raise
             raise last_exception
         return wrapper
@@ -52,7 +47,6 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
 _pool = None
 
 async def get_pool():
-    """Возвращает пул соединений (создаёт при первом вызове)."""
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(
@@ -66,11 +60,86 @@ async def get_pool():
     return _pool
 
 async def init_db():
-    """Создаёт таблицы и индексы, если их нет."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # ... (весь код создания таблиц без изменений)
-        pass
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS items (
+                id SERIAL PRIMARY KEY,
+                text TEXT NOT NULL,
+                serial TEXT,
+                category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+                is_booked BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS sales (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+                count INTEGER DEFAULT 1,
+                cash REAL DEFAULT 0,
+                terminal REAL DEFAULT 0,
+                qr REAL DEFAULT 0,
+                installment REAL DEFAULT 0,
+                is_accessory BOOLEAN DEFAULT FALSE,
+                sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS preorders (
+                id SERIAL PRIMARY KEY,
+                cash REAL DEFAULT 0,
+                terminal REAL DEFAULT 0,
+                qr REAL DEFAULT 0,
+                installment REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS bookings (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+                total_amount REAL DEFAULT 0,
+                booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS clients (
+                id SERIAL PRIMARY KEY,
+                full_name TEXT,
+                phone TEXT UNIQUE,
+                phones TEXT,
+                telegram_username TEXT,
+                social_network TEXT,
+                referral_source TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS purchases (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+                items_json TEXT,
+                total_amount REAL,
+                payment_details TEXT,
+                purchase_type TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_serial ON items(serial)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_created_at ON clients(created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
 
 # ---------- Категории и товары ----------
 
@@ -98,7 +167,6 @@ async def add_item(text: str, serial: str = None, category_name: str = None):
             INSERT INTO items (text, serial, category_id, is_booked)
             VALUES ($1, $2, $3, $4)
         ''', text, normalized_serial, cat_id, is_booked)
-    # Инвалидируем кэш после добавления товара
     from inventory import invalidate_cache
     invalidate_cache()
 
