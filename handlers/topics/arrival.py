@@ -1,87 +1,164 @@
 import re
+import tempfile
+import os
+import aiofiles
 from datetime import datetime
 from aiogram import F, Router
-from aiogram.types import Message, ReactionTypeEmoji
+from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
 
 import config
 import inventory
-import stats
-from utils import extract_preorder_amounts
-from database import get_item_by_text, get_item_by_serial, add_item
+from database import get_all_items_serials, add_item
+from sort_assortment import add_item_to_categories
+from handlers.states import ArrivalConfirmState
 
 router = Router()
+MAX_FILE_SIZE = 10 * 1024 * 1024
 
-@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
-async def handle_preorder(message: Message):
-    """Обрабатывает сообщение в топике Предзаказ (текст или подпись)."""
-    content = message.text or message.caption
-    if not content:
+@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ARRIVAL)
+async def handle_arrival(message: Message, bot, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == ArrivalConfirmState.waiting_for_confirm.state:
+        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку.")
         return
 
-    lines = content.strip().splitlines()
-    if not lines:
-        return
-
-    booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
-
-    if booking_indices:
-        preorder_lines = lines[:booking_indices[0]]
-        if preorder_lines:
-            cash, terminal, qr, installment = extract_preorder_amounts(preorder_lines)
-            await stats.increment_preorder(cash, terminal, qr, installment)
-            await message.react([ReactionTypeEmoji(emoji='👌')])
-
-        for idx in booking_indices:
-            start = idx + 1
-            end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
-            booking_lines = lines[start:end]
-
-            item_lines = []
-            for line in booking_lines:
-                line = line.strip()
-                if not line:
-                    continue
-                if inventory.extract_serial(line):
-                    item_lines.append(line)
-
-            if not item_lines:
-                await message.reply("❌ Не удалось найти товары с серийными номерами для брони.")
-                continue
-
-            block_cash, block_terminal, block_qr, block_installment = extract_preorder_amounts(booking_lines)
-            block_total = block_cash + block_terminal + block_qr + block_installment
-            amount_per_item = block_total / len(item_lines) if block_total else 0
-
-            for item_line in item_lines:
-                item_info = await get_item_by_text(item_line)
-                if not item_info:
-                    serial = inventory.extract_serial(item_line)
-                    if serial:
-                        item_info = await get_item_by_serial(serial)
-
-                if not item_info:
-                    await message.reply(f"❌ Товар не найден: {item_line}")
-                    continue
-
-                item_text = item_info['text']
-                category_name = item_info['category_name']
-                serial = inventory.extract_serial(item_text)
-
-                removed = await inventory.remove_by_serial(serial)
-                if not removed:
-                    await message.reply(f"❌ Не удалось удалить товар {item_text}.")
-                    continue
-
-                today = datetime.now().strftime("%d.%m")
-                new_item_text = f"{item_text} (Бронь от {today})"
-                await add_item(new_item_text, serial, category_name=category_name)
-
-                await stats.increment_booking(serial, amount_per_item)
-
-                await message.react([ReactionTypeEmoji(emoji='👍')])
-                await message.reply(f"✅ Добавлена бронь:\n{new_item_text}")
-
+    lines = []
+    if message.document:
+        document = message.document
+        if document.file_size > MAX_FILE_SIZE:
+            await message.reply("❌ Файл слишком большой (макс. 10 МБ).")
+            return
+        if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
+            await message.reply("⚠️ Отправьте текстовый файл .txt")
+            return
+        file_path = f"/tmp/{document.file_name}"
+        await bot.download(document, destination=file_path)
+        try:
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+            lines = [line.strip() for line in content.splitlines() if line.strip()]
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
     else:
-        cash, terminal, qr, installment = extract_preorder_amounts(lines)
-        await stats.increment_preorder(cash, terminal, qr, installment)
-        await message.react([ReactionTypeEmoji(emoji='👌')])
+        content = message.text or message.caption
+        if not content:
+            await message.reply("⚠️ Отправьте текст, файл или фото с подписью.")
+            return
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+    lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
+    if not lines:
+        await message.reply("❌ Нет ни одной позиции после фильтрации.")
+        return
+
+    existing_items = await get_all_items_serials()
+    existing_texts = {item['text'] for item in existing_items}
+    existing_serials = {item['serial'] for item in existing_items if item['serial']}
+
+    added_lines = []
+    skipped_lines = []
+
+    for line in lines:
+        if line in existing_texts:
+            skipped_lines.append(f"[Дубликат текста] {line}")
+            continue
+        serial = inventory.extract_serial(line)
+        if serial and serial in existing_serials:
+            skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
+            continue
+        added_lines.append(line)
+        existing_texts.add(line)
+        if serial:
+            existing_serials.add(serial)
+
+    if not added_lines:
+        await message.reply("❌ Нет новых позиций для добавления (все дубликаты).")
+        return
+
+    await state.set_state(ArrivalConfirmState.waiting_for_confirm)
+    await state.update_data(
+        added_lines=added_lines,
+        skipped_lines=skipped_lines,
+        original_lines=lines,
+        message_id=message.message_id,
+        chat_id=message.chat.id,
+        thread_id=message.message_thread_id
+    )
+
+    response = f"📦 Найдено новых позиций: {len(added_lines)}\n"
+    if skipped_lines:
+        response += f"⏭ Пропущено (дубликаты): {len(skipped_lines)}\n"
+    response += "Подтвердите добавление?"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить", callback_data="arrival_confirm:yes"),
+         InlineKeyboardButton(text="❌ Отмена", callback_data="arrival_confirm:no")]
+    ])
+    await message.reply(response, reply_markup=keyboard)
+
+@router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
+async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+
+    action = callback.data.split(":")[1]
+    data = await state.get_data()
+    added_lines = data.get("added_lines", [])
+    skipped_lines = data.get("skipped_lines", [])
+
+    if action == "yes":
+        current_categories = await inventory.load_inventory()
+
+        for line in added_lines:
+            serial = inventory.extract_serial(line)
+            updated_categories, idx = add_item_to_categories(line, current_categories)
+            current_categories = updated_categories
+            category_name = current_categories[idx]['header']
+            await add_item(line, serial, category_name=category_name)
+
+        combined_lines = []
+        if added_lines:
+            combined_lines.append(f"=== ДОБАВЛЕННЫЕ ({len(added_lines)}) ===")
+            combined_lines.extend(added_lines)
+            combined_lines.append("")
+        if skipped_lines:
+            combined_lines.append(f"=== ПРОПУЩЕННЫЕ ({len(skipped_lines)}) ===")
+            combined_lines.extend(skipped_lines)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write("\n".join(combined_lines))
+            tmp_path = f.name
+
+        today = datetime.now().strftime("%d.%m.%Y")
+        filename = f"прибытие_{today}.txt"
+        try:
+            doc = FSInputFile(tmp_path, filename=filename)
+            await callback.message.answer_document(
+                doc,
+                caption=f"✅ Добавлено: {len(added_lines)} | ⏭ Пропущено: {len(skipped_lines)}"
+            )
+        finally:
+            os.unlink(tmp_path)
+
+        await callback.message.edit_text("✅ Добавление подтверждено.")
+    else:
+        await callback.message.edit_text("❌ Добавление отменено.")
+
+    await state.clear()
+
+@router.message(ArrivalConfirmState.waiting_for_confirm, F.text.lower() == "отмена")
+async def cancel_arrival_confirm_by_text(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if message.chat.id == data.get("chat_id") and message.message_thread_id == data.get("thread_id"):
+        await state.clear()
+        await message.reply("❌ Добавление отменено.")
+
+@router.message(ArrivalConfirmState.waiting_for_confirm)
+async def unexpected_message_in_arrival_confirm(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if message.chat.id == data.get("chat_id") and message.message_thread_id == data.get("thread_id"):
+        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите «отмена»).")
