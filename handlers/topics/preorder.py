@@ -13,11 +13,11 @@ router = Router()
 
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
 async def handle_preorder(message: Message):
-    """Обрабатывает сообщение в топике Предзаказ (предзаказы и брони)."""
-    if not message.text:
+    content = message.text or message.caption
+    if not content:
         return
 
-    lines = message.text.strip().splitlines()
+    lines = content.strip().splitlines()
     if not lines:
         return
 
