@@ -7,7 +7,11 @@ from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyb
 from aiogram.filters import Command
 
 import config
-from database import search_clients, get_client_purchases, get_pool
+from database import (
+    search_clients, get_client_purchases, get_pool,
+    get_last_deleted_item, restore_deleted_item, add_item,
+    get_or_create_category
+)
 from .base import (
     logger, show_inventory, cancel_action, get_main_menu_keyboard, show_help
 )
@@ -435,3 +439,39 @@ async def cmd_chatid(message: Message):
     else:
         response += "Thread ID: отсутствует (сообщение не в топике)"
     await message.reply(response, parse_mode="Markdown")
+
+# ---------- НОВАЯ КОМАНДА /undo ----------
+@router.message(Command("undo"))
+async def cmd_undo(message: Message):
+    """Восстанавливает последний удалённый товар."""
+    if message.from_user.id != config.ADMIN_ID:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    # Получаем последний удалённый товар
+    deleted = await get_last_deleted_item()
+    if not deleted:
+        await message.answer("📭 Нет удалённых товаров для восстановления.")
+        return
+
+    # Проверяем, существует ли категория
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        cat = await conn.fetchval('SELECT id FROM categories WHERE id = $1', deleted['category_id'])
+        if not cat:
+            # Категория удалена – восстанавливаем в общую категорию
+            cat_id = await get_or_create_category("Общее:")
+        else:
+            cat_id = deleted['category_id']
+
+    # Восстанавливаем товар
+    await add_item(
+        text=deleted['text'],
+        serial=deleted['serial'],
+        category_id=cat_id  # используем category_id напрямую (add_item доработана)
+    )
+
+    # Помечаем как восстановленный
+    await restore_deleted_item(deleted['id'])
+
+    await message.answer(f"✅ Товар восстановлен:\n{deleted['text']}")
