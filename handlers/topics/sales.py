@@ -17,19 +17,15 @@ router = Router()
 
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
 async def handle_sales_message(message: Message):
-    """Обрабатывает сообщение в топике Продажи (текст или подпись к медиа)."""
-    # Получаем текст из сообщения или подписи к фото/видео
     content = message.text or message.caption
     if not content:
-        return  # Игнорируем сообщения без текста (чистые медиа)
+        return
 
     lines = content.splitlines()
-    # 1. Извлекаем общие суммы по способам оплаты
     cash, terminal, qr, installment = extract_sales_amounts(lines)
 
-    # 2. Ищем все серийные номера в тексте
     serials = extract_serials_from_text(content)
-    sold_items = []  # список кортежей (item_id, serial)
+    sold_items = []
 
     for serial in serials:
         item_id = await get_item_id_by_serial(serial)
@@ -38,7 +34,6 @@ async def handle_sales_message(message: Message):
         else:
             logger.warning(f"Серийный номер {serial} не найден в БД")
 
-    # 3. Если есть товары с серийниками — удаляем из инвентаря
     if sold_items:
         for item_id, serial in sold_items:
             removed = await remove_by_serial(serial)
@@ -47,7 +42,6 @@ async def handle_sales_message(message: Message):
             else:
                 logger.warning(f"Не удалось удалить товар {serial}")
 
-    # 4. Сохраняем одну запись о продаже в таблицу sales
     count = len(sold_items)
     is_accessory = (count == 0)
 
@@ -62,22 +56,19 @@ async def handle_sales_message(message: Message):
     )
     logger.info(f"Продажа: товаров {count}, суммы: cash={cash}, term={terminal}, qr={qr}, inst={installment}")
 
-    # 5. Если были серийники, которые не нашлись — уведомляем
     not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
     if not_found:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found)
         await message.reply(text)
 
-    # 6. Ставим реакцию
     if sold_items or cash or terminal or qr or installment:
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
-    # 7. Сохранение данных клиента и чека
     try:
-        data = parse_client_data(content)  # используем content для парсинга
+        data = parse_client_data(content)
         if data['phones'] or data['full_name']:
             client_id = await get_or_create_client(
                 phone=data['main_phone'],
