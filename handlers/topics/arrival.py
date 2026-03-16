@@ -18,20 +18,15 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ARRIVAL)
 async def handle_arrival(message: Message, bot, state: FSMContext):
-    """Обрабатывает сообщение в топике Прибытие (добавление новых товаров)."""
+    """Обрабатывает сообщение в топике Прибытие (текст, подпись или файл)."""
     current_state = await state.get_state()
     if current_state == ArrivalConfirmState.waiting_for_confirm.state:
         await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку.")
         return
 
     lines = []
-    if message.text:
-        full_text = message.text.strip()
-        if not full_text:
-            await message.reply("❌ Пустой список.")
-            return
-        lines = [line.strip() for line in full_text.splitlines() if line.strip()]
-    elif message.document:
+    # Если есть документ — обрабатываем файл
+    if message.document:
         document = message.document
         if document.file_size > MAX_FILE_SIZE:
             await message.reply("❌ Файл слишком большой (макс. 10 МБ).")
@@ -49,8 +44,12 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             if os.path.exists(file_path):
                 os.remove(file_path)
     else:
-        await message.reply("⚠️ Отправьте текст или файл .txt.")
-        return
+        # Нет документа — берём текст из сообщения или подписи
+        content = message.text or message.caption
+        if not content:
+            await message.reply("⚠️ Отправьте текст, файл или фото с подписью.")
+            return
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
 
     # Фильтруем строки, состоящие только из дефисов
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
@@ -58,6 +57,7 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         await message.reply("❌ Нет ни одной позиции после фильтрации.")
         return
 
+    # Далее существующая логика без изменений
     existing_items = await get_all_items_serials()
     existing_texts = {item['text'] for item in existing_items}
     existing_serials = {item['serial'] for item in existing_items if item['serial']}
@@ -103,6 +103,7 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     ])
     await message.reply(response, reply_markup=keyboard)
 
+# Остальные хендлеры (подтверждение, отмена) без изменений
 @router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
 async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
     """Подтверждение или отмена добавления товаров."""
@@ -156,7 +157,6 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
 
-# Дополнительные обработчики для отмены через текст "отмена"
 @router.message(ArrivalConfirmState.waiting_for_confirm, F.text.lower() == "отмена")
 async def cancel_arrival_confirm_by_text(message: Message, state: FSMContext):
     data = await state.get_data()
