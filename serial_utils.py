@@ -1,28 +1,13 @@
 import re
 
-def extract_serial(line: str) -> str | None:
+def extract_serials(text: str) -> list[str]:
     """
-    Извлекает серийный номер из строки товара.
-    - Если в скобках есть символ '№', возвращает всё содержимое скобок.
-    - Иначе ищет комбинацию букв и цифр (длиной от 5 символов) или длинное число (≥10 цифр).
-    Возвращает нормализованный серийный номер (верхний регистр, обрезанный) или None.
-    """
-    matches = re.finditer(r'\(([^)]+)\)', line)
-    for match in matches:
-        candidate = match.group(1).strip()
-        if '№' in candidate:
-            return candidate.upper()
-        if re.search(r'[A-Za-z]', candidate) and re.search(r'[0-9]', candidate):
-            if len(candidate) >= 5:
-                return candidate.upper()
-        if candidate.isdigit() and len(candidate) >= 10:
-            return candidate
-    return None
-
-def extract_serials_from_text(text: str) -> list[str]:
-    """
-    Извлекает все серийные номера из текста сообщения (для продаж).
-    Работает аналогично extract_serial, но возвращает список уникальных номеров.
+    Извлекает все серийные номера из текста.
+    Ищет содержимое круглых скобок, удовлетворяющее условиям:
+    - содержит символ '№'
+    - содержит и буквы, и цифры, длина >= 5
+    - состоит только из цифр, длина >= 10
+    Возвращает список уникальных серийных номеров (в верхнем регистре для буквенно-цифровых).
     """
     serials = set()
     matches = re.finditer(r'\(([^)]+)\)', text)
@@ -36,3 +21,6 @@ def extract_serials_from_text(text: str) -> list[str]:
         elif candidate.isdigit() and len(candidate) >= 10:
             serials.add(candidate)
     return list(serials)
+
+# Для обратной совместимости (если где-то используется старое имя)
+extract_serials_from_text = extract_serials
