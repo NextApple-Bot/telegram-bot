@@ -1,9 +1,10 @@
 import time
 from database import (
     add_item, remove_item_by_serial, get_all_categories_with_items,
-    get_or_create_category, update_category_items, clear_all_inventory
+    get_or_create_category, update_category_items, clear_all_inventory,
+    get_item_by_serial, add_deleted_item
 )
-from serial_utils import extract_serial, extract_serials_from_text
+from serial_utils import extract_serials
 
 # Кеш для ассортимента
 _cache = {"data": None, "timestamp": 0}
@@ -21,7 +22,6 @@ async def load_inventory():
     now = time.time()
     if _cache["data"] is not None and (now - _cache["timestamp"]) < CACHE_TTL:
         return _cache["data"]
-    # Кеш устарел или пуст – загружаем из БД
     categories = await get_all_categories_with_items()
     _cache["data"] = categories
     _cache["timestamp"] = now
@@ -39,8 +39,32 @@ async def save_inventory(categories):
         await update_category_items(cat_name, items)
     invalidate_cache()
 
-async def remove_by_serial(serial: str) -> int:
-    """Удаляет товар по серийному номеру."""
-    result = await remove_item_by_serial(serial)
-    invalidate_cache()
-    return result
+def extract_serial(line: str) -> str | None:
+    """
+    Извлекает первый серийный номер из строки.
+    """
+    serials = extract_serials(line)
+    return serials[0] if serials else None
+
+async def remove_by_serial(serial: str, reason: str = 'manual') -> int:
+    """
+    Удаляет товар по серийному номеру и сохраняет в историю удалений.
+    Возвращает количество удалённых записей (0 или 1).
+    """
+    # Получаем данные товара до удаления
+    item = await get_item_by_serial(serial)
+    if not item:
+        return 0
+    # Удаляем
+    removed_count = await remove_item_by_serial(serial)
+    if removed_count > 0:
+        # Сохраняем в deleted_items
+        await add_deleted_item(
+            item_id=item['id'],
+            text=item['text'],
+            serial=serial,
+            category_id=item['category_id'],
+            reason=reason
+        )
+        invalidate_cache()
+    return removed_count
