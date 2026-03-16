@@ -8,7 +8,7 @@ import stats
 from utils import extract_sales_amounts
 from serial_utils import extract_serials_from_text
 from database import get_item_id_by_serial
-from inventory import remove_by_serial  # ИЗМЕНЁННЫЙ ИМПОРТ
+from inventory import remove_by_serial
 from client_parser import parse_client_data
 from database import get_or_create_client, add_purchase
 
@@ -17,16 +17,18 @@ router = Router()
 
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
 async def handle_sales_message(message: Message):
-    """Обрабатывает сообщение в топике Продажи."""
-    if not message.text:
-        return
+    """Обрабатывает сообщение в топике Продажи (текст или подпись к медиа)."""
+    # Получаем текст из сообщения или подписи к фото/видео
+    content = message.text or message.caption
+    if not content:
+        return  # Игнорируем сообщения без текста (чистые медиа)
 
-    lines = message.text.splitlines()
+    lines = content.splitlines()
     # 1. Извлекаем общие суммы по способам оплаты
     cash, terminal, qr, installment = extract_sales_amounts(lines)
 
     # 2. Ищем все серийные номера в тексте
-    serials = extract_serials_from_text(message.text)
+    serials = extract_serials_from_text(content)
     sold_items = []  # список кортежей (item_id, serial)
 
     for serial in serials:
@@ -39,7 +41,7 @@ async def handle_sales_message(message: Message):
     # 3. Если есть товары с серийниками — удаляем из инвентаря
     if sold_items:
         for item_id, serial in sold_items:
-            removed = await remove_by_serial(serial)  # используем inventory.remove_by_serial
+            removed = await remove_by_serial(serial)
             if removed:
                 logger.info(f"Товар {serial} удалён из ассортимента")
             else:
@@ -75,7 +77,7 @@ async def handle_sales_message(message: Message):
 
     # 7. Сохранение данных клиента и чека
     try:
-        data = parse_client_data(message.text)
+        data = parse_client_data(content)  # используем content для парсинга
         if data['phones'] or data['full_name']:
             client_id = await get_or_create_client(
                 phone=data['main_phone'],
