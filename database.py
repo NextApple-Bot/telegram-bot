@@ -60,14 +60,17 @@ async def get_pool():
     return _pool
 
 async def init_db():
+    """Создаёт таблицы и индексы, если их нет."""
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Таблица категорий
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE
             )
         ''')
+        # Таблица товаров
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS items (
                 id SERIAL PRIMARY KEY,
@@ -78,6 +81,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица продаж
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS sales (
                 id SERIAL PRIMARY KEY,
@@ -91,6 +95,7 @@ async def init_db():
                 sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица предзаказов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS preorders (
                 id SERIAL PRIMARY KEY,
@@ -101,6 +106,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица броней
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
                 id SERIAL PRIMARY KEY,
@@ -109,6 +115,7 @@ async def init_db():
                 booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица клиентов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS clients (
                 id SERIAL PRIMARY KEY,
@@ -122,6 +129,7 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица покупок
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS purchases (
                 id SERIAL PRIMARY KEY,
@@ -133,6 +141,20 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица удалённых товаров (для undo)
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_items (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+                text TEXT NOT NULL,
+                serial TEXT,
+                category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+                deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                restored BOOLEAN DEFAULT FALSE,
+                reason TEXT
+            )
+        ''')
+        # Индексы
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
@@ -140,6 +162,8 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_created_at ON clients(created_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_items_deleted_at ON deleted_items(deleted_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_items_restored ON deleted_items(restored)')
 
 # ---------- Категории и товары ----------
 
@@ -155,10 +179,17 @@ async def get_or_create_category(name: str) -> int:
         return row['id']
 
 @retry_on_db_error()
-async def add_item(text: str, serial: str = None, category_name: str = None):
-    if category_name is None:
-        category_name = "Общее:"
-    cat_id = await get_or_create_category(category_name)
+async def add_item(text: str, serial: str = None, category_name: str = None, category_id: int = None):
+    """
+    Добавляет товар. Можно указать либо category_name, либо category_id.
+    Если указано и то, и другое, приоритет у category_id.
+    """
+    if category_id is None:
+        if category_name is None:
+            category_name = "Общее:"
+        cat_id = await get_or_create_category(category_name)
+    else:
+        cat_id = category_id
     normalized_serial = serial.strip().upper() if serial else None
     is_booked = 'Бронь от' in text
     pool = await get_pool()
@@ -182,11 +213,12 @@ async def get_item_id_by_serial(serial: str) -> int | None:
 
 @retry_on_db_error()
 async def get_item_by_serial(serial: str) -> dict | None:
+    """Возвращает полную информацию о товаре по серийному номеру."""
     normalized = serial.strip().upper()
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow('''
-            SELECT i.text, c.name as category_name
+            SELECT i.id, i.text, c.id as category_id, c.name as category_name
             FROM items i
             JOIN categories c ON i.category_id = c.id
             WHERE UPPER(i.serial) = $1
@@ -241,14 +273,15 @@ async def get_all_items_serials():
 
 @retry_on_db_error()
 async def update_category_items(category_name: str, new_items: list):
-    from serial_utils import extract_serial
+    from serial_utils import extract_serials
     cat_id = await get_or_create_category(category_name)
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute('DELETE FROM items WHERE category_id = $1', cat_id)
             for item_text in new_items:
-                serial = extract_serial(item_text)
+                serials = extract_serials(item_text)
+                serial = serials[0] if serials else None
                 if serial:
                     serial = serial.strip().upper()
                 is_booked = 'Бронь от' in item_text
@@ -481,3 +514,36 @@ async def get_clients_data_for_month(month_str: str):
             ORDER BY c.id, p.created_at
         ''', start_date, end_date)
         return [dict(row) for row in rows]
+
+# ---------- Функции для Undo (удалённые товары) ----------
+
+@retry_on_db_error()
+async def add_deleted_item(item_id: int, text: str, serial: str, category_id: int, reason: str = 'manual'):
+    """Сохраняет информацию об удалённом товаре."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute('''
+            INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+            VALUES ($1, $2, $3, $4, $5)
+        ''', item_id, text, serial, category_id, reason)
+
+@retry_on_db_error()
+async def get_last_deleted_item() -> dict | None:
+    """Возвращает последний неудалённый удалённый товар."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow('''
+            SELECT * FROM deleted_items
+            WHERE restored = FALSE
+            ORDER BY deleted_at DESC
+            LIMIT 1
+        ''')
+        return dict(row) if row else None
+
+@retry_on_db_error()
+async def restore_deleted_item(deleted_id: int) -> bool:
+    """Помечает товар как восстановленный (не удаляет запись)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute('UPDATE deleted_items SET restored = TRUE WHERE id = $1', deleted_id)
+        return result == "UPDATE 1"
