@@ -2,15 +2,22 @@ import csv
 import json
 import tempfile
 import os
-from aiogram import F
+from aiogram import F, Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
 import config
 from database import search_clients, get_client_purchases, get_pool
 from .base import (
-    router, logger, show_inventory, cancel_action, get_main_menu_keyboard, show_help
+    router as base_router, logger, show_inventory, cancel_action,
+    get_main_menu_keyboard, show_help
 )
+
+# Создаём роутер для команд (если его нет в этом файле, он уже должен быть)
+router = Router()
+
+# Существующие команды (они уже есть в вашем файле, я привожу их для полноты,
+# но вы можете оставить свои версии, главное – добавить новую в конец)
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, bot):
@@ -431,3 +438,21 @@ async def cmd_migrate(message: Message):
             await message.answer(f"✅ Миграция выполнена!\nОбновлено записей: {updated}")
         except Exception as e:
             await message.answer(f"❌ Ошибка: {e}")
+
+# ---------- НОВАЯ КОМАНДА /chatid ----------
+@router.message(Command("chatid"))
+async def cmd_chatid(message: Message):
+    """
+    Отправляет ID чата и ID топика (если сообщение в топике).
+    Полезно для отладки и настройки.
+    """
+    chat_id = message.chat.id
+    thread_id = message.message_thread_id
+
+    response = f"Chat ID: `{chat_id}`\n"
+    if thread_id:
+        response += f"Thread ID: `{thread_id}`"
+    else:
+        response += "Thread ID: отсутствует (сообщение не в топике)"
+
+    await message.reply(response, parse_mode="Markdown")
