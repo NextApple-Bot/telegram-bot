@@ -12,12 +12,10 @@ from sort_assortment import sort_assortment_to_categories
 from handlers.states import AssortmentConfirmState
 
 router = Router()
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_SIZE = 10 * 1024 * 1024
 
 @router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ASSORTMENT)
 async def handle_assortment_upload(message: Message, bot, state: FSMContext):
-    """Обрабатывает загрузку нового ассортимента (текст, подпись или файл)."""
-    # Если есть документ — обрабатываем как файл
     if message.document:
         document = message.document
         if document.file_size > MAX_FILE_SIZE:
@@ -39,7 +37,6 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
             if os.path.exists(file_path):
                 os.remove(file_path)
     else:
-        # Если нет документа — пытаемся получить текст из сообщения или подписи
         content = message.text or message.caption
         if not content:
             await message.reply("⚠️ Отправьте текст, файл или фото с подписью.")
@@ -64,10 +61,8 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
         reply_markup=keyboard
     )
 
-# Остальные хендлеры (подтверждение) остаются без изменений
 @router.callback_query(AssortmentConfirmState.waiting_for_confirm, F.data.startswith("assort_confirm:"))
 async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext):
-    """Подтверждение или отмена загрузки ассортимента."""
     try:
         await callback.answer()
     except Exception:
