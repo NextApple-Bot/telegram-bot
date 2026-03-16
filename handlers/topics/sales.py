@@ -1,5 +1,4 @@
 import logging
-import re
 from aiogram import F, Router
 from aiogram.types import Message, ReactionTypeEmoji
 
@@ -8,7 +7,8 @@ import inventory
 import stats
 from utils import extract_sales_amounts
 from serial_utils import extract_serials_from_text
-from database import get_item_id_by_serial, remove_item_by_serial
+from database import get_item_id_by_serial
+from inventory import remove_by_serial  # ИЗМЕНЁННЫЙ ИМПОРТ
 from client_parser import parse_client_data
 from database import get_or_create_client, add_purchase
 
@@ -22,7 +22,7 @@ async def handle_sales_message(message: Message):
         return
 
     lines = message.text.splitlines()
-    # 1. Извлекаем общие суммы по способам оплаты (cash, terminal, qr, installment)
+    # 1. Извлекаем общие суммы по способам оплаты
     cash, terminal, qr, installment = extract_sales_amounts(lines)
 
     # 2. Ищем все серийные номера в тексте
@@ -34,22 +34,20 @@ async def handle_sales_message(message: Message):
         if item_id:
             sold_items.append((item_id, serial))
         else:
-            logger.warning(f"Серийный номер {serial} не найден в БД, возможно ошибка ввода")
+            logger.warning(f"Серийный номер {serial} не найден в БД")
 
-    # 3. Если есть товары с серийниками — удаляем их из инвентаря
+    # 3. Если есть товары с серийниками — удаляем из инвентаря
     if sold_items:
         for item_id, serial in sold_items:
-            removed = await remove_item_by_serial(serial)
+            removed = await remove_by_serial(serial)  # используем inventory.remove_by_serial
             if removed:
                 logger.info(f"Товар {serial} удалён из ассортимента")
             else:
                 logger.warning(f"Не удалось удалить товар {serial}")
 
     # 4. Сохраняем одну запись о продаже в таблицу sales
-    #    count = количество основных товаров (с серийниками)
-    #    суммы уже общие по чеку (включают аксессуары)
     count = len(sold_items)
-    is_accessory = (count == 0)  # если нет основных товаров, считаем что это аксессуары
+    is_accessory = (count == 0)
 
     await stats.increment_sales(
         count=count,
@@ -57,10 +55,10 @@ async def handle_sales_message(message: Message):
         terminal=terminal,
         qr=qr,
         installment=installment,
-        item_id=None,          # не привязываем к конкретному товару
+        item_id=None,
         is_accessory=is_accessory
     )
-    logger.info(f"Зарегистрирована продажа: товаров {count}, суммы: cash={cash}, term={terminal}, qr={qr}, inst={installment}")
+    logger.info(f"Продажа: товаров {count}, суммы: cash={cash}, term={terminal}, qr={qr}, inst={installment}")
 
     # 5. Если были серийники, которые не нашлись — уведомляем
     not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
@@ -68,14 +66,14 @@ async def handle_sales_message(message: Message):
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found)
         await message.reply(text)
 
-    # 6. Ставим реакцию (если есть хоть что-то)
+    # 6. Ставим реакцию
     if sold_items or cash or terminal or qr or installment:
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
-    # 7. Сохранение данных клиента и чека в purchases
+    # 7. Сохранение данных клиента и чека
     try:
         data = parse_client_data(message.text)
         if data['phones'] or data['full_name']:
@@ -94,6 +92,6 @@ async def handle_sales_message(message: Message):
                 payment_details=data['payments'],
                 purchase_type='sale'
             )
-            logger.info(f"Сохранены данные клиента {client_id}, телефоны: {data['phones']}")
+            logger.info(f"Сохранены данные клиента {client_id}")
     except Exception as e:
         logger.exception(f"Ошибка при сохранении данных клиента: {e}")
