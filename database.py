@@ -93,6 +93,8 @@ async def init_db():
                 cash REAL DEFAULT 0,
                 terminal REAL DEFAULT 0,
                 qr REAL DEFAULT 0,
+                transfer REAL DEFAULT 0,
+                invoice REAL DEFAULT 0,
                 installment REAL DEFAULT 0,
                 is_accessory BOOLEAN DEFAULT FALSE,
                 sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -105,6 +107,8 @@ async def init_db():
                 cash REAL DEFAULT 0,
                 terminal REAL DEFAULT 0,
                 qr REAL DEFAULT 0,
+                transfer REAL DEFAULT 0,
+                invoice REAL DEFAULT 0,
                 installment REAL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -167,6 +171,18 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_items_deleted_at ON deleted_items(deleted_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_items_restored ON deleted_items(restored)')
+
+        # Добавление новых колонок, если их нет (для совместимости)
+        await conn.execute('''
+            ALTER TABLE preorders 
+            ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0
+        ''')
+        await conn.execute('''
+            ALTER TABLE sales 
+            ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0
+        ''')
 
 # ---------- Категории и товары ----------
 
@@ -307,23 +323,24 @@ async def clear_all_inventory():
 
 @retry_on_db_error()
 async def add_sale(item_id: int = None, count: int = 1,
-                   cash: float = 0, terminal: float = 0, qr: float = 0, installment: float = 0,
+                   cash: float = 0, terminal: float = 0, qr: float = 0,
+                   transfer: float = 0, invoice: float = 0, installment: float = 0,
                    is_accessory: bool = False):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute('''
-            INSERT INTO sales (item_id, count, cash, terminal, qr, installment, is_accessory)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ''', item_id, count, cash, terminal, qr, installment, is_accessory)
+            INSERT INTO sales (item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory)
 
 @retry_on_db_error()
-async def add_preorder(cash=0, terminal=0, qr=0, installment=0):
+async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute('''
-            INSERT INTO preorders (cash, terminal, qr, installment)
-            VALUES ($1, $2, $3, $4)
-        ''', cash, terminal, qr, installment)
+            INSERT INTO preorders (cash, terminal, qr, transfer, invoice, installment)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        ''', cash, terminal, qr, transfer, invoice, installment)
 
 @retry_on_db_error()
 async def add_booking(item_id: int, total_amount: float):
@@ -338,44 +355,65 @@ async def get_today_stats():
     today = date.today()
     pool = await get_pool()
     async with pool.acquire() as conn:
-        sale_count = await conn.fetchval('''
-            SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1 AND is_accessory = false
-        ''', today) or 0
-
+        # Продажи
         sale_sums = await conn.fetchrow('''
-            SELECT COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
-                   COALESCE(SUM(qr),0), COALESCE(SUM(installment),0)
-            FROM sales WHERE DATE(sold_at) = $1
+            SELECT 
+                COALESCE(SUM(cash),0) as cash,
+                COALESCE(SUM(terminal),0) as terminal,
+                COALESCE(SUM(qr),0) as qr,
+                COALESCE(SUM(transfer),0) as transfer,
+                COALESCE(SUM(invoice),0) as invoice,
+                COALESCE(SUM(installment),0) as installment,
+                COUNT(*) as sales_count
+            FROM sales 
+            WHERE DATE(sold_at) = $1
         ''', today)
-        sc, st, sq, si = sale_sums
 
-        pre = await conn.fetchrow('''
-            SELECT COUNT(*), COALESCE(SUM(cash),0), COALESCE(SUM(terminal),0),
-                   COALESCE(SUM(qr),0), COALESCE(SUM(installment),0)
-            FROM preorders WHERE DATE(created_at) = $1
+        # Предзаказы
+        pre_sums = await conn.fetchrow('''
+            SELECT 
+                COALESCE(SUM(cash),0) as cash,
+                COALESCE(SUM(terminal),0) as terminal,
+                COALESCE(SUM(qr),0) as qr,
+                COALESCE(SUM(transfer),0) as transfer,
+                COALESCE(SUM(invoice),0) as invoice,
+                COALESCE(SUM(installment),0) as installment,
+                COUNT(*) as preorders_count
+            FROM preorders 
+            WHERE DATE(created_at) = $1
         ''', today)
-        pre_count, pc, pt, pq, pi = pre
 
-        book = await conn.fetchrow('''
-            SELECT COUNT(*), COALESCE(SUM(total_amount),0)
-            FROM bookings WHERE DATE(booked_at) = $1
+        # Брони
+        book_sums = await conn.fetchrow('''
+            SELECT 
+                COALESCE(SUM(total_amount),0) as total,
+                COUNT(*) as bookings_count
+            FROM bookings 
+            WHERE DATE(booked_at) = $1
         ''', today)
-        book_count, book_total = book
 
         return {
             'date': today.strftime('%Y-%m-%d'),
-            'preorders': pre_count,
-            'bookings': book_count,
-            'sales': sale_count,
-            'preorders_cash': pc,
-            'preorders_terminal': pt,
-            'preorders_qr': pq,
-            'preorders_installment': pi,
-            'bookings_total': book_total,
-            'sales_cash': sc,
-            'sales_terminal': st,
-            'sales_qr': sq,
-            'sales_installment': si,
+            'preorders_count': pre_sums['preorders_count'],
+            'bookings_count': book_sums['bookings_count'],
+            'sales_count': sale_sums['sales_count'],
+            'preorders': {
+                'cash': pre_sums['cash'],
+                'terminal': pre_sums['terminal'],
+                'qr': pre_sums['qr'],
+                'transfer': pre_sums['transfer'],
+                'invoice': pre_sums['invoice'],
+                'installment': pre_sums['installment'],
+            },
+            'sales': {
+                'cash': sale_sums['cash'],
+                'terminal': sale_sums['terminal'],
+                'qr': sale_sums['qr'],
+                'transfer': sale_sums['transfer'],
+                'invoice': sale_sums['invoice'],
+                'installment': sale_sums['installment'],
+            },
+            'bookings_total': book_sums['total'],
         }
 
 # ---------- Клиенты и покупки ----------
