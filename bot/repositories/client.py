@@ -1,1 +1,150 @@
+import json
+from typing import Optional, List, Dict
+from bot.db import get_pool, retry_on_db_error
+import logging
 
+logger = logging.getLogger(__name__)
+
+class ClientRepository:
+    @staticmethod
+    @retry_on_db_error()
+    async def get_or_create_client(phone: Optional[str] = None, phones: Optional[List[str]] = None,
+                                   full_name: Optional[str] = None, telegram_username: Optional[str] = None,
+                                   social_network: Optional[str] = None, referral_source: Optional[str] = None) -> int:
+        logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            if phone:
+                row = await conn.fetchrow('SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = $1', phone)
+                if row:
+                    client_id = row['id']
+                    updates = []
+                    params = []
+                    if full_name and full_name != row['full_name']:
+                        updates.append("full_name = $" + str(len(params)+1))
+                        params.append(full_name)
+                    if telegram_username and telegram_username != row['telegram_username']:
+                        updates.append("telegram_username = $" + str(len(params)+1))
+                        params.append(telegram_username)
+                    if social_network and social_network != row['social_network']:
+                        updates.append("social_network = $" + str(len(params)+1))
+                        params.append(social_network)
+                    if referral_source and referral_source != row['referral_source']:
+                        updates.append("referral_source = $" + str(len(params)+1))
+                        params.append(referral_source)
+                    if phones:
+                        existing_phones = row['phones'] if row['phones'] else ""
+                        all_phones = set(existing_phones.split(',')) if existing_phones else set()
+                        all_phones.update(phones)
+                        new_phones_str = ",".join(sorted(all_phones))
+                        if new_phones_str != existing_phones:
+                            updates.append("phones = $" + str(len(params)+1))
+                            params.append(new_phones_str)
+                    if updates:
+                        set_clause = ", ".join(updates)
+                        params.append(client_id)
+                        query = f"UPDATE clients SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ${len(params)}"
+                        await conn.execute(query, *params)
+                        logger.info(f"✅ Клиент {client_id} обновлён")
+                    return client_id
+                else:
+                    phones_str = ",".join(sorted(set(phones))) if phones else None
+                    row = await conn.fetchrow('''
+                        INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source)
+                        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
+                    ''', full_name, phone, phones_str, telegram_username, social_network, referral_source)
+                    return row['id']
+            else:
+                phones_str = ",".join(sorted(set(phones))) if phones else None
+                row = await conn.fetchrow('''
+                    INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source)
+                    VALUES ($1, $2, $3, $4, $5) RETURNING id
+                ''', full_name, phones_str, telegram_username, social_network, referral_source)
+                return row['id']
+
+    @staticmethod
+    @retry_on_db_error()
+    async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
+        items_json = json.dumps(items, ensure_ascii=False)
+        payment_json = json.dumps(payment_details, ensure_ascii=False)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute('''
+                INSERT INTO purchases (client_id, items_json, total_amount, payment_details, purchase_type)
+                VALUES ($1, $2, $3, $4, $5)
+            ''', client_id, items_json, total_amount, payment_json, purchase_type)
+
+    @staticmethod
+    @retry_on_db_error()
+    async def get_client_purchases(client_id: int) -> List[Dict]:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
+            return [dict(row) for row in rows]
+
+    @staticmethod
+    @retry_on_db_error()
+    async def search_clients(query: str) -> List[Dict]:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT * FROM clients 
+                WHERE full_name ILIKE $1 OR phone ILIKE $1 OR telegram_username ILIKE $1
+                ORDER BY updated_at DESC
+            ''', f'%{query}%')
+            return [dict(row) for row in rows]
+
+    @staticmethod
+    @retry_on_db_error()
+    async def get_available_months() -> List[str]:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows1 = await conn.fetch('''
+                SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
+                FROM clients
+                WHERE created_at IS NOT NULL
+            ''')
+            rows2 = await conn.fetch('''
+                SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
+                FROM purchases
+                WHERE created_at IS NOT NULL
+            ''')
+            months = sorted(set([r['month'] for r in rows1] + [r['month'] for r in rows2]), reverse=True)
+            return months
+
+    @staticmethod
+    @retry_on_db_error()
+    async def get_clients_data_for_month(month_str: str) -> List[Dict]:
+        from datetime import datetime
+        month, year = map(int, month_str.split('.'))
+        start_date = datetime(year, month, 1).date()
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1).date()
+        else:
+            end_date = datetime(year, month + 1, 1).date()
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT 
+                    c.id as client_id,
+                    c.full_name,
+                    c.phone,
+                    c.phones,
+                    c.telegram_username,
+                    c.social_network,
+                    c.referral_source,
+                    c.created_at as client_created_at,
+                    p.id as purchase_id,
+                    p.items_json,
+                    p.total_amount,
+                    p.payment_details,
+                    p.purchase_type,
+                    p.created_at as purchase_created_at
+                FROM clients c
+                LEFT JOIN purchases p ON c.id = p.client_id 
+                    AND p.created_at >= $1 AND p.created_at < $2
+                WHERE (p.id IS NOT NULL) OR (c.created_at >= $1 AND c.created_at < $2)
+                ORDER BY c.id, p.created_at
+            ''', start_date, end_date)
+            return [dict(row) for row in rows]
