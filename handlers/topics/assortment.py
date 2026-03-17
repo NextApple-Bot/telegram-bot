@@ -14,7 +14,12 @@ from handlers.states import AssortmentConfirmState
 router = Router()
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
-@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_ASSORTMENT)
+# ✅ Добавлен фильтр: сообщение должно содержать текст, подпись или быть документом
+@router.message(
+    F.chat.id == config.MAIN_GROUP_ID,
+    F.message_thread_id == config.THREAD_ASSORTMENT,
+    (F.text | F.caption | F.document)
+)
 async def handle_assortment_upload(message: Message, bot, state: FSMContext):
     if message.document:
         document = message.document
@@ -39,6 +44,7 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
     else:
         content = message.text or message.caption
         if not content:
+            # Этот случай уже не должен возникать благодаря фильтру, но оставим для безопасности
             await message.reply("⚠️ Отправьте текст, файл или фото с подписью.")
             return
         content = content.strip()
@@ -61,6 +67,7 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
         reply_markup=keyboard
     )
 
+# Остальные хендлеры (callback, отмена) остаются без изменений
 @router.callback_query(AssortmentConfirmState.waiting_for_confirm, F.data.startswith("assort_confirm:"))
 async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext):
     try:
