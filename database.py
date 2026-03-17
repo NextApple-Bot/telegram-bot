@@ -16,6 +16,10 @@ if not DATABASE_URL:
 
 # ---------- Декоратор для повторных попыток ----------
 def retry_on_db_error(retries=3, delay=1, backoff=2):
+    """
+    Декоратор для асинхронных функций, выполняющих запросы к БД.
+    При ошибках соединения повторяет вызов до retries раз.
+    """
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -24,10 +28,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
                 try:
                     return await func(*args, **kwargs)
                 except (asyncpg.exceptions.ConnectionFailureError,
-                        asyncpg.exceptions.ConnectionDoesNotExistError,
                         asyncpg.exceptions.InterfaceError,
-                        asyncpg.exceptions.ConnectionRejectionError,
-                        asyncpg.exceptions.ConnectionNotInitializedError,
                         asyncpg.exceptions.PostgresConnectionError) as e:
                     last_exception = e
                     if attempt < retries - 1:
@@ -38,6 +39,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
                         logger.error(f"Все попытки исчерпаны: {e}")
                         raise
                 except Exception as e:
+                    # Другие ошибки не повторяем
                     raise
             raise last_exception
         return wrapper
@@ -47,6 +49,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
 _pool = None
 
 async def get_pool():
+    """Возвращает пул соединений (создаёт при первом вызове)."""
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(
@@ -141,7 +144,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Таблица удалённых товаров (для undo)
+        # Таблица удалённых товаров (для Undo)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS deleted_items (
                 id SERIAL PRIMARY KEY,
