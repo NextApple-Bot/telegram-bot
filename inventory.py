@@ -40,9 +40,7 @@ async def save_inventory(categories):
     invalidate_cache()
 
 def extract_serial(line: str) -> str | None:
-    """
-    Извлекает первый серийный номер из строки.
-    """
+    """Извлекает первый серийный номер из строки."""
     serials = extract_serials(line)
     return serials[0] if serials else None
 
@@ -55,16 +53,22 @@ async def remove_by_serial(serial: str, reason: str = 'manual') -> int:
     item = await get_item_by_serial(serial)
     if not item:
         return 0
-    # Удаляем
+
+    # 1. Сначала сохраняем в deleted_items (пока запись ещё существует)
+    await add_deleted_item(
+        item_id=item['id'],
+        text=item['text'],
+        serial=serial,
+        category_id=item['category_id'],
+        reason=reason
+    )
+
+    # 2. Затем удаляем сам товар
     removed_count = await remove_item_by_serial(serial)
     if removed_count > 0:
-        # Сохраняем в deleted_items
-        await add_deleted_item(
-            item_id=item['id'],
-            text=item['text'],
-            serial=serial,
-            category_id=item['category_id'],
-            reason=reason
-        )
         invalidate_cache()
-    return removed_count
+        return removed_count
+    else:
+        # Если удаление не удалось (маловероятно), запись в deleted_items останется как артефакт
+        logger.warning(f"Товар {serial} сохранён в deleted_items, но не был удалён из items")
+        return 0
