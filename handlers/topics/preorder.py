@@ -24,17 +24,20 @@ async def handle_preorder(message: Message):
         return
 
     lines = content.strip().splitlines()
-    if not lines:
-        return
+    logger.info(f"Получено сообщение, строк: {len(lines)}")
+    for i, line in enumerate(lines):
+        logger.info(f"Строка {i}: {repr(line)}")
 
     # Определяем, есть ли в сообщении блоки "Бронь:"
     booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
+    logger.info(f"Найдены индексы блоков брони: {booking_indices}")
 
     if booking_indices:
         # Есть брони – обрабатываем предварительную часть (до первой брони) как предзаказ
         preorder_lines = lines[:booking_indices[0]]
         if preorder_lines:
             payments = extract_payment_amounts('\n'.join(preorder_lines), ignore_prepay=False)
+            logger.info(f"Предзаказ (до брони): платежи {payments}")
             await stats.increment_preorder(**payments)
             await message.react([ReactionTypeEmoji(emoji='👌')])
 
@@ -43,6 +46,7 @@ async def handle_preorder(message: Message):
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
             booking_lines = lines[start:end]
+            logger.info(f"Блок брони #{idx}: строки = {booking_lines}")
 
             # Извлекаем все строки с товарами (с серийниками)
             item_lines = []
@@ -50,8 +54,12 @@ async def handle_preorder(message: Message):
                 line = line.strip()
                 if not line:
                     continue
-                if inventory.extract_serial(line):
+                serial = inventory.extract_serial(line)
+                logger.info(f"Строка: '{line}' -> извлечён серийник: {serial}")
+                if serial:
                     item_lines.append(line)
+
+            logger.info(f"Распознанные товары в блоке: {item_lines}")
 
             if not item_lines:
                 # Если нет строк с серийными номерами – ставим 👎 и ничего не пишем
@@ -63,10 +71,12 @@ async def handle_preorder(message: Message):
 
             # Извлекаем оплаты из блока брони (они включают П/О)
             payments = extract_payment_amounts('\n'.join(booking_lines), ignore_prepay=False)
+            logger.info(f"Платежи в блоке брони: {payments}")
             total_paid = sum(payments.values())
             amount_per_item = total_paid / len(item_lines) if total_paid else 0
 
             for item_line in item_lines:
+                logger.info(f"Обработка товара: {item_line}")
                 item_info = await get_item_by_text(item_line)
                 if not item_info:
                     serial = inventory.extract_serial(item_line)
@@ -74,6 +84,7 @@ async def handle_preorder(message: Message):
                         item_info = await get_item_by_serial(serial)
 
                 if not item_info:
+                    logger.error(f"Товар не найден в БД: {item_line}")
                     await message.reply(f"❌ Товар не найден: {item_line}")
                     continue
 
@@ -84,6 +95,7 @@ async def handle_preorder(message: Message):
                 # Удаляем товар из основного ассортимента
                 removed = await inventory.remove_by_serial(serial)
                 if not removed:
+                    logger.error(f"Не удалось удалить товар {item_text}")
                     await message.reply(f"❌ Не удалось удалить товар {item_text}.")
                     continue
 
@@ -100,5 +112,6 @@ async def handle_preorder(message: Message):
     else:
         # Обычный предзаказ без броней
         payments = extract_payment_amounts(content, ignore_prepay=False)
+        logger.info(f"Предзаказ без броней: платежи {payments}")
         await stats.increment_preorder(**payments)
         await message.react([ReactionTypeEmoji(emoji='👌')])
