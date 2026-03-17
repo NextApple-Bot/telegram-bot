@@ -54,9 +54,9 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         s = await stats.get_stats()
         text = (
             f"📊 Статистика за {s['date']}:\n"
-            f"• Предзаказов: {s['preorders']}\n"
-            f"• Броней: {s['bookings']}\n"
-            f"• Продаж: {s['sales']}"
+            f"• Предзаказов: {s['preorders_count']}\n"
+            f"• Броней: {s['bookings_count']}\n"
+            f"• Продаж: {s['sales_count']}"
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
@@ -70,20 +70,27 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             except Exception as e:
                 logger.warning(f"Не удалось удалить старое сообщение финансов: {e}")
         s = await stats.get_stats()
-        total = (
-            s['sales_terminal'] + s['preorders_terminal'] +
-            s['sales_cash'] + s['preorders_cash'] +
-            s['sales_qr'] + s['preorders_qr'] +
-            s['sales_installment'] + s['preorders_installment'] +
-            s['bookings_total']
-        )
+        # Суммируем предзаказы и продажи по каждому типу
+        cash_total = s['preorders']['cash'] + s['sales']['cash']
+        terminal_total = s['preorders']['terminal'] + s['sales']['terminal']
+        qr_total = s['preorders']['qr'] + s['sales']['qr']
+        transfer_total = s['preorders']['transfer'] + s['sales']['transfer']
+        invoice_total = s['preorders']['invoice'] + s['sales']['invoice']
+        installment_total = s['preorders']['installment'] + s['sales']['installment']
+        overall_total = cash_total + terminal_total + qr_total + transfer_total + invoice_total + installment_total + s['bookings_total']
+
+        # План (можно вынести в config или хранить в БД)
+        PLAN_AMOUNT = 600000  # Например
+
         text = (
-            f"💰 Финансы за {s['date']}:\n"
-            f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
-            f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
-            f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
-            f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-            f"ИТОГО: {total:.0f} руб."
+            f"План - {PLAN_AMOUNT}. {s['sales_count']} продаж.\n"
+            f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < PLAN_AMOUNT else "") + "\n"
+            f"2) Наличные - {cash_total:.0f}\n"
+            f"3) QR-код - {qr_total:.0f}\n"
+            f"4) Рассрочка - {installment_total:.0f}\n"
+            f"5) Оплата по счету - {invoice_total:.0f}\n"
+            f"6) Терминал - {terminal_total:.0f}\n"
+            f"7) Перевод - {transfer_total:.0f}"
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
@@ -187,9 +194,9 @@ async def process_reset_stats(callback: CallbackQuery):
             s = await stats.get_stats()
             text = (
                 f"📊 Статистика за {s['date']}:\n"
-                f"• Предзаказов: {s['preorders']}\n"
-                f"• Броней: {s['bookings']}\n"
-                f"• Продаж: {s['sales']}"
+                f"• Предзаказов: {s['preorders_count']}\n"
+                f"• Броней: {s['bookings_count']}\n"
+                f"• Продаж: {s['sales_count']}"
             )
             await callback.message.edit_text(text)
             last_stats_message[chat_id] = callback.message.message_id
@@ -197,9 +204,9 @@ async def process_reset_stats(callback: CallbackQuery):
             s = await stats.get_stats()
             text = (
                 f"📊 Статистика за {s['date']}:\n"
-                f"• Предзаказов: {s['preorders']}\n"
-                f"• Броней: {s['bookings']}\n"
-                f"• Продаж: {s['sales']}"
+                f"• Предзаказов: {s['preorders_count']}\n"
+                f"• Броней: {s['bookings_count']}\n"
+                f"• Продаж: {s['sales_count']}"
             )
             await callback.message.edit_text(text)
             last_stats_message[chat_id] = callback.message.message_id
@@ -229,39 +236,48 @@ async def process_reset_finances(callback: CallbackQuery):
         elif action == "yes":
             await stats.reset_finances()
             s = await stats.get_stats()
-            total = (
-                s['sales_terminal'] + s['preorders_terminal'] +
-                s['sales_cash'] + s['preorders_cash'] +
-                s['sales_qr'] + s['preorders_qr'] +
-                s['sales_installment'] + s['preorders_installment'] +
-                s['bookings_total']
-            )
+            # Пересчёт итогов
+            cash_total = s['preorders']['cash'] + s['sales']['cash']
+            terminal_total = s['preorders']['terminal'] + s['sales']['terminal']
+            qr_total = s['preorders']['qr'] + s['sales']['qr']
+            transfer_total = s['preorders']['transfer'] + s['sales']['transfer']
+            invoice_total = s['preorders']['invoice'] + s['sales']['invoice']
+            installment_total = s['preorders']['installment'] + s['sales']['installment']
+            overall_total = cash_total + terminal_total + qr_total + transfer_total + invoice_total + installment_total + s['bookings_total']
+
+            PLAN_AMOUNT = 600000
             text = (
-                f"💰 Финансы за {s['date']}:\n"
-                f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
-                f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
-                f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
-                f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-                f"ИТОГО: {total:.0f} руб."
+                f"План - {PLAN_AMOUNT}. {s['sales_count']} продаж.\n"
+                f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < PLAN_AMOUNT else "") + "\n"
+                f"2) Наличные - {cash_total:.0f}\n"
+                f"3) QR-код - {qr_total:.0f}\n"
+                f"4) Рассрочка - {installment_total:.0f}\n"
+                f"5) Оплата по счету - {invoice_total:.0f}\n"
+                f"6) Терминал - {terminal_total:.0f}\n"
+                f"7) Перевод - {transfer_total:.0f}"
             )
             await callback.message.edit_text(text)
             last_finance_message[chat_id] = callback.message.message_id
         elif action == "no":
             s = await stats.get_stats()
-            total = (
-                s['sales_terminal'] + s['preorders_terminal'] +
-                s['sales_cash'] + s['preorders_cash'] +
-                s['sales_qr'] + s['preorders_qr'] +
-                s['sales_installment'] + s['preorders_installment'] +
-                s['bookings_total']
-            )
+            cash_total = s['preorders']['cash'] + s['sales']['cash']
+            terminal_total = s['preorders']['terminal'] + s['sales']['terminal']
+            qr_total = s['preorders']['qr'] + s['sales']['qr']
+            transfer_total = s['preorders']['transfer'] + s['sales']['transfer']
+            invoice_total = s['preorders']['invoice'] + s['sales']['invoice']
+            installment_total = s['preorders']['installment'] + s['sales']['installment']
+            overall_total = cash_total + terminal_total + qr_total + transfer_total + invoice_total + installment_total + s['bookings_total']
+
+            PLAN_AMOUNT = 600000
             text = (
-                f"💰 Финансы за {s['date']}:\n"
-                f"Терминал: {s['sales_terminal'] + s['preorders_terminal']:.0f} руб.\n"
-                f"Наличные: {s['sales_cash'] + s['preorders_cash']:.0f} руб.\n"
-                f"QR-код: {s['sales_qr'] + s['preorders_qr']:.0f} руб.\n"
-                f"Рассрочка: {s['sales_installment'] + s['preorders_installment']:.0f} руб.\n"
-                f"ИТОГО: {total:.0f} руб."
+                f"План - {PLAN_AMOUNT}. {s['sales_count']} продаж.\n"
+                f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < PLAN_AMOUNT else "") + "\n"
+                f"2) Наличные - {cash_total:.0f}\n"
+                f"3) QR-код - {qr_total:.0f}\n"
+                f"4) Рассрочка - {installment_total:.0f}\n"
+                f"5) Оплата по счету - {invoice_total:.0f}\n"
+                f"6) Терминал - {terminal_total:.0f}\n"
+                f"7) Перевод - {transfer_total:.0f}"
             )
             await callback.message.edit_text(text)
             last_finance_message[chat_id] = callback.message.message_id
