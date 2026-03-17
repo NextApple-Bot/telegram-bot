@@ -1,7 +1,7 @@
 import re
 import logging
-from utils import extract_all_amounts
-from serial_utils import extract_serials_from_text  # изменён импорт
+from utils import extract_payment_amounts
+from serial_utils import extract_serials_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +87,19 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
-        # Суммы
-        amounts = extract_all_amounts(line)
-        for typ, val in amounts:
+        # Суммы (используем новую функцию, без игнорирования П/О)
+        payments = extract_payment_amounts(line, ignore_prepay=False)
+        for typ, val in payments.items():
             if typ in result['payments']:
                 result['payments'][typ] += val
-            elif typ == 'prepayment':
-                result['payments']['prepayment'] += val
+            else:
+                # Добавляем отсутствующие ключи (transfer, invoice)
+                result['payments'][typ] = val
+
+    # Убедимся, что все ключи присутствуют
+    for key in ['transfer', 'invoice']:
+        if key not in result['payments']:
+            result['payments'][key] = 0.0
 
     result['total'] = sum(result['payments'].values())
     result['main_phone'] = result['phones'][0] if result['phones'] else None
