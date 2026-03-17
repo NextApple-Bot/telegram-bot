@@ -28,7 +28,7 @@ async def handle_sales_message(message: Message):
 
     # 2. Извлекаем все уникальные серийные номера
     serials = list(set(extract_serials_from_text(content)))
-    logger.info(f"🔍 [DEBUG] Все найденные серийники (уникальные): {serials}")  # Отладка
+    logger.info(f"🔍 [DEBUG] Все найденные серийники (уникальные): {serials}")
 
     sold_items = []  # список кортежей (item_id, serial)
 
