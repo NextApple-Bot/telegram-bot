@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 try:
     logger.info("Импортируем config...")
     import config
-    logger.info("Импортируем router из handlers...")
-    from handlers import router
-    logger.info("Импортируем init_db из database...")
-    from database import init_db
+    logger.info("Импортируем router из bot.handlers...")
+    from bot.handlers import router
+    logger.info("Импортируем init_db из bot.db...")
+    from bot.db import init_db
     logger.info("Импортируем aiogram...")
     from aiogram import Bot, Dispatcher
     from aiogram.types import Update
@@ -39,8 +39,8 @@ try:
     logger.info("Создаём Dispatcher...")
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
-    PORT = int(os.environ.get('PORT', 8000))
+    RENDER_URL = config.RENDER_URL
+    PORT = config.PORT
     logger.info(f"RENDER_URL: {RENDER_URL}, PORT: {PORT}")
 except Exception as e:
     print("=" * 60, file=sys.stderr)
