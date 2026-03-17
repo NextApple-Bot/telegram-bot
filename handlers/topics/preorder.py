@@ -11,7 +11,12 @@ from database import get_item_by_text, get_item_by_serial, add_item
 
 router = Router()
 
-@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_PREORDER)
+# ✅ Добавлен фильтр: сообщение должно содержать текст или подпись (документы не обрабатываем)
+@router.message(
+    F.chat.id == config.MAIN_GROUP_ID,
+    F.message_thread_id == config.THREAD_PREORDER,
+    (F.text | F.caption)
+)
 async def handle_preorder(message: Message):
     content = message.text or message.caption
     if not content:
