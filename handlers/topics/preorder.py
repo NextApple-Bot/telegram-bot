@@ -54,11 +54,11 @@ async def handle_preorder(message: Message):
                     item_lines.append(line)
 
             if not item_lines:
-                # Если нет строк с серийными номерами – ставим ❌ и ничего не пишем
+                # Если нет строк с серийными номерами – ставим 👎 и ничего не пишем
                 try:
-                    await message.react([ReactionTypeEmoji(emoji='❌')])
+                    await message.react([ReactionTypeEmoji(emoji='👎')])
                 except Exception as e:
-                    logger.error(f"Не удалось поставить реакцию ❌: {e}")
+                    logger.error(f"Не удалось поставить реакцию 👎: {e}")
                 continue
 
             # Извлекаем оплаты из блока брони (они включают П/О)
