@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List, Tuple
+from typing import Dict
 
 def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
     """
@@ -12,7 +12,7 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     patterns = {
         'cash': [r'Наличными', r'Наличные', r'наличными'],
         'terminal': [r'Терминал'],
-        'qr': [r'QR[- ]?код', r'QRCode', r'QrCode', r'QR\s*код', r'Qrкод', r'QRCODE'],
+        'qr': [r'QR[- ]?код', r'QRCode', r'QrCode', r'QR\s*код', r'Qrкод', r'QRCODE', r'Qrcode', r'Qrcod', r'Qr-код', r'Qr-Код'],
         'transfer': [r'Перевод'],
         'invoice': [r'Оплата по счету', r'Оплата По Счету', r'по счету'],
         'installment': [r'Рассрочка'],
