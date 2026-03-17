@@ -1,16 +1,11 @@
 import asyncpg
 from datetime import date
 import config
-from database import add_sale, get_today_stats, get_pool
+from database import add_preorder as db_add_preorder, add_sale as db_add_sale, add_booking, get_today_stats, get_pool
 
-async def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, installment=0.0):
+async def increment_preorder(cash=0.0, terminal=0.0, qr=0.0, transfer=0.0, invoice=0.0, installment=0.0):
     """Добавляет запись о предзаказе."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute('''
-            INSERT INTO preorders (cash, terminal, qr, installment)
-            VALUES ($1, $2, $3, $4)
-        ''', cash, terminal, qr, installment)
+    await db_add_preorder(cash, terminal, qr, transfer, invoice, installment)
 
 async def increment_booking(serial: str, amount: float):
     """Добавляет бронь по серийному номеру."""
@@ -22,9 +17,9 @@ async def increment_booking(serial: str, amount: float):
                 INSERT INTO bookings (item_id, total_amount) VALUES ($1, $2)
             ''', row['id'], amount)
 
-async def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, installment=0.0, item_id=None, is_accessory=False):
+async def increment_sales(count=1, cash=0.0, terminal=0.0, qr=0.0, transfer=0.0, invoice=0.0, installment=0.0, item_id=None, is_accessory=False):
     """Добавляет запись о продаже."""
-    await add_sale(item_id, count, cash, terminal, qr, installment, is_accessory=is_accessory)
+    await db_add_sale(item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory=is_accessory)
 
 async def get_stats():
     """Возвращает статистику за сегодня."""
