@@ -5,7 +5,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 import config
 import inventory
 import stats
-from utils import extract_sales_amounts
+from utils import extract_payment_amounts
 from serial_utils import extract_serials_from_text
 from database import get_item_id_by_serial
 from inventory import remove_by_serial
@@ -15,7 +15,6 @@ from database import get_or_create_client, add_purchase
 logger = logging.getLogger(__name__)
 router = Router()
 
-# ✅ Добавлен фильтр: сообщение должно содержать текст или подпись (документы не обрабатываем)
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
     F.message_thread_id == config.THREAD_SALES,
@@ -25,15 +24,20 @@ async def handle_sales_message(message: Message):
     """Обрабатывает сообщение в топике Продажи (текст или подпись к медиа)."""
     content = message.text or message.caption
     if not content:
-        return  # Игнорируем сообщения без текста (чистые медиа)
+        return
 
-    # 1. Извлекаем суммы
-    lines = content.splitlines()
-    cash, terminal, qr, installment = extract_sales_amounts(lines)
+    # 1. Извлекаем суммы оплат (игнорируем П/О)
+    payments = extract_payment_amounts(content, ignore_prepay=True)
+    cash = payments['cash']
+    terminal = payments['terminal']
+    qr = payments['qr']
+    transfer = payments['transfer']
+    invoice = payments['invoice']
+    installment = payments['installment']
 
     # 2. Извлекаем все уникальные серийные номера
     serials = list(set(extract_serials_from_text(content)))
-    logger.info(f"🔍 [DEBUG] Все найденные серийники (уникальные): {serials}")
+    logger.info(f"🔍 Найденные серийники: {serials}")
 
     sold_items = []  # список кортежей (item_id, serial)
 
@@ -42,22 +46,20 @@ async def handle_sales_message(message: Message):
         item_id = await get_item_id_by_serial(serial)
         if item_id:
             sold_items.append((item_id, serial))
-            logger.info(f"✅ [DEBUG] Серийник {serial} НАЙДЕН в БД")
+            logger.info(f"✅ Серийник {serial} найден в БД")
         else:
-            logger.warning(f"❌ [DEBUG] Серийник {serial} НЕ НАЙДЕН в БД")
-
-    logger.info(f"🛒 [DEBUG] Товары к удалению: {[s for _, s in sold_items]}")
+            logger.warning(f"❌ Серийник {serial} не найден в БД")
 
     # 4. Удаляем найденные товары (с причиной 'sale')
     if sold_items:
         for item_id, serial in sold_items:
             removed = await remove_by_serial(serial, reason='sale')
             if removed:
-                logger.info(f"🗑️ [DEBUG] Товар {serial} УДАЛЁН")
+                logger.info(f"🗑️ Товар {serial} удалён")
             else:
-                logger.warning(f"⚠️ [DEBUG] Не удалось удалить товар {serial}")
+                logger.warning(f"⚠️ Не удалось удалить товар {serial}")
 
-    # 5. Сохраняем одну запись о продаже в таблицу sales
+    # 5. Сохраняем запись о продаже
     count = len(sold_items)
     is_accessory = (count == 0)
 
@@ -66,28 +68,28 @@ async def handle_sales_message(message: Message):
         cash=cash,
         terminal=terminal,
         qr=qr,
+        transfer=transfer,
+        invoice=invoice,
         installment=installment,
         item_id=None,
         is_accessory=is_accessory
     )
-    logger.info(f"Продажа: товаров {count}, суммы: cash={cash}, term={terminal}, qr={qr}, inst={installment}")
+    logger.info(f"Продажа: товаров {count}, суммы: cash={cash}, term={terminal}, qr={qr}, transfer={transfer}, invoice={invoice}, inst={installment}")
 
     # 6. Формируем список серийников, которые не были найдены
     not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
-    logger.info(f"📭 [DEBUG] Серийники, которые будут объявлены не найденными: {not_found}")
-
     if not_found:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(not_found)
         await message.reply(text)
 
     # 7. Ставим реакцию, если были какие-то операции
-    if sold_items or cash or terminal or qr or installment:
+    if sold_items or any(payments.values()):
         try:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
         except Exception as e:
             logger.exception(f"Не удалось поставить реакцию: {e}")
 
-    # 8. Сохранение данных клиента и покупки (полная информация о чеке)
+    # 8. Сохранение данных клиента и покупки
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
