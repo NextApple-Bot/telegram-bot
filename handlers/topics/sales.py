@@ -15,7 +15,12 @@ from database import get_or_create_client, add_purchase
 logger = logging.getLogger(__name__)
 router = Router()
 
-@router.message(F.chat.id == config.MAIN_GROUP_ID, F.message_thread_id == config.THREAD_SALES)
+# ✅ Добавлен фильтр: сообщение должно содержать текст или подпись (документы не обрабатываем)
+@router.message(
+    F.chat.id == config.MAIN_GROUP_ID,
+    F.message_thread_id == config.THREAD_SALES,
+    (F.text | F.caption)
+)
 async def handle_sales_message(message: Message):
     """Обрабатывает сообщение в топике Продажи (текст или подпись к медиа)."""
     content = message.text or message.caption
