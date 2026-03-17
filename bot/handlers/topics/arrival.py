@@ -2,6 +2,7 @@ import re
 import tempfile
 import os
 import aiofiles
+import logging
 from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -11,6 +12,8 @@ from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.handlers.states import ArrivalConfirmState
 from bot.utils.validators import extract_serials
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 MAX_FILE_SIZE = 10 * 1024 * 1024
