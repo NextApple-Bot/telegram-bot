@@ -1,9 +1,8 @@
 import logging
-from bot.repositories import ItemRepository, ClientRepository, StatsRepository
-from bot.models import ClientData, SaleData
+from bot.repositories import ItemRepository, ClientRepository, StatsRepository, FinanceRepository
+from bot.models import ClientData
 from bot.utils.validators import extract_serials
-from bot.utils.parser import parse_client_data
-from bot.utils.finances import finances
+from bot.utils.parser import parse_client_data, extract_payment_amounts
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,6 @@ class SaleService:
         # 1. Проверка на дубликат (идемпотентность) будет в хендлере
 
         # 2. Извлечение сумм и серийников
-        from bot.utils.parser import extract_payment_amounts
         payments = extract_payment_amounts(content, ignore_prepay=True)
         serials = list(set(extract_serials(content)))
 
@@ -43,12 +41,15 @@ class SaleService:
             is_accessory=is_accessory
         )
 
-        # 5. Обновление finances.json
-        finances.add_payment('cash', payments['cash'])
-        finances.add_payment('terminal', payments['terminal'])
-        finances.add_payment('qr', payments['qr'])
-        finances.add_payment('installment', payments['installment'])
-        # Примечание: transfer и invoice не входят в finances.json по вашему старому формату, но можно добавить при необходимости
+        # 5. Обновление финансов в БД (вместо finances.json)
+        await FinanceRepository.add_payments(
+            cash=payments['cash'],
+            terminal=payments['terminal'],
+            qr=payments['qr'],
+            transfer=payments['transfer'],
+            invoice=payments['invoice'],
+            installment=payments['installment']
+        )
 
         # 6. Парсинг и сохранение клиента
         try:
