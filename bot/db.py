@@ -49,13 +49,14 @@ async def get_pool():
 async def init_db():
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Создание таблиц (полностью как в вашем старом database.py, но с учётом изменений)
+        # Таблица категорий
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE
             )
         ''')
+        # Таблица товаров
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS items (
                 id SERIAL PRIMARY KEY,
@@ -66,6 +67,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица продаж
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS sales (
                 id SERIAL PRIMARY KEY,
@@ -81,6 +83,7 @@ async def init_db():
                 sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица предзаказов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS preorders (
                 id SERIAL PRIMARY KEY,
@@ -93,6 +96,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица броней
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
                 id SERIAL PRIMARY KEY,
@@ -101,6 +105,7 @@ async def init_db():
                 booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица клиентов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS clients (
                 id SERIAL PRIMARY KEY,
@@ -114,6 +119,7 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица покупок
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS purchases (
                 id SERIAL PRIMARY KEY,
@@ -125,6 +131,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица удалённых товаров (для Undo)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS deleted_items (
                 id SERIAL PRIMARY KEY,
@@ -137,6 +144,7 @@ async def init_db():
                 reason TEXT
             )
         ''')
+        # Таблица обработанных сообщений (идемпотентность)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS processed_messages (
                 id SERIAL PRIMARY KEY,
@@ -144,6 +152,21 @@ async def init_db():
                 message_id BIGINT NOT NULL,
                 processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(chat_id, message_id)
+            )
+        ''')
+        # Новая таблица для финансов
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS daily_finances (
+                date DATE PRIMARY KEY,
+                cash REAL DEFAULT 0,
+                terminal REAL DEFAULT 0,
+                qr REAL DEFAULT 0,
+                transfer REAL DEFAULT 0,
+                invoice REAL DEFAULT 0,
+                installment REAL DEFAULT 0,
+                bookings_total REAL DEFAULT 0,
+                total REAL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         # Индексы
