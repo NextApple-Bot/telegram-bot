@@ -10,9 +10,6 @@ class SaleService:
     @staticmethod
     async def process_sale(content: str, chat_id: int, message_id: int) -> dict:
         """Обрабатывает продажу: удаляет товары, сохраняет статистику, клиента."""
-        # 1. Проверка на дубликат (идемпотентность) будет в хендлере
-
-        # 2. Извлечение сумм и серийников
         payments = extract_payment_amounts(content, ignore_prepay=True)
         serials = list(set(extract_serials(content)))
 
@@ -22,12 +19,10 @@ class SaleService:
             if item_id:
                 sold_items.append((item_id, serial))
 
-        # 3. Удаление товаров (в транзакции через сервис ассортимента)
         from .assortment import AssortmentService
         for item_id, serial in sold_items:
             await AssortmentService.remove_by_serial(serial, reason='sale')
 
-        # 4. Сохранение продажи в статистику
         count = len(sold_items)
         is_accessory = (count == 0)
         await StatsRepository.add_sale(
@@ -41,7 +36,7 @@ class SaleService:
             is_accessory=is_accessory
         )
 
-        # 5. Обновление финансов в БД (вместо finances.json)
+        # Обновление финансов в БД
         await FinanceRepository.add_payments(
             cash=payments['cash'],
             terminal=payments['terminal'],
@@ -51,7 +46,6 @@ class SaleService:
             installment=payments['installment']
         )
 
-        # 6. Парсинг и сохранение клиента
         try:
             data_dict = parse_client_data(content)
             client_data = ClientData(**data_dict)
