@@ -37,8 +37,10 @@ async def handle_sales_message(message: Message):
     try:
         result = await SaleService.process_sale(content, message.chat.id, message.message_id)
 
-        if result["sold_items"] or any(result["payments"].values()):
-            await message.react([ReactionTypeEmoji(emoji='🔥')])
+        if result["sold_items"]:
+    await message.react([ReactionTypeEmoji(emoji='🔥')])
+# else:
+#   можно поставить другую реакцию или ничего
 
         if result["not_found"]:
             text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(result["not_found"])
