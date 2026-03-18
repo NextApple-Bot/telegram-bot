@@ -5,6 +5,12 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
+    """
+    Извлекает из текста суммы по типам оплаты.
+    Возвращает словарь с ключами:
+    cash, terminal, qr, transfer, invoice, installment
+    Если ignore_prepay=True, строки содержащие П/О или предоплату игнорируются.
+    """
     patterns = {
         'cash': [r'Наличными', r'Наличные', r'наличными'],
         'terminal': [r'Терминал'],
@@ -46,6 +52,11 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     return results
 
 def parse_client_data(text: str) -> dict:
+    """
+    Извлекает данные клиента из текста сообщения.
+    Возвращает словарь с полями:
+    full_name, phones, telegram_username, social_network, referral_source, items, payments, total, main_phone.
+    """
     result = {
         'full_name': None,
         'phones': [],
@@ -74,7 +85,7 @@ def parse_client_data(text: str) -> dict:
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)
 
-        # ФИО (улучшено: ищем после слов "ФИО" или после сумм, как вы сказали)
+        # ФИО (улучшено: ищем после слов "ФИО" или после сумм)
         if not result['full_name']:
             # Сначала ищем явный маркер
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
@@ -87,7 +98,6 @@ def parse_client_data(text: str) -> dict:
                         result['full_name'] = match.group(1).strip()
             else:
                 # Если есть сумма и строка не содержит другие ключевые слова, возможно это ФИО
-                # (упрощённо: если есть сумма и строка состоит из 2-4 слов с заглавных)
                 if re.search(r'\d', line):  # есть цифры (сумма)
                     words = line.split()
                     if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
