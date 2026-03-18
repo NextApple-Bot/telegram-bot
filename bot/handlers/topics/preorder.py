@@ -12,6 +12,12 @@ from bot.utils.parser import extract_payment_amounts
 logger = logging.getLogger(__name__)
 router = Router()
 
+@router.message(F.chat.id == config.MAIN_GROUP_ID)
+async def debug_all_messages(message: Message):
+    logger.info(f"🔥 DEBUG: Получено сообщение в группе. Текст: {message.text}")
+    logger.info(f"Thread ID: {message.message_thread_id}")
+    await message.reply(f"DEBUG: сообщение получено (thread_id={message.message_thread_id})")
+
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
     F.message_thread_id == config.THREAD_PREORDER,
