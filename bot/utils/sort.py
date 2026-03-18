@@ -1,24 +1,29 @@
 import re
 
 def normalize_name(name):
+    """Нормализует имя, удаляя лишние пробелы."""
     return ' '.join(name.split())
 
 def normalize_model(name):
+    """Нормализует название модели, убирая пробел после S."""
     return re.sub(r'S\s+(\d+)', r'S\1', name, flags=re.IGNORECASE)
 
 def extract_memory(text):
+    """Извлекает объём памяти из текста (например, 256GB, 512гб, 1TB)."""
     match = re.search(r'(\d+)\s*(gb|гб|tb)', text, re.IGNORECASE)
     if match:
         return f"{match.group(1)}{match.group(2).upper()}"
     return None
 
 def extract_watch_size(text):
+    """Извлекает размер часов в мм."""
     match = re.search(r'(\d+)\s*mm', text, re.IGNORECASE)
     if match:
         return int(match.group(1))
     return None
 
 def detect_sim_type(text):
+    """Определяет тип SIM: eSIM, SIM+eSIM или other."""
     lower = text.lower()
     if re.search(r'\(sim\+esim\)|\bsim\+esim\b', lower):
         return 'SIM+eSIM'
@@ -27,10 +32,19 @@ def detect_sim_type(text):
     return 'other'
 
 def get_full_model_name(item):
+    """
+    Возвращает полное название товара без серийных номеров и пометок в скобках,
+    но с сохранением цвета, памяти и других характеристик.
+    Используется для группировки остатков.
+    """
     without_brackets = re.sub(r'\([^)]*\)', '', item)
     return normalize_name(without_brackets)
 
 def extract_base_name(item):
+    """
+    Возвращает базовое имя товара (модель + память) для определения категории.
+    Удаляет цвет и другие детали, оставляя только основу.
+    """
     without_brackets = re.sub(r'\([^)]*\)', '', item)
     if ',' in without_brackets:
         model_part = without_brackets.split(',', 1)[0].strip()
@@ -46,6 +60,7 @@ def extract_base_name(item):
     return base
 
 def parse_categories(lines):
+    """Парсит текст ассортимента и возвращает список категорий с товарами."""
     categories = []
     current_header = None
     current_items = []
@@ -107,6 +122,7 @@ def parse_categories(lines):
     return categories
 
 def _add_category(categories, header, items):
+    """Вспомогательная функция для добавления категории в список."""
     norm_header = header.lower().rstrip(':')
     for cat in categories:
         if cat['header'].lower().rstrip(':') == norm_header:
@@ -115,10 +131,12 @@ def _add_category(categories, header, items):
     categories.append({"header": header, "items": items})
 
 def sort_assortment_to_categories(input_text):
+    """Парсит текст и возвращает категории с товарами (без сортировки внутри)."""
     lines = input_text.splitlines()
     return parse_categories(lines)
 
 def sort_items_in_category(items, header):
+    """Сортирует товары внутри категории в зависимости от типа категории."""
     header_lower = header.lower()
     output = []
 
@@ -173,6 +191,7 @@ def sort_items_in_category(items, header):
         return sorted(items)
 
 def build_output_text(categories):
+    """Формирует текст для выгрузки ассортимента из списка категорий."""
     output_lines = []
     for cat in categories:
         header = cat['header']
@@ -198,6 +217,7 @@ def build_output_text(categories):
     return '\n'.join(output_lines)
 
 def find_category_for_item(item, categories):
+    """Находит индекс категории, подходящей для товара."""
     normalized_item = normalize_name(item)
     normalized_item = normalize_model(normalized_item).lower()
     base = extract_base_name(item).lower()
@@ -219,6 +239,10 @@ def find_category_for_item(item, categories):
     return None
 
 def add_item_to_categories(item, categories):
+    """
+    Добавляет товар в подходящую категорию, создавая новую при необходимости.
+    Возвращает обновлённый список категорий и индекс добавленной категории.
+    """
     if item.strip().startswith("Б/У -") or item.strip().startswith("Б/У "):
         for idx, cat in enumerate(categories):
             cat_name = normalize_name(cat['header']).lower()
