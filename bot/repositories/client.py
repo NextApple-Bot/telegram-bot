@@ -6,16 +6,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ClientRepository:
+    """Репозиторий для работы с клиентами и покупками."""
+
     @staticmethod
     @retry_on_db_error()
-    async def get_or_create_client(phone: Optional[str] = None, phones: Optional[List[str]] = None,
-                                   full_name: Optional[str] = None, telegram_username: Optional[str] = None,
-                                   social_network: Optional[str] = None, referral_source: Optional[str] = None) -> int:
+    async def get_or_create_client(
+        phone: Optional[str] = None,
+        phones: Optional[List[str]] = None,
+        full_name: Optional[str] = None,
+        telegram_username: Optional[str] = None,
+        social_network: Optional[str] = None,
+        referral_source: Optional[str] = None
+    ) -> int:
+        """
+        Возвращает ID клиента, создавая нового при необходимости.
+        Обновляет данные существующего клиента, если они изменились.
+        """
         logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
         pool = await get_pool()
         async with pool.acquire() as conn:
             if phone:
-                row = await conn.fetchrow('SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = $1', phone)
+                row = await conn.fetchrow(
+                    'SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = $1',
+                    phone
+                )
                 if row:
                     client_id = row['id']
                     updates = []
@@ -64,7 +78,14 @@ class ClientRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
+    async def add_purchase(
+        client_id: int,
+        items: list,
+        total_amount: float,
+        payment_details: dict,
+        purchase_type: str = 'sale'
+    ):
+        """Добавляет запись о покупке для клиента."""
         items_json = json.dumps(items, ensure_ascii=False)
         payment_json = json.dumps(payment_details, ensure_ascii=False)
         pool = await get_pool()
@@ -77,6 +98,7 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_client_purchases(client_id: int) -> List[Dict]:
+        """Возвращает все покупки клиента."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
@@ -85,6 +107,7 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def search_clients(query: str) -> List[Dict]:
+        """Ищет клиентов по имени, телефону или telegram username."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
@@ -97,6 +120,7 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_available_months() -> List[str]:
+        """Возвращает список месяцев, за которые есть данные (клиенты или покупки)."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows1 = await conn.fetch('''
@@ -115,6 +139,10 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_clients_data_for_month(month_str: str) -> List[Dict]:
+        """
+        Возвращает данные клиентов и их покупок за указанный месяц.
+        Формат month_str: 'MM.YYYY'.
+        """
         from datetime import datetime
         month, year = map(int, month_str.split('.'))
         start_date = datetime(year, month, 1).date()
