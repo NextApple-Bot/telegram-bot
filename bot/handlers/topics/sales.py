@@ -40,6 +40,8 @@ async def handle_sales_message(message: Message):
         # Реакция 🔥 ТОЛЬКО если есть проданные товары (найденные серийники)
         if result["sold_items"]:
             await message.react([ReactionTypeEmoji(emoji='🔥')])
+        else:
+            logger.info("Нет проданных товаров, реакция не ставится")
 
         # Если есть ненайденные серийники – сообщаем
         if result["not_found"]:
