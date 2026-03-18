@@ -10,7 +10,11 @@ import config
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
-from .base import router, logger, show_inventory, cancel_action, get_main_menu_keyboard, show_help
+from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
+
+# Создаём отдельный роутер для команд (не из base!)
+router = Router()
+logger = logging.getLogger(__name__)
 
 def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
@@ -417,7 +421,6 @@ async def cmd_undo(message: Message):
         await message.answer("📭 Нет удалённых товаров для восстановления.")
         return
 
-    # Проверяем, существует ли категория
     pool = await get_pool()
     async with pool.acquire() as conn:
         cat = await conn.fetchval('SELECT id FROM categories WHERE id = $1', deleted['category_id'])
