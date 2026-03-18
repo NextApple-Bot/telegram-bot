@@ -6,6 +6,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class FinanceRepository:
+    """Репозиторий для работы с ежедневными финансовыми сводками."""
+
     @staticmethod
     @retry_on_db_error()
     async def add_payments(
