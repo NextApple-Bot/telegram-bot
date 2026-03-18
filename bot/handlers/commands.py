@@ -2,6 +2,7 @@ import csv
 import json
 import tempfile
 import os
+import logging  # <-- ЭТОТ ИМПОРТ БЫЛ ОТСУТСТВОВАЛ
 from aiogram import Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
@@ -12,7 +13,6 @@ from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
 from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
 
-# Создаём отдельный роутер для команд (не из base!)
 router = Router()
 logger = logging.getLogger(__name__)
 
