@@ -146,3 +146,9 @@ async def cancel_arrival_confirm_by_text(message: Message, state: FSMContext):
 @router.message(ArrivalConfirmState.waiting_for_confirm)
 async def unexpected_message_in_arrival_confirm(message: Message, state: FSMContext):
     await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите 'отмена').")
+
+# ВНИМАНИЕ: Добавлен глобальный отладочный обработчик. Удалите его после того, как убедитесь, что кнопки работают.
+@router.callback_query()
+async def debug_any_callback(callback: CallbackQuery):
+    logger.info(f"🔥 DEBUG GLOBAL: получен любой callback: {callback.data}")
+    await callback.answer("DEBUG", show_alert=False)
