@@ -5,7 +5,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 
 import config
 from bot.services.booking import BookingService
-from bot.repositories import StatsRepository
+from bot.repositories import StatsRepository, FinanceRepository
 from bot.utils.parser import extract_payment_amounts
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ async def handle_preorder(message: Message):
             logger.info(f"Предзаказ (до брони): платежи {payments}")
             if any(payments.values()):
                 await StatsRepository.add_preorder(**payments)
+                await FinanceRepository.add_payments(**payments)
                 await message.react([ReactionTypeEmoji(emoji='👌')])
             else:
                 logger.info("Нет платежей в предзаказе, реакция не ставится")
@@ -67,9 +68,7 @@ async def handle_preorder(message: Message):
         logger.info(f"Предзаказ без броней: платежи {payments}")
         if any(payments.values()):
             await StatsRepository.add_preorder(**payments)
+            await FinanceRepository.add_payments(**payments)
             await message.react([ReactionTypeEmoji(emoji='👌')])
         else:
-            # Если нет платежей, возможно, сообщение не о предзаказе – ничего не делаем
             logger.info("Нет платежей, пропускаем.")
-            # Для отладки можно поставить реакцию или ответить
-            # await message.reply("⚠️ Не удалось распознать платежи.")
