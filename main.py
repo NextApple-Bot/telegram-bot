@@ -11,12 +11,6 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
-print(">>> Config variables loaded")
-print(f"BOT_TOKEN present: {bool(config.TOKEN)}")
-print(f"ADMIN_IDS: {config.ADMIN_IDS}")
-print(f"MAIN_GROUP_ID: {config.MAIN_GROUP_ID}")
-print(f"DATABASE_URL: {config.DATABASE_URL[:20]}...")
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
