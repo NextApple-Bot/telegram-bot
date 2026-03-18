@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from bot.repositories import ItemRepository, StatsRepository
+from bot.repositories import ItemRepository, StatsRepository, FinanceRepository
 from bot.utils.validators import extract_serials
 from bot.utils.parser import extract_payment_amounts
 
@@ -43,6 +43,9 @@ class BookingService:
 
             # Сохраняем бронь в статистику
             await StatsRepository.add_booking(item_info['id'], amount_per_item)
+
+            # Обновляем финансы (сумма брони)
+            await FinanceRepository.add_payments(bookings_total=amount_per_item)
 
             results.append({"line": item_line, "status": "booked", "serial": item_info.get('serial')})
 
