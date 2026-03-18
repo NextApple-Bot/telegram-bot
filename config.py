@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_env_var(name: str, required: bool = True) -> str:
+    """Возвращает значение переменной окружения, при необходимости проверяет наличие."""
     value = os.getenv(name)
     if required and not value:
         raise ValueError(f"❌ Переменная окружения {name} не задана!")
