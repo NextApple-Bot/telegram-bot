@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 _pool = None
 
 def retry_on_db_error(retries=3, delay=1, backoff=2):
+    """Декоратор для повторных попыток при ошибках соединения с БД."""
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -34,6 +35,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
     return decorator
 
 async def get_pool():
+    """Возвращает пул соединений (создаёт при первом вызове)."""
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(
@@ -47,6 +49,7 @@ async def get_pool():
     return _pool
 
 async def init_db():
+    """Создаёт таблицы и индексы, если их нет."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Таблица категорий
@@ -154,7 +157,7 @@ async def init_db():
                 UNIQUE(chat_id, message_id)
             )
         ''')
-        # Новая таблица для финансов
+        # Таблица финансов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS daily_finances (
                 date DATE PRIMARY KEY,
