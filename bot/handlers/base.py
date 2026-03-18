@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 async def show_inventory(bot: Bot, chat_id: int) -> Message | None:
+    """
+    Отправляет файл с текущим ассортиментом в указанный чат.
+    Возвращает отправленное сообщение или None.
+    """
     categories = await AssortmentService.load_inventory()
     if not categories:
         return await bot.send_message(chat_id, "📭 Ассортимент пуст.")
@@ -28,6 +32,7 @@ async def show_inventory(bot: Bot, chat_id: int) -> Message | None:
         os.unlink(tmp_path)
 
 async def show_help(bot: Bot, chat_id: int):
+    """Отправляет справочное сообщение со списком команд."""
     help_text = """
 👋 **Справка по командам бота**
 
@@ -66,10 +71,12 @@ async def show_help(bot: Bot, chat_id: int):
     await bot.send_message(chat_id, help_text, parse_mode='Markdown')
 
 async def cancel_action(bot: Bot, chat_id: int, state: FSMContext):
+    """Отменяет текущее состояние FSM и отправляет подтверждение."""
     await state.clear()
     await bot.send_message(chat_id, "✅ Действие отменено.")
 
 def get_main_menu_keyboard():
+    """Возвращает inline-клавиатуру главного меню."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📦 Показать ассортимент", callback_data="menu:inventory"),
          InlineKeyboardButton(text="📊 Статистика", callback_data="menu:stats")],
