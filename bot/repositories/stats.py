@@ -3,12 +3,21 @@ from bot.db import get_pool, retry_on_db_error
 from typing import Dict
 
 class StatsRepository:
+    """Репозиторий для работы со статистикой (продажи, предзаказы, брони)."""
+
     @staticmethod
     @retry_on_db_error()
-    async def add_sale(item_id: int = None, count: int = 1,
-                       cash: float = 0, terminal: float = 0, qr: float = 0,
-                       transfer: float = 0, invoice: float = 0, installment: float = 0,
-                       is_accessory: bool = False):
+    async def add_sale(
+        item_id: int = None,
+        count: int = 1,
+        cash: float = 0,
+        terminal: float = 0,
+        qr: float = 0,
+        transfer: float = 0,
+        invoice: float = 0,
+        installment: float = 0,
+        is_accessory: bool = False
+    ):
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
@@ -38,6 +47,7 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_today_stats() -> Dict:
+        """Возвращает статистику за сегодняшний день."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -102,6 +112,7 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def reset_today_stats():
+        """Удаляет всю статистику за сегодня (для тестов/отладки)."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
