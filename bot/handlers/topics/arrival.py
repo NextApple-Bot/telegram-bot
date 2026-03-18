@@ -26,7 +26,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 async def handle_arrival(message: Message, bot, state: FSMContext):
     current_state = await state.get_state()
     if current_state == ArrivalConfirmState.waiting_for_confirm.state:
-        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку.")
+        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки).")
         return
 
     lines = []
@@ -129,8 +129,11 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
             await callback.message.edit_text(f"✅ Добавлено {len(added_lines)} новых товаров.")
         else:
             await callback.message.edit_text("❌ Нет товаров для добавления.")
-    else:
+    elif action == "no":
         await callback.message.edit_text("❌ Добавление отменено.")
+    else:
+        await callback.message.edit_text("❌ Неизвестное действие.")
+        logger.warning(f"Неизвестное действие в arrival_confirm: {action}")
 
     await state.clear()
 
