@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Dict, Optional
+from typing import Dict
 from bot.db import get_pool, retry_on_db_error
 import logging
 
