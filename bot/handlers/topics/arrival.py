@@ -109,6 +109,7 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
 
 @router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
 async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
+    logger.info(f"Получен callback с данными: {callback.data}")
     try:
         await callback.answer()
     except Exception as e:
