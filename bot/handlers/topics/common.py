@@ -9,6 +9,7 @@ from bot.services.assortment import AssortmentService
 from bot.utils.sort import build_output_text
 
 async def export_assortment_to_topic(bot: Bot, admin_id: int):
+    """Выгружает текущий ассортимент в топик «Ассортимент» и уведомляет админа."""
     categories = await AssortmentService.load_inventory()
     if not categories:
         await bot.send_message(admin_id, "📭 Ассортимент пуст, нечего выгружать.")
