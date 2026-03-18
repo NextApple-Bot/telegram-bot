@@ -27,7 +27,6 @@ class BookingService:
         for item_line in item_lines:
             item_info = await ItemRepository.get_item_by_text(item_line)
             if not item_info:
-                # пробуем найти по серийнику
                 serials = extract_serials(item_line)
                 if serials:
                     item_info = await ItemRepository.get_item_by_serial(serials[0])
@@ -36,15 +35,11 @@ class BookingService:
                 results.append({"line": item_line, "status": "not_found"})
                 continue
 
-            # Обновляем товар: меняем текст и ставим is_booked = True
             today = datetime.now().strftime("%d.%m")
             new_text = f"{item_info['text']} (Бронь от {today})"
             await ItemRepository.mark_item_booked(item_info['id'], new_text)
 
-            # Сохраняем бронь в статистику
             await StatsRepository.add_booking(item_info['id'], amount_per_item)
-
-            # Обновляем финансы (сумма брони)
             await FinanceRepository.add_payments(bookings_total=amount_per_item)
 
             results.append({"line": item_line, "status": "booked", "serial": item_info.get('serial')})
