@@ -4,7 +4,7 @@ from datetime import datetime
 from aiogram import Bot
 from aiogram.types import FSInputFile
 
-import config
+from bot import config
 from bot.services.assortment import AssortmentService
 from bot.utils.sort import build_output_text
 
