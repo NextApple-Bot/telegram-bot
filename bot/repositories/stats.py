@@ -18,6 +18,7 @@ class StatsRepository:
         installment: float = 0,
         is_accessory: bool = False
     ):
+        """Добавляет запись о продаже."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
@@ -28,6 +29,7 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
+        """Добавляет запись о предзаказе."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
@@ -38,6 +40,7 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def add_booking(item_id: int, total_amount: float):
+        """Добавляет запись о брони."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
