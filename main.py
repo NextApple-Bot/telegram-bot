@@ -26,7 +26,6 @@ except Exception as e:
 async def main():
     logger.info("🚀 Запуск бота...")
 
-    # Инициализация БД
     try:
         await init_db()
         logger.info("✅ База данных готова")
@@ -37,7 +36,7 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
 
-    # Удаляем вебхук, если он был установлен ранее (для long polling)
+    # ✅ Принудительно удаляем вебхук (если он был установлен ранее)
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("✅ Вебхук удалён")
 
