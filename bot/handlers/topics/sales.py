@@ -2,7 +2,7 @@ import logging
 from aiogram import F, Router
 from aiogram.types import Message, ReactionTypeEmoji
 
-import config
+from bot import config
 from bot.services.sale import SaleService
 from bot.db import get_pool
 
