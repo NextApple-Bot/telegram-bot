@@ -7,7 +7,7 @@ from aiogram import Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
-import config
+from bot import config
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
