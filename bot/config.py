@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_env_var(name: str, required: bool = True) -> str:
+    """Возвращает значение переменной окружения, при необходимости проверяет наличие."""
     value = os.getenv(name)
     if required and not value:
         raise ValueError(f"❌ Переменная {name} не задана!")
@@ -12,8 +13,9 @@ def get_env_var(name: str, required: bool = True) -> str:
 # Обязательные переменные
 TOKEN = get_env_var("BOT_TOKEN")
 
-# Администраторы (можно несколько через запятую)
+# Администраторы (можно несколько через запятую, пробелы допускаются)
 ADMIN_IDS_STR = get_env_var("ADMIN_ID")
+# Убираем пробелы вокруг запятых и пустые элементы
 ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(",") if id.strip()]
 if not ADMIN_IDS:
     raise ValueError("❌ Список ADMIN_ID не может быть пустым!")
@@ -28,7 +30,11 @@ THREAD_PREORDER = int(get_env_var("THREAD_PREORDER"))
 # База данных
 DATABASE_URL = get_env_var("DATABASE_URL")
 
+# Внешний URL для вебхука (Render предоставляет переменную RENDER_EXTERNAL_URL)
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")  # может быть None, если не задан
+
+# Порт для сервера (Render передаёт PORT)
+PORT = int(os.getenv("PORT", 8000))
+
 # План продаж (необязательный)
 PLAN_AMOUNT = int(os.getenv("PLAN_AMOUNT", "600000"))
-
-# Убираем RENDER_URL и PORT - они больше не нужны
