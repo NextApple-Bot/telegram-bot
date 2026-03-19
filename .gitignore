@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+.env
+*.db
+*.sqlite3
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Local files
+finances.json
+last_action.json
+*.tmp
+/tmp/*
+
+# Docker
+*.pid
