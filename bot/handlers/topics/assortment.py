@@ -6,7 +6,7 @@ from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-import config
+from bot import config
 from bot.services.assortment import AssortmentService
 from bot.utils.sort import sort_assortment_to_categories
 from bot.handlers.states import AssortmentConfirmState
