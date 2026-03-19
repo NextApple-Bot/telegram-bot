@@ -1,3 +1,4 @@
+
 import re
 
 def normalize_name(name):
@@ -245,7 +246,7 @@ def add_item_to_categories(item, categories):
     """
     if item.strip().startswith("Б/У -") or item.strip().startswith("Б/У "):
         for idx, cat in enumerate(categories):
-                        cat_name = normalize_name(cat['header']).lower()
+            cat_name = normalize_name(cat['header']).lower()
             if cat_name == "б/у" or cat_name == "б/у:":
                 categories[idx]['items'].append(item)
                 return categories, idx
