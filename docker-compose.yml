@@ -2,14 +2,9 @@ version: '3.8'
 
 services:
   bot:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-      cache_from:
-        - ${DOCKER_REGISTRY:-}:bot-cache
-    image: telegram-bot:latest
+    build: .
     ports:
-      - "${PORT:-8000}:8000"
+      - "8000:8000"
     env_file:
       - .env
     depends_on:
@@ -18,19 +13,11 @@ services:
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
-      # Для разработки можно раскомментировать:
-      # - ./bot:/app/bot
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   postgres:
     image: postgres:15-alpine
@@ -44,17 +31,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-botuser} -d ${POSTGRES_DB:-botdb}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-botuser}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 volumes:
   postgres_data:
-    name: telegram_bot_postgres_data
