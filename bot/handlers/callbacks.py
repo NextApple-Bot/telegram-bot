@@ -7,6 +7,7 @@ from bot.services.assortment import AssortmentService
 from bot.repositories import StatsRepository, ClientRepository, ItemRepository, FinanceRepository
 from bot.db import get_pool
 from bot.utils.sort import get_full_model_name, detect_sim_type
+from bot.utils.markdown import escape_markdown_v1
 from .base import router, logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
 from .topics.common import export_assortment_to_topic
 
