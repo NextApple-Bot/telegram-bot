@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 
 from bot.services.assortment import AssortmentService
 from bot.utils.sort import build_output_text
+from bot.utils.markdown import escape_markdown_v1
 
 logger = logging.getLogger(__name__)
 
@@ -43,21 +44,21 @@ async def show_help(bot: Bot, chat_id: int):
 • /help – эта справка
 
 **Экспорт данных (только для админа):**
-• /export_clients – выгрузить всех клиентов в CSV
-• /export_purchases – выгрузить все покупки в CSV
-• /export_full_report – полный отчёт (клиенты + покупки)
-• /client_info <телефон/имя> – информация о клиенте
+• /export\_clients – выгрузить всех клиентов в CSV
+• /export\_purchases – выгрузить все покупки в CSV
+• /export\_full\_report – полный отчёт (клиенты + покупки)
+• /client\_info <телефон/имя> – информация о клиенте
 
 **Управление категориями (админ):**
-• /show_categories – список категорий с ID
-• /clean_empty – удалить все пустые категории
-• /delete_category <ID> – удалить пустую категорию
-• /merge_categories <from_id> <to_id> – объединить категории (перенести товары)
+• /show\_categories – список категорий с ID
+• /clean\_empty – удалить все пустые категории
+• /delete\_category <ID> – удалить пустую категорию
+• /merge\_categories <from\_id> <to\_id> – объединить категории (перенести товары)
 
 **Управление данными (админ):**
-• /reset_assortment – полностью очистить ассортимент
-• /delete_client <ID> – удалить клиента и его покупки
-• /delete_purchase <ID> – удалить конкретную покупку
+• /reset\_assortment – полностью очистить ассортимент
+• /delete\_client <ID> – удалить клиента и его покупки
+• /delete\_purchase <ID> – удалить конкретную покупку
 • /undo – восстановить последний удалённый товар
 
 **Кнопки в меню:**
@@ -68,6 +69,7 @@ async def show_help(bot: Bot, chat_id: int):
 • «Остатки» – остатки товаров (без брони и Б/У/NS)
 • «Клиенты по месяцам» – скачать данные за месяц
 """
+    # Экранируем для Markdown (но help_text уже безопасен)
     await bot.send_message(chat_id, help_text, parse_mode='Markdown')
 
 async def cancel_action(bot: Bot, chat_id: int, state: FSMContext):
