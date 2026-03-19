@@ -9,6 +9,4 @@ router.include_router(arrival_router)
 router.include_router(preorder_router)
 router.include_router(sales_router)
 
-# НЕ подключаем callbacks.router – он уже включен через base
-
 __all__ = ['router']
