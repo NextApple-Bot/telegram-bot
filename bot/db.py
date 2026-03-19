@@ -9,6 +9,7 @@ import config
 logger = logging.getLogger(__name__)
 
 _pool = None
+_init_lock = asyncio.Lock()  # Блокировка для инициализации
 
 def retry_on_db_error(retries=3, delay=1, backoff=2):
     """Декоратор для повторных попыток при ошибках соединения с БД."""
@@ -30,22 +31,27 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
                     else:
                         logger.error(f"Все попытки исчерпаны: {e}")
                         raise
+                except Exception as e:
+                    # Другие ошибки не повторяем
+                    raise
             raise last_exception
         return wrapper
     return decorator
 
 async def get_pool():
-    """Возвращает пул соединений (создаёт при первом вызове)."""
+    """Возвращает пул соединений (создаёт при первом вызове с блокировкой)."""
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(
-            config.DATABASE_URL,
-            min_size=5,
-            max_size=20,
-            command_timeout=60,
-            max_inactive_connection_lifetime=300
-        )
-        logger.info("✅ Пул соединений создан")
+        async with _init_lock:
+            if _pool is None:  # Double-checked locking
+                _pool = await asyncpg.create_pool(
+                    config.DATABASE_URL,
+                    min_size=5,
+                    max_size=20,
+                    command_timeout=60,
+                    max_inactive_connection_lifetime=300
+                )
+                logger.info("✅ Пул соединений создан")
     return _pool
 
 async def init_db():
@@ -183,3 +189,5 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_sales_sold_at ON sales(sold_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_preorders_created_at ON preorders(created_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_bookings_booked_at ON bookings(booked_at)')
+        # Дополнительный индекс для processed_messages
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_processed_messages_lookup ON processed_messages(chat_id, message_id)')
