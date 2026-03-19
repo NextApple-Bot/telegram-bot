@@ -1,7 +1,6 @@
 aiogram==3.4.1
 aiofiles==23.2.1
-uvicorn[standard]==0.29.0
-starlette==0.37.2
 asyncpg==0.29.0
 pydantic==2.5.3
 python-dotenv==1.0.1
+# Убираем uvicorn и starlette - они не нужны для long-polling
