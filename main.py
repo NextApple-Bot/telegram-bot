@@ -19,38 +19,30 @@ try:
     from aiogram.fsm.storage.memory import MemoryStorage
     from bot.handlers import router
     from bot.db import init_db
-    import config
+    from bot import config  # <--- ИСПРАВЛЕНО
     logger.info("✅ Все модули импортированы")
 except Exception as e:
     logger.critical(f"❌ Ошибка импорта: {e}", exc_info=True)
     sys.exit(1)
 
 async def main():
-    """Основная функция запуска бота"""
     logger.info("🚀 Запуск бота...")
     
-    # Инициализация БД
     try:
         await init_db()
         logger.info("✅ База данных готова")
     except Exception as e:
         logger.error(f"❌ Ошибка БД: {e}")
-        # Продолжаем работу? Решайте сами
-        # Можно выйти: sys.exit(1)
     
-    # Создаём бота и диспетчер
     bot = Bot(token=config.TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     
-    logger.info(f"🤖 Бот запущен и слушает обновления")
-    logger.info(f"👤 Администраторы: {config.ADMIN_IDS}")
+    logger.info(f"🤖 Бот запущен, администраторы: {config.ADMIN_IDS}")
     
-    # Запускаем long polling
     try:
         await dp.start_polling(bot)
     finally:
-        # Закрываем соединения при остановке
         await bot.session.close()
         logger.info("👋 Бот остановлен")
 
