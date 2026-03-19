@@ -96,4 +96,5 @@ async def handle_preorder(message: Message):
         else:
             logger.info("Нет платежей, пропускаем.")
 
-    #
+    # Помечаем сообщение как обработанное
+    await mark_message_processed(message.chat.id, message.message_id)
