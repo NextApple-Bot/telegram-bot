@@ -22,6 +22,15 @@ class FinanceRepository:
         """
         Добавляет суммы к финансовой записи за текущий день.
         Если записи за сегодня нет, создаёт её.
+        
+        Args:
+            cash: Наличные
+            terminal: Терминал
+            qr: QR-код
+            transfer: Перевод
+            invoice: Оплата по счёту
+            installment: Рассрочка
+            bookings_total: Сумма броней
         """
         today = date.today()
         total = cash + terminal + qr + transfer + invoice + installment + bookings_total
