@@ -21,6 +21,17 @@ class ClientRepository:
         """
         Возвращает ID клиента, создавая нового при необходимости.
         Обновляет данные существующего клиента, если они изменились.
+        
+        Args:
+            phone: Основной телефон клиента
+            phones: Список всех телефонов
+            full_name: Полное имя
+            telegram_username: Telegram username
+            social_network: Соцсеть/площадка
+            referral_source: Откуда узнал
+        
+        Returns:
+            ID клиента
         """
         logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
         pool = await get_pool()
