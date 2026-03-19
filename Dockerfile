@@ -2,12 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Копируем requirements и устанавливаем зависимости
+# Установка системных зависимостей
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копирование и установка Python-зависимостей
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем весь проект
+# Копирование кода проекта
 COPY . .
 
-# Запускаем приложение (порт берётся из переменной окружения $PORT)
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Запуск бота
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
