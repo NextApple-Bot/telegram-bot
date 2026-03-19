@@ -3,18 +3,23 @@ __pycache__/
 *.py[cod]
 *.so
 .Python
-env/
-venv/
 .env
+venv/
+env/
+ENV/
 *.db
 *.sqlite3
+.DS_Store
 
-# IDEs
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # Logs
 *.log
+/logs/*
 
 # Local files
 finances.json
