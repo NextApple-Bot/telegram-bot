@@ -1,4 +1,4 @@
-.PHONY: help build up down logs shell test clean
+.PHONY: help build up down logs shell clean
 
 help:
 	@echo "Доступные команды:"
@@ -7,11 +7,10 @@ help:
 	@echo "  make down   - остановить все сервисы"
 	@echo "  make logs   - показать логи"
 	@echo "  make shell  - открыть shell в контейнере бота"
-	@echo "  make test   - запустить тесты"
-	@echo "  make clean  - очистить всё (контейнеры, volumes)"
+	@echo "  make clean  - очистить всё"
 
 build:
-	docker-compose build --no-cache
+	docker-compose build
 
 up:
 	docker-compose up -d
@@ -25,9 +24,6 @@ logs:
 
 shell:
 	docker-compose exec bot /bin/bash
-
-test:
-	docker-compose exec bot pytest tests/ -v
 
 clean:
 	docker-compose down -v
