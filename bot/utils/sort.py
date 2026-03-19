@@ -245,4 +245,28 @@ def add_item_to_categories(item, categories):
     """
     if item.strip().startswith("Б/У -") or item.strip().startswith("Б/У "):
         for idx, cat in enumerate(categories):
-            cat_name
+                        cat_name = normalize_name(cat['header']).lower()
+            if cat_name == "б/у" or cat_name == "б/у:":
+                categories[idx]['items'].append(item)
+                return categories, idx
+        new_cat = {"header": "Б/У:", "items": [item]}
+        categories.append(new_cat)
+        return categories, len(categories)-1
+
+    idx = find_category_for_item(item, categories)
+    if idx is not None:
+        categories[idx]['items'].append(item)
+        return categories, idx
+    else:
+        if 'iphone' in item.lower():
+            base = extract_base_name(item)
+            new_header = f"{base}:"
+        else:
+            if ',' in item:
+                new_header = item.split(',')[0].strip() + ':'
+            else:
+                words = item.split()[:2]
+                new_header = ' '.join(words).strip() + ':'
+        new_header = normalize_name(new_header)
+        categories.append({"header": new_header, "items": [item]})
+        return categories, len(categories)-1
