@@ -7,9 +7,27 @@ import config
 from bot.services.booking import BookingService
 from bot.repositories import StatsRepository, FinanceRepository
 from bot.utils.parser import extract_payment_amounts
+from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+async def is_message_processed(chat_id: int, message_id: int) -> bool:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            'SELECT 1 FROM processed_messages WHERE chat_id = $1 AND message_id = $2',
+            chat_id, message_id
+        )
+        return row is not None
+
+async def mark_message_processed(chat_id: int, message_id: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            'INSERT INTO processed_messages (chat_id, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            chat_id, message_id
+        )
 
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
@@ -19,6 +37,11 @@ router = Router()
 async def handle_preorder(message: Message):
     content = message.text or message.caption
     if not content:
+        return
+
+    # Идемпотентность: проверяем, не обрабатывали ли уже это сообщение
+    if await is_message_processed(message.chat.id, message.message_id):
+        logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
     lines = content.strip().splitlines()
@@ -72,3 +95,5 @@ async def handle_preorder(message: Message):
             await message.react([ReactionTypeEmoji(emoji='👌')])
         else:
             logger.info("Нет платежей, пропускаем.")
+
+    #
