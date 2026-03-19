@@ -7,7 +7,7 @@ from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-import config
+from bot import config
 from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.handlers.states import ArrivalConfirmState
