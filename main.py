@@ -4,10 +4,8 @@ import asyncio
 import sys
 from dotenv import load_dotenv
 
-# Загружаем .env файл
 load_dotenv()
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -19,7 +17,7 @@ try:
     from aiogram.fsm.storage.memory import MemoryStorage
     from bot.handlers import router
     from bot.db import init_db
-    from bot import config  # <--- ИСПРАВЛЕНО
+    from bot import config
     logger.info("✅ Все модули импортированы")
 except Exception as e:
     logger.critical(f"❌ Ошибка импорта: {e}", exc_info=True)
@@ -27,19 +25,24 @@ except Exception as e:
 
 async def main():
     logger.info("🚀 Запуск бота...")
-    
+
+    # Инициализация БД
     try:
         await init_db()
         logger.info("✅ База данных готова")
     except Exception as e:
         logger.error(f"❌ Ошибка БД: {e}")
-    
+
     bot = Bot(token=config.TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    
+
+    # Удаляем вебхук, если он был установлен ранее (для long polling)
+    await bot.delete_webhook(drop_pending_updates=True)
+    logger.info("✅ Вебхук удалён")
+
     logger.info(f"🤖 Бот запущен, администраторы: {config.ADMIN_IDS}")
-    
+
     try:
         await dp.start_polling(bot)
     finally:
