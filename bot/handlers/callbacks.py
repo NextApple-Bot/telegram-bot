@@ -2,7 +2,7 @@ from aiogram import F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramBadRequest
 
-import config
+from bot import config
 from bot.services.assortment import AssortmentService
 from bot.repositories import StatsRepository, ClientRepository, ItemRepository, FinanceRepository
 from bot.db import get_pool
