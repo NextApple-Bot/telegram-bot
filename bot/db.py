@@ -4,7 +4,7 @@ import logging
 import asyncio
 from functools import wraps
 
-import config
+from bot import config
 
 logger = logging.getLogger(__name__)
 
