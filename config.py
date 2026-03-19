@@ -11,7 +11,11 @@ def get_env_var(name: str, required: bool = True) -> str:
     return value
 
 # Админы могут быть перечислены через запятую
-ADMIN_IDS = [int(id.strip()) for id in get_env_var("ADMIN_ID").split(",") if id.strip()]
+ADMIN_IDS_STR = get_env_var("ADMIN_ID")
+ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(",") if id.strip()]
+if not ADMIN_IDS:
+    raise ValueError("❌ Список ADMIN_ID не может быть пустым!")
+
 TOKEN = get_env_var("BOT_TOKEN")
 MAIN_GROUP_ID = int(get_env_var("MAIN_GROUP_ID"))
 THREAD_SALES = int(get_env_var("THREAD_SALES"))
