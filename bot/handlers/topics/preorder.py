@@ -3,7 +3,7 @@ import logging
 from aiogram import F, Router
 from aiogram.types import Message, ReactionTypeEmoji
 
-import config
+from bot import config
 from bot.services.booking import BookingService
 from bot.repositories import StatsRepository, FinanceRepository
 from bot.utils.parser import extract_payment_amounts
