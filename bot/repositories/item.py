@@ -18,22 +18,23 @@ class ItemRepository:
         norm_name = name.lower().rstrip(':')
         pool = await get_pool()
         async with pool.acquire() as conn:
-            # Сначала ищем существующую категорию по нормализованному имени
+            # 1. Пытаемся найти по нормализованному имени (без двоеточия)
             row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
             if row:
                 return row['id']
-            
-            # Если не найдено, пытаемся вставить новую
+
+            # 2. Не найдено — вставляем с оригинальным именем
             try:
                 row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
                 return row['id']
             except asyncpg.UniqueViolationError:
-                # Конкурентная вставка — повторяем SELECT
-                row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
+                # 3. Конфликт — кто‑то уже вставил такую категорию между нашим SELECT и INSERT.
+                #    Ищем по оригинальному имени (именно оно было использовано конкурентом).
+                row = await conn.fetchrow('SELECT id FROM categories WHERE name = $1', name)
                 if row:
                     return row['id']
                 else:
-                    # На случай, если что-то пошло не так (маловероятно)
+                    # Крайне маловероятно, но на всякий случай логируем и пробрасываем.
                     logger.error(f"Не удалось создать или найти категорию {name} после UniqueViolation")
                     raise
 
