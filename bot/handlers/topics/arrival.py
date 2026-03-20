@@ -22,15 +22,14 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 async def determine_category_for_item(item_text: str, categories: list) -> str:
     """
     Определяет имя категории для товара на основе текущего списка категорий.
-    Если подходящая категория не найдена, создаёт новую по правилам из sort.py.
-    Возвращает имя категории.
+    Возвращает имя категории (с двоеточием в конце).
     """
-    # Ищем индекс категории
+    # Пытаемся найти подходящую категорию
     idx = find_category_for_item(item_text, categories)
     if idx is not None:
         return categories[idx]['header']
 
-    # Если не нашли, создаём новую по тем же правилам, что и в add_item_to_categories
+    # Если не найдено, создаём новую по правилам из sort.py
     if item_text.strip().startswith("Б/У -") or item_text.strip().startswith("Б/У "):
         return "Б/У:"
 
@@ -81,18 +80,18 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             return
         lines = [line.strip() for line in content.splitlines() if line.strip()]
 
-    # Удаляем строки, состоящие только из дефисов
+    # Удаляем строки из дефисов
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
     if not lines:
         await message.reply("❌ Нет ни одной позиции после фильтрации.")
         return
 
-    # Получаем существующие товары для проверки дубликатов
+    # Проверка дубликатов
     existing_items = await ItemRepository.get_all_items_serials()
     existing_texts = {item['text'] for item in existing_items}
     existing_serials = {item['serial'] for item in existing_items if item['serial']}
 
-    # Загружаем текущие категории для определения подходящей
+    # Загружаем текущие категории
     current_categories = await AssortmentService.load_inventory()
 
     added_lines = []
@@ -108,10 +107,8 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
             continue
 
-        # Определяем категорию для этого товара
         category_name = await determine_category_for_item(line, current_categories)
         added_lines.append((line, serial, category_name))
-        # Добавляем во временные множества, чтобы не дублировать внутри одной партии
         existing_texts.add(line)
         if serial:
             existing_serials.add(serial)
@@ -150,14 +147,12 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     data = await state.get_data()
-    added_lines = data.get("added_lines")  # список кортежей (text, serial, category_name)
+    added_lines = data.get("added_lines")
     action = callback.data.split(":")[1]
 
     if action == "yes":
         if added_lines:
-            # Добавляем товары с указанием категории
             for line, serial, category_name in added_lines:
-                # Получаем или создаём категорию по имени
                 cat_id = await ItemRepository.get_or_create_category(category_name)
                 await ItemRepository.add_item(text=line, serial=serial, category_id=cat_id)
             AssortmentService.invalidate_cache()
