@@ -8,7 +8,7 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     """
     Извлекает из текста суммы по типам оплаты.
     Возвращает словарь с ключами:
-    cash, terminal, qr, transfer, invoice, installment
+    cash, terminal, qr, transfer, invoice, installment, prepayment
     Если ignore_prepay=True, строки содержащие П/О или предоплату игнорируются.
     """
     patterns = {
@@ -19,6 +19,9 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         'invoice': [r'Оплата по счету', r'Оплата По Счету', r'по счету'],
         'installment': [r'Рассрочка'],
     }
+
+    # Добавляем prepayment как отдельный тип, но он будет использоваться только если ignore_prepay=False
+    # В итоговом словаре он будет присутствовать всегда
 
     if ignore_prepay:
         lines = text.splitlines()
@@ -31,7 +34,45 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
 
     number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
     results = {key: 0.0 for key in patterns}
+    results['prepayment'] = 0.0  # добавим prepayment
 
+    # Сначала ищем все числа в тексте
+    all_numbers = []
+    for match in re.finditer(number_pattern, text):
+        num_str = match.group(1).replace(' ', '').replace(',', '.')
+        try:
+            amount = float(num_str)
+            pos = match.start()
+            all_numbers.append((amount, pos))
+        except ValueError:
+            continue
+
+    # Функция для поиска ключевого слова рядом с числом
+    def find_keyword_near_number(amount, pos, text, patterns):
+        # Проверяем окрестность 50 символов слева и справа
+        left = max(0, pos - 50)
+        right = min(len(text), pos + len(str(amount)) + 50)
+        context = text[left:right]
+        for pay_type, keywords in patterns.items():
+            for kw in keywords:
+                # Ищем ключевое слово в контексте
+                if re.search(kw, context, re.IGNORECASE):
+                    return pay_type
+        # Если не нашли, проверяем наличие предоплаты
+        if re.search(r'П[/\\]О|предоплата', context, re.IGNORECASE):
+            return 'prepayment'
+        return None
+
+    # Обрабатываем каждое число
+    for amount, pos in all_numbers:
+        pay_type = find_keyword_near_number(amount, pos, text, patterns)
+        if pay_type:
+            results[pay_type] += amount
+        else:
+            # Если тип не определён, возможно это просто общая сумма – игнорируем
+            pass
+
+    # Дополнительно ищем конструкции вида "ключ - сумма" и "сумма - ключ" (старый метод)
     for pay_type, keywords in patterns.items():
         for kw in keywords:
             # ключ - сумма
@@ -48,6 +89,14 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
                     results[pay_type] += float(num_str)
                 except ValueError:
                     continue
+
+    # Также ищем prepayment отдельно
+    for match in re.finditer(rf'(?:П[/\\]О|предоплата)\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
+        num_str = match.group(1).replace(' ', '').replace(',', '.')
+        try:
+            results['prepayment'] += float(num_str)
+        except ValueError:
+            continue
 
     return results
 
@@ -147,7 +196,7 @@ def parse_client_data(text: str) -> dict:
             else:
                 result['payments'][typ] = val
 
-    # Добавляем недостающие ключи
+    # Добавляем недостающие ключи (на случай, если их нет)
     for key in ['transfer', 'invoice']:
         if key not in result['payments']:
             result['payments'][key] = 0.0
