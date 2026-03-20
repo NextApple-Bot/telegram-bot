@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict
 from bot.db import get_pool, retry_on_db_error
 import logging
+import asyncpg
 
 logger = logging.getLogger(__name__)
 
@@ -10,15 +11,31 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_or_create_category(name: str) -> int:
-        """Возвращает ID категории по имени, создаёт при отсутствии."""
+        """
+        Возвращает ID категории по имени, создаёт при отсутствии.
+        Защищено от гонок через try-except UniqueViolationError.
+        """
         norm_name = name.lower().rstrip(':')
         pool = await get_pool()
         async with pool.acquire() as conn:
+            # Сначала ищем существующую категорию по нормализованному имени
             row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
             if row:
                 return row['id']
-            row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
-            return row['id']
+            
+            # Если не найдено, пытаемся вставить новую
+            try:
+                row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
+                return row['id']
+            except asyncpg.UniqueViolationError:
+                # Конкурентная вставка — повторяем SELECT
+                row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
+                if row:
+                    return row['id']
+                else:
+                    # На случай, если что-то пошло не так (маловероятно)
+                    logger.error(f"Не удалось создать или найти категорию {name} после UniqueViolation")
+                    raise
 
     @staticmethod
     @retry_on_db_error()
@@ -42,7 +59,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_item_id_by_serial(serial: str) -> Optional[int]:
-        """Возвращает ID товара по серийному номеру или None."""
         if not serial:
             return None
         normalized = serial.strip().upper()
@@ -54,7 +70,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_item_by_serial(serial: str) -> Optional[Dict]:
-        """Возвращает полную информацию о товаре по серийному номеру."""
         normalized = serial.strip().upper()
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -69,7 +84,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_item_by_text(text: str) -> Optional[Dict]:
-        """Ищет товар по точному тексту."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow('''
@@ -83,7 +97,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def remove_item_by_serial(serial: str) -> int:
-        """Удаляет товар по серийному номеру. Возвращает количество удалённых записей."""
         normalized = serial.strip().upper() if serial else None
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -93,7 +106,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_all_categories_with_items():
-        """Возвращает список всех категорий с товарами (включая пустые)."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
@@ -114,7 +126,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_all_items_serials():
-        """Возвращает список всех товаров с их серийными номерами."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('SELECT text, serial FROM items')
@@ -123,7 +134,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def update_category_items(category_name: str, new_items: List[str]):
-        """Заменяет все товары в указанной категории новым списком."""
         from bot.utils.validators import extract_serials
         cat_id = await ItemRepository.get_or_create_category(category_name)
         pool = await get_pool()
@@ -144,7 +154,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def clear_all_inventory():
-        """Удаляет все категории (и товары каскадно)."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('DELETE FROM categories')
@@ -152,7 +161,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def add_deleted_item(item_id: int, text: str, serial: str, category_id: int, reason: str = 'manual'):
-        """Сохраняет информацию об удалённом товаре для возможности Undo."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
@@ -163,7 +171,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_last_deleted_item() -> Optional[Dict]:
-        """Возвращает последний неудалённый удалённый товар."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow('''
@@ -177,7 +184,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def restore_deleted_item(deleted_id: int) -> bool:
-        """Помечает товар как восстановленный (не удаляет запись)."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute('UPDATE deleted_items SET restored = TRUE WHERE id = $1', deleted_id)
@@ -186,7 +192,6 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def mark_item_booked(item_id: int, book_text: str):
-        """Обновляет текст товара и устанавливает флаг is_booked = True."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
