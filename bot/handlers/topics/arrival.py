@@ -16,7 +16,6 @@ from bot.utils.sort import (
     find_category_for_item,
     extract_base_name,
     normalize_name,
-    get_full_model_name
 )
 
 logger = logging.getLogger(__name__)
@@ -24,45 +23,64 @@ logger = logging.getLogger(__name__)
 router = Router()
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
-# Словарь известных брендов и соответствующих им названий категорий (без двоеточия)
-BRAND_MAPPING = {
-    'dyson': 'Dyson',
-    'iphone': None,  # для iPhone особая логика
-    'airpods': 'AirPods',
-    'apple watch': 'Apple Watch',
-    'samsung': 'Samsung',
-    'xiaomi': 'Xiaomi',
-    'huawei': 'Huawei',
-}
-
 async def determine_category_for_item(item_text: str, categories: list) -> str:
     """
-    Определяет имя категории для товара на основе текущего списка категорий.
-    Возвращает строку с двоеточием в конце.
+    Определяет имя категории для товара.
+    Сначала ищет категорию, которая максимально соответствует имени товара.
+    Если не находит, создаёт новую по разумным правилам.
     """
-    # 1. Сначала пробуем найти категорию через find_category_for_item
+    # 1. Попробуем найти через find_category_for_item (по базовому имени)
     idx = find_category_for_item(item_text, categories)
     if idx is not None:
         return categories[idx]['header']
 
-    # 2. Если не найдено, пробуем определить бренд
-    lower_text = item_text.lower()
-    for brand, cat_name in BRAND_MAPPING.items():
-        if brand in lower_text:
-            # Ищем существующую категорию по имени бренда
-            for cat in categories:
-                cat_name_lower = normalize_name(cat['header']).lower().rstrip(':')
-                if cat_name_lower == brand or (cat_name and cat_name_lower == cat_name.lower()):
-                    return cat['header']
-            # Если категория для бренда не существует, создаём её
-            if cat_name:
-                return f"{cat_name}:"
-            else:
-                # Для iPhone используем extract_base_name
-                base = extract_base_name(item_text)
-                return f"{base}:"
+    # 2. Если не нашли, пробуем найти категорию, которая является префиксом имени товара
+    #    (например, "AirPods 4" для товара "AirPods 4 (ANC)...")
+    #    ищем самую длинную подходящую категорию
+    best_match = None
+    best_len = 0
+    for cat in categories:
+        cat_header = normalize_name(cat['header'].rstrip(':'))
+        if cat_header and item_text.lower().startswith(cat_header.lower()):
+            if len(cat_header) > best_len:
+                best_len = len(cat_header)
+                best_match = cat['header']
+    if best_match:
+        return best_match
 
-    # 3. Если бренд не определён, используем стандартную логику
+    # 3. Проверяем наличие известных брендов (например, AirPods, Dyson, iPhone и т.д.)
+    #    Но для AirPods 4 нужно более специфичное: если есть цифра 4, то категория "AirPods 4:"
+    lower_text = item_text.lower()
+    # Специальный случай для AirPods 4
+    if 'airpods 4' in lower_text:
+        # Ищем категорию "AirPods 4:" или создаём её
+        for cat in categories:
+            cat_name = normalize_name(cat['header'].rstrip(':')).lower()
+            if cat_name == 'airpods 4':
+                return cat['header']
+        # Если нет, создаём
+        return "AirPods 4:"
+
+    # Другие бренды
+    if 'dyson' in lower_text:
+        for cat in categories:
+            cat_name = normalize_name(cat['header'].rstrip(':')).lower()
+            if cat_name == 'dyson':
+                return cat['header']
+        return "Dyson:"
+
+    if 'apple watch' in lower_text:
+        for cat in categories:
+            cat_name = normalize_name(cat['header'].rstrip(':')).lower()
+            if cat_name == 'apple watch':
+                return cat['header']
+        return "Apple Watch:"
+
+    if 'iphone' in lower_text:
+        base = extract_base_name(item_text)
+        return f"{base}:"
+
+    # 4. Если ничего не подошло, создаём новую категорию по первому слову/паре слов
     if item_text.strip().startswith("Б/У -") or item_text.strip().startswith("Б/У "):
         return "Б/У:"
 
