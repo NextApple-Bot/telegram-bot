@@ -7,16 +7,43 @@ from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-from bot import config
+import config
 from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.handlers.states import ArrivalConfirmState
 from bot.utils.validators import extract_serials
+from bot.utils.sort import find_category_for_item, extract_base_name, normalize_name
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 MAX_FILE_SIZE = 10 * 1024 * 1024
+
+async def determine_category_for_item(item_text: str, categories: list) -> str:
+    """
+    Определяет имя категории для товара на основе текущего списка категорий.
+    Если подходящая категория не найдена, создаёт новую по правилам из sort.py.
+    Возвращает имя категории.
+    """
+    # Ищем индекс категории
+    idx = find_category_for_item(item_text, categories)
+    if idx is not None:
+        return categories[idx]['header']
+
+    # Если не нашли, создаём новую по тем же правилам, что и в add_item_to_categories
+    if item_text.strip().startswith("Б/У -") or item_text.strip().startswith("Б/У "):
+        return "Б/У:"
+
+    if 'iphone' in item_text.lower():
+        base = extract_base_name(item_text)
+        return f"{base}:"
+    else:
+        if ',' in item_text:
+            new_header = item_text.split(',')[0].strip() + ':'
+        else:
+            words = item_text.split()[:2]
+            new_header = ' '.join(words).strip() + ':'
+        return normalize_name(new_header)
 
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
@@ -65,6 +92,9 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     existing_texts = {item['text'] for item in existing_items}
     existing_serials = {item['serial'] for item in existing_items if item['serial']}
 
+    # Загружаем текущие категории для определения подходящей
+    current_categories = await AssortmentService.load_inventory()
+
     added_lines = []
     skipped_lines = []
 
@@ -77,7 +107,11 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         if serial and serial in existing_serials:
             skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
             continue
-        added_lines.append(line)
+
+        # Определяем категорию для этого товара
+        category_name = await determine_category_for_item(line, current_categories)
+        added_lines.append((line, serial, category_name))
+        # Добавляем во временные множества, чтобы не дублировать внутри одной партии
         existing_texts.add(line)
         if serial:
             existing_serials.add(serial)
@@ -116,16 +150,16 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     data = await state.get_data()
-    added_lines = data.get("added_lines")
+    added_lines = data.get("added_lines")  # список кортежей (text, serial, category_name)
     action = callback.data.split(":")[1]
 
     if action == "yes":
         if added_lines:
-            # Добавляем товары
-            for line in added_lines:
-                serials = extract_serials(line)
-                serial = serials[0] if serials else None
-                await ItemRepository.add_item(text=line, serial=serial)
+            # Добавляем товары с указанием категории
+            for line, serial, category_name in added_lines:
+                # Получаем или создаём категорию по имени
+                cat_id = await ItemRepository.get_or_create_category(category_name)
+                await ItemRepository.add_item(text=line, serial=serial, category_id=cat_id)
             AssortmentService.invalidate_cache()
             await callback.message.edit_text(f"✅ Добавлено {len(added_lines)} новых товаров.")
         else:
@@ -146,6 +180,3 @@ async def cancel_arrival_confirm_by_text(message: Message, state: FSMContext):
 @router.message(ArrivalConfirmState.waiting_for_confirm)
 async def unexpected_message_in_arrival_confirm(message: Message, state: FSMContext):
     await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите 'отмена').")
-
-# ⚠️ ВНИМАНИЕ: Удалён отладочный глобальный хендлер, который был в конце файла.
-# Он больше не нужен, кнопки работают корректно.
