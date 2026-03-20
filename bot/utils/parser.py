@@ -1,6 +1,6 @@
 import re
 import logging
-from typing import Dict, List, Optional
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +8,7 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     """
     Извлекает из текста суммы по типам оплаты.
     Возвращает словарь с ключами:
-    cash, terminal, qr, transfer, invoice, installment, prepayment
+    cash, terminal, qr, transfer, invoice, installment
     Если ignore_prepay=True, строки содержащие П/О или предоплату игнорируются.
     """
     patterns = {
@@ -20,59 +20,54 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         'installment': [r'Рассрочка'],
     }
 
-    # Добавляем prepayment как отдельный тип, но он будет использоваться только если ignore_prepay=False
-    # В итоговом словаре он будет присутствовать всегда
-
+    # Если нужно игнорировать предоплату, удаляем строки с ней
     if ignore_prepay:
-        lines = text.splitlines()
-        filtered_lines = []
-        for line in lines:
+        lines = []
+        for line in text.splitlines():
             if re.search(r'П[/\\]О|предоплата', line, re.IGNORECASE):
                 continue
-            filtered_lines.append(line)
-        text = '\n'.join(filtered_lines)
+            lines.append(line)
+        text = '\n'.join(lines)
 
     number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
     results = {key: 0.0 for key in patterns}
-    results['prepayment'] = 0.0  # добавим prepayment
 
-    # Сначала ищем все числа в тексте
-    all_numbers = []
+    # Находим все числа с их позициями
+    numbers = []
     for match in re.finditer(number_pattern, text):
         num_str = match.group(1).replace(' ', '').replace(',', '.')
         try:
             amount = float(num_str)
-            pos = match.start()
-            all_numbers.append((amount, pos))
+            numbers.append((amount, match.start()))
         except ValueError:
             continue
 
-    # Функция для поиска ключевого слова рядом с числом
-    def find_keyword_near_number(amount, pos, text, patterns):
-        # Проверяем окрестность 50 символов слева и справа
-        left = max(0, pos - 50)
-        right = min(len(text), pos + len(str(amount)) + 50)
+    # Для каждого числа ищем ближайшее ключевое слово в окрестности
+    for amount, pos in numbers:
+        # Контекст: 100 символов влево и вправо
+        left = max(0, pos - 100)
+        right = min(len(text), pos + len(str(int(amount))) + 100)
         context = text[left:right]
+
+        # Ищем ключевое слово типа оплаты
+        found_type = None
         for pay_type, keywords in patterns.items():
             for kw in keywords:
-                # Ищем ключевое слово в контексте
                 if re.search(kw, context, re.IGNORECASE):
-                    return pay_type
-        # Если не нашли, проверяем наличие предоплаты
-        if re.search(r'П[/\\]О|предоплата', context, re.IGNORECASE):
-            return 'prepayment'
-        return None
+                    found_type = pay_type
+                    break
+            if found_type:
+                break
 
-    # Обрабатываем каждое число
-    for amount, pos in all_numbers:
-        pay_type = find_keyword_near_number(amount, pos, text, patterns)
-        if pay_type:
-            results[pay_type] += amount
+        if found_type:
+            # Если тип найден, добавляем сумму к нему (даже если есть пометка о предоплате)
+            results[found_type] += amount
         else:
-            # Если тип не определён, возможно это просто общая сумма – игнорируем
+            # Если тип не найден, проверяем, не является ли число просто пометкой (например, общая сумма)
+            # — игнорируем такие числа
             pass
 
-    # Дополнительно ищем конструкции вида "ключ - сумма" и "сумма - ключ" (старый метод)
+    # Дополнительно обрабатываем форматы "ключ - сумма" и "сумма - ключ" (на случай, если число далеко от ключа)
     for pay_type, keywords in patterns.items():
         for kw in keywords:
             # ключ - сумма
@@ -90,14 +85,6 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
                 except ValueError:
                     continue
 
-    # Также ищем prepayment отдельно
-    for match in re.finditer(rf'(?:П[/\\]О|предоплата)\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
-        num_str = match.group(1).replace(' ', '').replace(',', '.')
-        try:
-            results['prepayment'] += float(num_str)
-        except ValueError:
-            continue
-
     return results
 
 def parse_client_data(text: str) -> dict:
@@ -113,7 +100,7 @@ def parse_client_data(text: str) -> dict:
         'social_network': None,
         'referral_source': None,
         'items': [],
-        'payments': {'cash': 0.0, 'terminal': 0.0, 'qr': 0.0, 'installment': 0.0, 'prepayment': 0.0}
+        'payments': {'cash': 0.0, 'terminal': 0.0, 'qr': 0.0, 'transfer': 0.0, 'invoice': 0.0, 'installment': 0.0}
     }
 
     lines = text.split('\n')
@@ -122,7 +109,7 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
-        # Телефоны (как в вашем старом коде)
+        # Телефоны
         phone_pattern = r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
         for match in re.finditer(phone_pattern, line):
             full_number = match.group(0)
@@ -134,9 +121,8 @@ def parse_client_data(text: str) -> dict:
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)
 
-        # ФИО (улучшено: ищем после слов "ФИО" или после сумм)
+        # ФИО
         if not result['full_name']:
-            # Сначала ищем явный маркер
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
                 if len(parts) > 1:
@@ -146,8 +132,8 @@ def parse_client_data(text: str) -> dict:
                     if match:
                         result['full_name'] = match.group(1).strip()
             else:
-                # Если есть сумма и строка не содержит другие ключевые слова, возможно это ФИО
-                if re.search(r'\d', line):  # есть цифры (сумма)
+                # Если есть цифры и строка похожа на ФИО
+                if re.search(r'\d', line):
                     words = line.split()
                     if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
                         result['full_name'] = line
@@ -196,8 +182,8 @@ def parse_client_data(text: str) -> dict:
             else:
                 result['payments'][typ] = val
 
-    # Добавляем недостающие ключи (на случай, если их нет)
-    for key in ['transfer', 'invoice']:
+    # Убедимся, что все нужные ключи присутствуют
+    for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
         if key not in result['payments']:
             result['payments'][key] = 0.0
 
