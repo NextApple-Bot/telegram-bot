@@ -18,23 +18,17 @@ class ItemRepository:
         norm_name = name.lower().rstrip(':')
         pool = await get_pool()
         async with pool.acquire() as conn:
-            # 1. Пытаемся найти по нормализованному имени (без двоеточия)
             row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
             if row:
                 return row['id']
-
-            # 2. Не найдено — вставляем с оригинальным именем
             try:
                 row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
                 return row['id']
             except asyncpg.UniqueViolationError:
-                # 3. Конфликт — кто‑то уже вставил такую категорию между нашим SELECT и INSERT.
-                #    Ищем по оригинальному имени (именно оно было использовано конкурентом).
                 row = await conn.fetchrow('SELECT id FROM categories WHERE name = $1', name)
                 if row:
                     return row['id']
                 else:
-                    # Крайне маловероятно, но на всякий случай логируем и пробрасываем.
                     logger.error(f"Не удалось создать или найти категорию {name} после UniqueViolation")
                     raise
 
@@ -85,10 +79,11 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_item_by_text(text: str) -> Optional[Dict]:
+        """Ищет товар по точному тексту, возвращает id, текст и имя категории."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow('''
-                SELECT i.text, c.name as category_name
+                SELECT i.id, i.text, c.name as category_name
                 FROM items i
                 JOIN categories c ON i.category_id = c.id
                 WHERE i.text = $1
