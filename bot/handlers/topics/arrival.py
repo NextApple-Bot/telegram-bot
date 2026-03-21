@@ -12,11 +12,7 @@ from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.handlers.states import ArrivalConfirmState
 from bot.utils.validators import extract_serials
-from bot.utils.sort import (
-    find_category_for_item,
-    extract_base_name,
-    normalize_name,
-)
+from bot.utils.sort import find_category_for_item, extract_base_name, normalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -25,71 +21,29 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 
 async def determine_category_for_item(item_text: str, categories: list) -> str:
     """
-    Определяет имя категории для товара.
-    Сначала ищет категорию, которая максимально соответствует имени товара.
-    Если не находит, создаёт новую по разумным правилам.
+    Определяет имя категории для товара на основе текущего списка категорий.
+    Возвращает имя категории (с двоеточием в конце).
     """
-    # 1. Попробуем найти через find_category_for_item (по базовому имени)
+    # 1. Пытаемся найти подходящую категорию
     idx = find_category_for_item(item_text, categories)
     if idx is not None:
         return categories[idx]['header']
 
-    # 2. Если не нашли, пробуем найти категорию, которая является префиксом имени товара
-    #    (например, "AirPods 4" для товара "AirPods 4 (ANC)...")
-    #    ищем самую длинную подходящую категорию
-    best_match = None
-    best_len = 0
-    for cat in categories:
-        cat_header = normalize_name(cat['header'].rstrip(':'))
-        if cat_header and item_text.lower().startswith(cat_header.lower()):
-            if len(cat_header) > best_len:
-                best_len = len(cat_header)
-                best_match = cat['header']
-    if best_match:
-        return best_match
-
-    # 3. Проверяем наличие известных брендов (например, AirPods, Dyson, iPhone и т.д.)
-    #    Но для AirPods 4 нужно более специфичное: если есть цифра 4, то категория "AirPods 4:"
-    lower_text = item_text.lower()
-    # Специальный случай для AirPods 4
-    if 'airpods 4' in lower_text:
-        # Ищем категорию "AirPods 4:" или создаём её
-        for cat in categories:
-            cat_name = normalize_name(cat['header'].rstrip(':')).lower()
-            if cat_name == 'airpods 4':
-                return cat['header']
-        # Если нет, создаём
-        return "AirPods 4:"
-
-    # Другие бренды
-    if 'dyson' in lower_text:
-        for cat in categories:
-            cat_name = normalize_name(cat['header'].rstrip(':')).lower()
-            if cat_name == 'dyson':
-                return cat['header']
-        return "Dyson:"
-
-    if 'apple watch' in lower_text:
-        for cat in categories:
-            cat_name = normalize_name(cat['header'].rstrip(':')).lower()
-            if cat_name == 'apple watch':
-                return cat['header']
-        return "Apple Watch:"
-
-    if 'iphone' in lower_text:
-        base = extract_base_name(item_text)
-        return f"{base}:"
-
-    # 4. Если ничего не подошло, создаём новую категорию по первому слову/паре слов
+    # 2. Не найдено — создаём новую категорию
+    #    Правила такие же, как в старом add_item_to_categories
     if item_text.strip().startswith("Б/У -") or item_text.strip().startswith("Б/У "):
         return "Б/У:"
 
-    if ',' in item_text:
-        new_header = item_text.split(',')[0].strip() + ':'
+    if 'iphone' in item_text.lower():
+        base = extract_base_name(item_text)
+        return f"{base}:"
     else:
-        words = item_text.split()
-        new_header = ' '.join(words[:2]).strip() + ':'
-    return normalize_name(new_header)
+        if ',' in item_text:
+            new_header = item_text.split(',')[0].strip() + ':'
+        else:
+            words = item_text.split()
+            new_header = ' '.join(words[:2]).strip() + ':'
+        return normalize_name(new_header)
 
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
