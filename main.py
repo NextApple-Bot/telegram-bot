@@ -2,20 +2,6 @@ import os
 import logging
 import sys
 import traceback
-# Временно, после запуска один раз
-from bot.db import get_pool
-import asyncio
-
-async def clear_today():
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM daily_finances WHERE date = CURRENT_DATE")
-        await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = CURRENT_DATE")
-        await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = CURRENT_DATE")
-        await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = CURRENT_DATE")
-    print("Очищено")
-
-asyncio.run(clear_today())
 
 # Настройка логирования как можно раньше
 logging.basicConfig(
