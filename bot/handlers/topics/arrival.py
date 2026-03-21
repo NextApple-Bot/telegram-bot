@@ -23,31 +23,28 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     """
     Определяет имя категории для товара на основе текущего списка категорий.
     Возвращает имя категории (с двоеточием в конце).
+    Выбирает категорию с самым длинным совпадающим именем.
     """
-    # 1. Пытаемся найти подходящую категорию через find_category_for_item
-    idx = find_category_for_item(item_text, categories)
-    if idx is not None:
-        return categories[idx]['header']
-
-    # 2. Расширенный поиск: ищем категорию, чьё имя входит в базовое имя товара как начало
     base = extract_base_name(item_text).lower()
     best_match = None
     best_len = 0
+
     for cat in categories:
         cat_name = normalize_name(cat['header']).lower().rstrip(':')
         if not cat_name:
             continue
-        # Проверяем, является ли cat_name префиксом base
-        # (например, "samsung galaxy s25 ultra" является префиксом "samsung galaxy s25 ultra 12/512gb")
+
+        # Проверяем, входит ли cat_name в base как подстрока
+        # Приоритет отдаём тем, которые являются началом base и после которых идёт пробел или конец
         if base.startswith(cat_name):
-            # Дополнительно убедимся, что после cat_name идёт пробел или конец строки
-            next_char = base[len(cat_name):]
-            if next_char == '' or next_char[0] == ' ':
+            # Проверяем, что после cat_name идёт пробел или конец строки
+            remainder = base[len(cat_name):]
+            if remainder == '' or remainder[0] == ' ':
                 if len(cat_name) > best_len:
                     best_len = len(cat_name)
                     best_match = cat['header']
-        # Альтернативно, если cat_name содержит base (менее вероятно)
         elif cat_name in base:
+            # Если нет, но cat_name встречается внутри base (например, для "Samsung" внутри "Samsung Galaxy...")
             if len(cat_name) > best_len:
                 best_len = len(cat_name)
                 best_match = cat['header']
