@@ -24,13 +24,19 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     Определяет имя категории для товара на основе текущего списка категорий.
     Возвращает имя категории (с двоеточием в конце).
     """
-    # 1. Пытаемся найти подходящую категорию
+    # 1. Пытаемся найти подходящую категорию через find_category_for_item
     idx = find_category_for_item(item_text, categories)
     if idx is not None:
         return categories[idx]['header']
 
-    # 2. Не найдено — создаём новую категорию
-    #    Правила такие же, как в старом add_item_to_categories
+    # 2. Расширенный поиск по вхождению базового имени товара в существующие категории
+    base = extract_base_name(item_text).lower()
+    for cat in categories:
+        cat_name = normalize_name(cat['header']).lower().rstrip(':')
+        if cat_name and (base.startswith(cat_name) or cat_name in base):
+            return cat['header']
+
+    # 3. Не найдено — создаём новую категорию по правилам старого add_item_to_categories
     if item_text.strip().startswith("Б/У -") or item_text.strip().startswith("Б/У "):
         return "Б/У:"
 
