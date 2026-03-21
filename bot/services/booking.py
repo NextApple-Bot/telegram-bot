@@ -25,14 +25,22 @@ class BookingService:
 
         results = []
         for item_line in item_lines:
+            # Сначала ищем по тексту (без серийника)
             item_info = await ItemRepository.get_item_by_text(item_line)
             if not item_info:
+                # Если не нашли, ищем по первому серийному номеру в строке
                 serials = extract_serials(item_line)
                 if serials:
                     item_info = await ItemRepository.get_item_by_serial(serials[0])
 
             if not item_info:
                 results.append({"line": item_line, "status": "not_found"})
+                continue
+
+            # Убеждаемся, что есть id (на случай, если get_item_by_text или get_item_by_serial вернули неполный словарь)
+            if 'id' not in item_info:
+                logger.error(f"Item info does not contain 'id': {item_info}")
+                results.append({"line": item_line, "status": "error", "reason": "no_id"})
                 continue
 
             today = datetime.now().strftime("%d.%m")
