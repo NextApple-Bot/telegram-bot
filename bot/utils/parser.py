@@ -29,7 +29,6 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
             lines.append(line)
         text = '\n'.join(lines)
 
-    # Числовой паттерн: целые или десятичные, с пробелами в качестве разделителей тысяч
     number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
     results = {key: 0.0 for key in patterns}
 
@@ -39,20 +38,12 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         num_str = match.group(1).replace(' ', '').replace(',', '.')
         try:
             amount = float(num_str)
-            # Проверяем, что число не является телефоном или серийным номером
-            # Телефон: начинается с 7 или 8 и имеет длину 10-12 цифр
-            # Серийный номер: длина >= 10 и состоит только из цифр
-            # Также ограничиваем максимальную сумму (например, 10 млн)
-            if amount > 10_000_000:
-                logger.warning(f"Пропущено слишком большое число: {amount}")
-                continue
-            # Если число состоит только из цифр и длиной >= 10, вероятно, это не сумма
+            # Фильтруем телефонные номера и серийные номера (длина ≥ 10 цифр)
             if num_str.isdigit() and len(num_str) >= 10:
-                logger.warning(f"Пропущено число, похожее на серийный номер или телефон: {num_str}")
+                logger.debug(f"Пропущено число, похожее на серийный номер или телефон: {num_str}")
                 continue
-            # Если число начинается с 7 или 8 и имеет длину 10-12 цифр, это телефон
             if (num_str.startswith('7') or num_str.startswith('8')) and len(num_str) >= 10 and num_str.isdigit():
-                logger.warning(f"Пропущено число, похожее на телефон: {num_str}")
+                logger.debug(f"Пропущено число, похожее на телефон: {num_str}")
                 continue
             numbers.append((amount, match.start()))
         except ValueError:
@@ -60,12 +51,10 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
 
     # Для каждого числа ищем ближайшее ключевое слово в окрестности
     for amount, pos in numbers:
-        # Контекст: 100 символов влево и вправо
         left = max(0, pos - 100)
         right = min(len(text), pos + len(str(int(amount))) + 100)
         context = text[left:right]
 
-        # Ищем ключевое слово типа оплаты
         found_type = None
         for pay_type, keywords in patterns.items():
             for kw in keywords:
@@ -78,36 +67,50 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         if found_type:
             results[found_type] += amount
         else:
-            # Если тип не найден, возможно, это общая сумма или другое – игнорируем
+            # Если тип не найден, возможно, это общая сумма – игнорируем
             pass
 
     # Дополнительно обрабатываем форматы "ключ - сумма" и "сумма - ключ"
     for pay_type, keywords in patterns.items():
         for kw in keywords:
-            # ключ - сумма
             for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     amount = float(num_str)
                     if amount <= 10_000_000:
                         results[pay_type] += amount
-                    else:
-                        logger.warning(f"Пропущена большая сумма при парсинге формата 'ключ - сумма': {amount}")
                 except ValueError:
                     continue
-            # сумма - ключ
             for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     amount = float(num_str)
                     if amount <= 10_000_000:
                         results[pay_type] += amount
-                    else:
-                        logger.warning(f"Пропущена большая сумма при парсинге формата 'сумма - ключ': {amount}")
                 except ValueError:
                     continue
 
     return results
+
+def extract_prepayments(text: str) -> Dict[str, float]:
+    """
+    Извлекает суммы предоплаты (строки с П/О или предоплата) и определяет тип оплаты.
+    Возвращает словарь с ключами: cash, terminal, qr, transfer, invoice, installment.
+    """
+    # Выделяем строки, содержащие П/О или предоплата
+    lines = []
+    for line in text.splitlines():
+        if re.search(r'П[/\\]О|предоплата', line, re.IGNORECASE):
+            lines.append(line)
+    if not lines:
+        return {key: 0.0 for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
+
+    # Объединяем эти строки в один текст
+    prepay_text = '\n'.join(lines)
+
+    # Используем основную функцию, но без удаления строк (ignore_prepay=False)
+    # и передаём текст только из строк предоплаты
+    return extract_payment_amounts(prepay_text, ignore_prepay=False)
 
 def parse_client_data(text: str) -> dict:
     """
@@ -154,7 +157,6 @@ def parse_client_data(text: str) -> dict:
                     if match:
                         result['full_name'] = match.group(1).strip()
             else:
-                # Если есть цифры и строка похожа на ФИО
                 if re.search(r'\d', line):
                     words = line.split()
                     if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
@@ -196,7 +198,7 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
-        # Суммы
+        # Суммы – используем общую функцию (для продаж)
         payments = extract_payment_amounts(line, ignore_prepay=False)
         for typ, val in payments.items():
             if typ in result['payments']:
