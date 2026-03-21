@@ -29,6 +29,7 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
             lines.append(line)
         text = '\n'.join(lines)
 
+    # Числовой паттерн: целые или десятичные, с пробелами в качестве разделителей тысяч
     number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
     results = {key: 0.0 for key in patterns}
 
@@ -38,6 +39,21 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         num_str = match.group(1).replace(' ', '').replace(',', '.')
         try:
             amount = float(num_str)
+            # Проверяем, что число не является телефоном или серийным номером
+            # Телефон: начинается с 7 или 8 и имеет длину 10-12 цифр
+            # Серийный номер: длина >= 10 и состоит только из цифр
+            # Также ограничиваем максимальную сумму (например, 10 млн)
+            if amount > 10_000_000:
+                logger.warning(f"Пропущено слишком большое число: {amount}")
+                continue
+            # Если число состоит только из цифр и длиной >= 10, вероятно, это не сумма
+            if num_str.isdigit() and len(num_str) >= 10:
+                logger.warning(f"Пропущено число, похожее на серийный номер или телефон: {num_str}")
+                continue
+            # Если число начинается с 7 или 8 и имеет длину 10-12 цифр, это телефон
+            if (num_str.startswith('7') or num_str.startswith('8')) and len(num_str) >= 10 and num_str.isdigit():
+                logger.warning(f"Пропущено число, похожее на телефон: {num_str}")
+                continue
             numbers.append((amount, match.start()))
         except ValueError:
             continue
@@ -60,28 +76,34 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
                 break
 
         if found_type:
-            # Если тип найден, добавляем сумму к нему (даже если есть пометка о предоплате)
             results[found_type] += amount
         else:
-            # Если тип не найден, проверяем, не является ли число просто пометкой (например, общая сумма)
-            # — игнорируем такие числа
+            # Если тип не найден, возможно, это общая сумма или другое – игнорируем
             pass
 
-    # Дополнительно обрабатываем форматы "ключ - сумма" и "сумма - ключ" (на случай, если число далеко от ключа)
+    # Дополнительно обрабатываем форматы "ключ - сумма" и "сумма - ключ"
     for pay_type, keywords in patterns.items():
         for kw in keywords:
             # ключ - сумма
             for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
-                    results[pay_type] += float(num_str)
+                    amount = float(num_str)
+                    if amount <= 10_000_000:
+                        results[pay_type] += amount
+                    else:
+                        logger.warning(f"Пропущена большая сумма при парсинге формата 'ключ - сумма': {amount}")
                 except ValueError:
                     continue
             # сумма - ключ
             for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
-                    results[pay_type] += float(num_str)
+                    amount = float(num_str)
+                    if amount <= 10_000_000:
+                        results[pay_type] += amount
+                    else:
+                        logger.warning(f"Пропущена большая сумма при парсинге формата 'сумма - ключ': {amount}")
                 except ValueError:
                     continue
 
