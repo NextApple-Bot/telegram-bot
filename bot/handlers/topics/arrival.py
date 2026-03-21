@@ -1,3 +1,5 @@
+# Файл: bot/handlers/topics/arrival.py
+
 import re
 import tempfile
 import os
@@ -25,6 +27,13 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     Возвращает имя категории (с двоеточием в конце).
     Выбирает категорию с самым длинным совпадающим именем.
     """
+    # Специальные категории "Б/У:" и "NS:" обрабатываем сразу
+    stripped = item_text.strip()
+    if stripped.startswith("Б/У -") or stripped.startswith("Б/У "):
+        return "Б/У:"
+    if stripped.startswith("NS -") or stripped.startswith("NS "):
+        return "NS:"
+
     base = extract_base_name(item_text).lower()
     best_match = None
     best_len = 0
@@ -34,17 +43,16 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
         if not cat_name:
             continue
 
-        # Проверяем, входит ли cat_name в base как подстрока
-        # Приоритет отдаём тем, которые являются началом base и после которых идёт пробел или конец
+        # Проверяем, является ли cat_name префиксом base
         if base.startswith(cat_name):
-            # Проверяем, что после cat_name идёт пробел или конец строки
+            # Убедимся, что после cat_name идёт пробел или конец строки
             remainder = base[len(cat_name):]
             if remainder == '' or remainder[0] == ' ':
                 if len(cat_name) > best_len:
                     best_len = len(cat_name)
                     best_match = cat['header']
+        # Если нет, но cat_name встречается внутри base (например, для брендов)
         elif cat_name in base:
-            # Если нет, но cat_name встречается внутри base (например, для "Samsung" внутри "Samsung Galaxy...")
             if len(cat_name) > best_len:
                 best_len = len(cat_name)
                 best_match = cat['header']
@@ -53,9 +61,6 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
         return best_match
 
     # 3. Не найдено — создаём новую категорию по правилам старого add_item_to_categories
-    if item_text.strip().startswith("Б/У -") or item_text.strip().startswith("Б/У "):
-        return "Б/У:"
-
     if 'iphone' in item_text.lower():
         base = extract_base_name(item_text)
         return f"{base}:"
