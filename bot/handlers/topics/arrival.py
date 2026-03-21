@@ -29,12 +29,31 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     if idx is not None:
         return categories[idx]['header']
 
-    # 2. Расширенный поиск по вхождению базового имени товара в существующие категории
+    # 2. Расширенный поиск: ищем категорию, чьё имя входит в базовое имя товара как начало
     base = extract_base_name(item_text).lower()
+    best_match = None
+    best_len = 0
     for cat in categories:
         cat_name = normalize_name(cat['header']).lower().rstrip(':')
-        if cat_name and (base.startswith(cat_name) or cat_name in base):
-            return cat['header']
+        if not cat_name:
+            continue
+        # Проверяем, является ли cat_name префиксом base
+        # (например, "samsung galaxy s25 ultra" является префиксом "samsung galaxy s25 ultra 12/512gb")
+        if base.startswith(cat_name):
+            # Дополнительно убедимся, что после cat_name идёт пробел или конец строки
+            next_char = base[len(cat_name):]
+            if next_char == '' or next_char[0] == ' ':
+                if len(cat_name) > best_len:
+                    best_len = len(cat_name)
+                    best_match = cat['header']
+        # Альтернативно, если cat_name содержит base (менее вероятно)
+        elif cat_name in base:
+            if len(cat_name) > best_len:
+                best_len = len(cat_name)
+                best_match = cat['header']
+
+    if best_match:
+        return best_match
 
     # 3. Не найдено — создаём новую категорию по правилам старого add_item_to_categories
     if item_text.strip().startswith("Б/У -") or item_text.strip().startswith("Б/У "):
