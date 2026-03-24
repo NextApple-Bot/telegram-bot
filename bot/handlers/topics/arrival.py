@@ -1,5 +1,3 @@
-# Файл: bot/handlers/topics/arrival.py
-
 import re
 import tempfile
 import os
@@ -43,15 +41,12 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
         if not cat_name:
             continue
 
-        # Проверяем, является ли cat_name префиксом base
         if base.startswith(cat_name):
-            # Убедимся, что после cat_name идёт пробел или конец строки
             remainder = base[len(cat_name):]
             if remainder == '' or remainder[0] == ' ':
                 if len(cat_name) > best_len:
                     best_len = len(cat_name)
                     best_match = cat['header']
-        # Если нет, но cat_name встречается внутри base (например, для брендов)
         elif cat_name in base:
             if len(cat_name) > best_len:
                 best_len = len(cat_name)
@@ -60,7 +55,7 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     if best_match:
         return best_match
 
-    # 3. Не найдено — создаём новую категорию по правилам старого add_item_to_categories
+    # Если ничего не найдено, создаём новую категорию по правилам старого add_item_to_categories
     if 'iphone' in item_text.lower():
         base = extract_base_name(item_text)
         return f"{base}:"
