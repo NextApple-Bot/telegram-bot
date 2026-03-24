@@ -37,6 +37,7 @@ async def safe_delete(message):
 
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
+    """Обработчик кнопки «Остатки»"""
     try:
         await callback.answer("⏳ Формирую отчёт по остаткам...")
     except Exception as e:
@@ -98,6 +99,7 @@ async def process_remains(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("month:"))
 async def process_month_selection(callback: CallbackQuery):
+    """Обработчик выбора месяца для отчёта по клиентам"""
     try:
         await callback.answer()
     except Exception as e:
