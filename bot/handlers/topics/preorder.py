@@ -6,7 +6,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 from bot import config
 from bot.services.booking import BookingService
 from bot.repositories import StatsRepository, FinanceRepository
-from bot.utils.parser import extract_payment_amounts
+from bot.utils.parser import extract_payment_amounts, extract_prepayments
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ async def handle_preorder(message: Message):
     if not content:
         return
 
-    # Идемпотентность: проверяем, не обрабатывали ли уже это сообщение
+    # Идемпотентность
     if await is_message_processed(message.chat.id, message.message_id):
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
@@ -47,16 +47,16 @@ async def handle_preorder(message: Message):
     lines = content.strip().splitlines()
     logger.info(f"Получено сообщение в предзаказе, строк: {len(lines)}")
 
-    # Определяем, есть ли в сообщении блоки "Бронь:"
+    # Определяем блоки "Бронь:"
     booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
     logger.info(f"Найдены индексы блоков брони: {booking_indices}")
 
-    # Если есть брони – обрабатываем их, иначе – обычный предзаказ
     if booking_indices:
-        # Обрабатываем предварительную часть (до первой брони) как предзаказ
+        # Предзаказ с бронями
+        # Обрабатываем предварительную часть (до первой брони) как обычный предзаказ
         preorder_lines = lines[:booking_indices[0]]
         if preorder_lines:
-            payments = extract_payment_amounts('\n'.join(preorder_lines), ignore_prepay=False)
+            payments = extract_prepayments('\n'.join(preorder_lines))
             logger.info(f"Предзаказ (до брони): платежи {payments}")
             if any(payments.values()):
                 await StatsRepository.add_preorder(**payments)
@@ -65,7 +65,7 @@ async def handle_preorder(message: Message):
             else:
                 logger.info("Нет платежей в предзаказе, реакция не ставится")
 
-        # Обрабатываем каждый блок брони
+        # Обрабатываем каждый блок брони (здесь платежи могут быть как предоплата, так и полная оплата)
         for idx in booking_indices:
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
@@ -81,13 +81,12 @@ async def handle_preorder(message: Message):
                     logger.warning(f"Ошибка обработки брони: {result}")
                 continue
 
-            # Ставим реакцию и отвечаем
             await message.react([ReactionTypeEmoji(emoji='👍')])
             booked_count = len(result.get("results", []))
             await message.reply(f"✅ Добавлена бронь на {booked_count} товаров.")
     else:
-        # Обычный предзаказ без броней
-        payments = extract_payment_amounts(content, ignore_prepay=False)
+        # Обычный предзаказ без броней – учитываем только предоплату
+        payments = extract_prepayments(content)
         logger.info(f"Предзаказ без броней: платежи {payments}")
         if any(payments.values()):
             await StatsRepository.add_preorder(**payments)
