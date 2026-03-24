@@ -2,16 +2,20 @@ import os
 import logging
 import sys
 import traceback
+from starlette.applications import Starlette
+from starlette.routing import Route
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse, Response
+import uvicorn
+from dotenv import load_dotenv
 
-# Настройка логирования как можно раньше
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]  # гарантированный вывод в stdout
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
-# Пытаемся импортировать зависимости, но не даём упасть приложению
 try:
     from starlette.applications import Starlette
     from starlette.routing import Route
@@ -24,15 +28,12 @@ except Exception as e:
     logger.critical(f"❌ Ошибка импорта базовых модулей: {e}")
     sys.exit(1)
 
-# Загружаем .env (если есть)
 load_dotenv()
 
-# Глобальные переменные для бота (будут инициализированы позже)
 bot = None
 dp = None
 config = None
 
-# Импортируем модули бота с защитой
 try:
     from aiogram import Bot, Dispatcher
     from aiogram.fsm.storage.memory import MemoryStorage
@@ -40,9 +41,8 @@ try:
     from bot.handlers import router
     from bot.db import init_db
     from bot import config as bot_config
-    config = bot_config  # для удобства
+    config = bot_config
 
-    # Инициализируем бота и диспетчер
     bot = Bot(token=config.TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
@@ -50,14 +50,10 @@ try:
 except Exception as e:
     logger.error(f"❌ Ошибка при инициализации бота: {e}")
     logger.error(traceback.format_exc())
-    # Продолжаем работу, сервер запустится, но бот будет недоступен
-    # (health check будет работать)
+    # не выходим, чтобы сервер хотя бы health check отдавал
 
 async def on_startup():
-    """Действия при старте приложения"""
     logger.info("🚀 on_startup: запуск...")
-
-    # Инициализация БД (если бот не создан, пропускаем)
     if bot and dp:
         try:
             await init_db()
@@ -65,7 +61,6 @@ async def on_startup():
         except Exception as e:
             logger.error(f"❌ Ошибка при инициализации БД: {e}")
 
-        # Установка вебхука
         if config and hasattr(config, 'RENDER_URL') and config.RENDER_URL:
             webhook_url = f"{config.RENDER_URL}/webhook"
             try:
@@ -80,11 +75,9 @@ async def on_startup():
         logger.warning("⚠️ Бот не инициализирован, пропускаем установку вебхука и БД")
 
 async def webhook(request: Request) -> Response:
-    """Обработчик входящих обновлений от Telegram"""
     if not bot or not dp:
         logger.error("❌ Бот не инициализирован, запрос отклонён")
         return Response(status_code=503)
-
     try:
         update_data = await request.json()
         logger.info(f"📨 Получено обновление: update_id={update_data.get('update_id')}")
@@ -96,10 +89,8 @@ async def webhook(request: Request) -> Response:
         return Response(status_code=500)
 
 async def health(_: Request) -> PlainTextResponse:
-    """Эндпоинт для проверки здоровья (всегда отвечает OK)"""
     return PlainTextResponse("OK")
 
-# Создаём Starlette приложение
 app = Starlette(
     routes=[
         Route("/webhook", webhook, methods=["POST"]),
