@@ -1,5 +1,5 @@
 import logging
-from bot.repositories import ItemRepository, ClientRepository, StatsRepository, FinanceRepository
+from bot.repositories import ItemRepository, ClientRepository, StatsRepository
 from bot.models import ClientData
 from bot.utils.validators import extract_serials
 from bot.utils.parser import parse_client_data, extract_payment_amounts
@@ -30,7 +30,6 @@ class SaleService:
     @staticmethod
     async def process_sale(content: str, chat_id: int, message_id: int) -> dict:
         """Обрабатывает продажу: удаляет товары, сохраняет статистику, клиента."""
-        # Проверка на повторную обработку
         if await SaleService.is_message_processed(chat_id, message_id):
             logger.info(f"Сообщение {message_id} уже обработано, пропускаем.")
             return {"sold_items": [], "not_found": [], "payments": {}, "skipped": True}
@@ -61,15 +60,8 @@ class SaleService:
             is_accessory=is_accessory
         )
 
-        # Обновление финансов в БД
-        await FinanceRepository.add_payments(
-            cash=payments['cash'],
-            terminal=payments['terminal'],
-            qr=payments['qr'],
-            transfer=payments['transfer'],
-            invoice=payments['invoice'],
-            installment=payments['installment']
-        )
+        # Финансы теперь сохраняются в хендлере через TransactionRepository,
+        # поэтому вызов FinanceRepository.add_payments удалён
 
         try:
             data_dict = parse_client_data(content)
@@ -93,7 +85,6 @@ class SaleService:
         except Exception as e:
             logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-        # Помечаем сообщение как обработанное
         await SaleService.mark_message_processed(chat_id, message_id)
 
         return {
