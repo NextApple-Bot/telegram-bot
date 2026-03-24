@@ -10,6 +10,7 @@ from aiogram.filters import Command
 from bot import config
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
+from bot.repositories.transaction import TransactionRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.markdown import escape_markdown_v1
 from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
@@ -124,7 +125,6 @@ async def cmd_client_info(message: Message):
         return
 
     for client in clients:
-        # Экранируем все пользовательские данные
         full_name = escape_markdown_v1(client['full_name'] or '—')
         phone = escape_markdown_v1(client['phone'] or '—')
         phones = escape_markdown_v1(client['phones'] or '—')
@@ -151,7 +151,7 @@ async def cmd_client_info(message: Message):
                     item_text = escape_markdown_v1(item.get('item_text', '')[:50])
                     text += f"  • {item_text}"
                     if item.get('price'):
-                        text += f" \\- {item['price']}₽"  # Дефис экранирован
+                        text += f" \\- {item['price']}₽"
                     text += "\n"
                 text += f"  💰 Сумма: {p['total_amount']}₽\n"
                 text += f"  💳 Оплата: {p['payment_details']}\n"
@@ -448,28 +448,6 @@ async def cmd_undo(message: Message):
 
     await message.answer(f"✅ Товар восстановлен:\n{escape_markdown_v1(deleted['text'])}")
 
-@router.message(Command("reset_finances"))
-async def cmd_reset_finances(message: Message):
-    """Принудительно сбрасывает финансы и статистику за сегодня (только для админов)."""
-    if message.from_user.id not in config.ADMIN_IDS:
-        await message.answer("⛔ Доступ запрещён")
-        return
-
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            result1 = await conn.execute('DELETE FROM daily_finances WHERE date = CURRENT_DATE')
-            result2 = await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = CURRENT_DATE')
-            result3 = await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = CURRENT_DATE')
-            result4 = await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = CURRENT_DATE')
-
-    await message.answer(
-        f"✅ Финансы и статистика за сегодня сброшены:\n"
-        f"• daily_finances: {result1.split()[1]}\n"
-        f"• preorders: {result2.split()[1]}\n"
-        f"• bookings: {result3.split()[1]}\n"
-        f"• sales: {result4.split()[1]}"
-    )
 # ---------- Команда /chatid ----------
 @router.message(Command("chatid"))
 async def cmd_chatid(message: Message):
@@ -481,3 +459,56 @@ async def cmd_chatid(message: Message):
     else:
         response += "Thread ID: отсутствует (сообщение не в топике)"
     await message.reply(response, parse_mode="Markdown")
+
+# ---------- Новые команды для управления транзакциями ----------
+@router.message(Command("fix_transaction"))
+async def cmd_fix_transaction(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 3:
+        await message.answer("❌ Используйте: /fix_transaction <id> <new_amount>")
+        return
+    try:
+        tx_id = int(args[1])
+        new_amount = float(args[2])
+    except ValueError:
+        await message.answer("❌ ID и сумма должны быть числами")
+        return
+    success = await TransactionRepository.update_transaction_amount(tx_id, new_amount)
+    if success:
+        await message.answer(f"✅ Транзакция {tx_id} исправлена на {new_amount}")
+    else:
+        await message.answer(f"❌ Транзакция {tx_id} не найдена")
+
+@router.message(Command("delete_transaction"))
+async def cmd_delete_transaction(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("❌ Используйте: /delete_transaction <id>")
+        return
+    try:
+        tx_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ ID должен быть числом")
+        return
+    success = await TransactionRepository.delete_transaction(tx_id)
+    if success:
+        await message.answer(f"✅ Транзакция {tx_id} удалена")
+    else:
+        await message.answer(f"❌ Транзакция {tx_id} не найдена")
+
+@router.message(Command("reset_finances"))
+async def cmd_reset_finances(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.execute('DELETE FROM transactions WHERE DATE(created_at) = CURRENT_DATE')
+    await message.answer(f"✅ Удалено {result.split()[1]} транзакций за сегодня")
