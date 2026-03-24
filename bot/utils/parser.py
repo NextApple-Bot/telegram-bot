@@ -4,6 +4,22 @@ from typing import Dict
 
 logger = logging.getLogger(__name__)
 
+def is_likely_phone_or_serial(num_str: str) -> bool:
+    """
+    Проверяет, похоже ли число на телефонный номер или серийный номер.
+    - Если строка состоит только из цифр и её длина ≥ 10 → True
+    - Если строка начинается с 7 или 8 и длина ≥ 10 → True (телефон)
+    """
+    if not num_str.isdigit():
+        return False
+    if len(num_str) >= 10:
+        # Телефон: часто начинается с 7 или 8
+        if num_str.startswith('7') or num_str.startswith('8'):
+            return True
+        # Серийный номер: любая длинная цифровая последовательность
+        return True
+    return False
+
 def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
     """
     Извлекает из текста суммы по типам оплаты.
@@ -38,18 +54,18 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         num_str = match.group(1).replace(' ', '').replace(',', '.')
         try:
             amount = float(num_str)
-            # Фильтруем телефонные номера и серийные номера (длина ≥ 10 цифр)
-            if num_str.isdigit() and len(num_str) >= 10:
-                logger.debug(f"Пропущено число, похожее на серийный номер или телефон: {num_str}")
+            # Фильтруем слишком большие суммы (> 10 млн) и телефонные номера
+            if amount > 10_000_000:
+                logger.debug(f"Пропущено слишком большое число: {amount}")
                 continue
-            if (num_str.startswith('7') or num_str.startswith('8')) and len(num_str) >= 10 and num_str.isdigit():
-                logger.debug(f"Пропущено число, похожее на телефон: {num_str}")
+            if is_likely_phone_or_serial(num_str):
+                logger.debug(f"Пропущено число, похожее на телефон/серийник: {num_str}")
                 continue
             numbers.append((amount, match.start()))
         except ValueError:
             continue
 
-    # Для каждого числа ищем ближайшее ключевое слово в окрестности
+    # Контекстный поиск
     for amount, pos in numbers:
         left = max(0, pos - 100)
         right = min(len(text), pos + len(str(int(amount))) + 100)
@@ -71,22 +87,31 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
             pass
 
     # Дополнительно обрабатываем форматы "ключ - сумма" и "сумма - ключ"
+    # с той же фильтрацией
     for pay_type, keywords in patterns.items():
         for kw in keywords:
+            # ключ - сумма
             for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     amount = float(num_str)
-                    if amount <= 10_000_000:
-                        results[pay_type] += amount
+                    if amount > 10_000_000:
+                        continue
+                    if is_likely_phone_or_serial(num_str):
+                        continue
+                    results[pay_type] += amount
                 except ValueError:
                     continue
+            # сумма - ключ
             for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     amount = float(num_str)
-                    if amount <= 10_000_000:
-                        results[pay_type] += amount
+                    if amount > 10_000_000:
+                        continue
+                    if is_likely_phone_or_serial(num_str):
+                        continue
+                    results[pay_type] += amount
                 except ValueError:
                     continue
 
@@ -109,7 +134,6 @@ def extract_prepayments(text: str) -> Dict[str, float]:
     prepay_text = '\n'.join(lines)
 
     # Используем основную функцию, но без удаления строк (ignore_prepay=False)
-    # и передаём текст только из строк предоплаты
     return extract_payment_amounts(prepay_text, ignore_prepay=False)
 
 def parse_client_data(text: str) -> dict:
