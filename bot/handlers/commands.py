@@ -448,6 +448,28 @@ async def cmd_undo(message: Message):
 
     await message.answer(f"✅ Товар восстановлен:\n{escape_markdown_v1(deleted['text'])}")
 
+@router.message(Command("reset_finances"))
+async def cmd_reset_finances(message: Message):
+    """Принудительно сбрасывает финансы и статистику за сегодня (только для админов)."""
+    if message.from_user.id not in config.ADMIN_IDS:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result1 = await conn.execute('DELETE FROM daily_finances WHERE date = CURRENT_DATE')
+            result2 = await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = CURRENT_DATE')
+            result3 = await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = CURRENT_DATE')
+            result4 = await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = CURRENT_DATE')
+
+    await message.answer(
+        f"✅ Финансы и статистика за сегодня сброшены:\n"
+        f"• daily_finances: {result1.split()[1]}\n"
+        f"• preorders: {result2.split()[1]}\n"
+        f"• bookings: {result3.split()[1]}\n"
+        f"• sales: {result4.split()[1]}"
+    )
 # ---------- Команда /chatid ----------
 @router.message(Command("chatid"))
 async def cmd_chatid(message: Message):
