@@ -1,8 +1,3 @@
-import csv
-import json
-import tempfile
-import os
-import logging
 from aiogram import Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
@@ -15,11 +10,13 @@ from bot.services.assortment import AssortmentService
 from bot.utils.markdown import escape_markdown_v1
 from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
 
-router = Router()
+router = Router()   # <--- собственный роутер команд
 logger = logging.getLogger(__name__)
 
 def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
+
+# Все остальные хендлеры остаются без изменений...
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
