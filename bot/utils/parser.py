@@ -13,20 +13,12 @@ def is_likely_phone_or_serial(num_str: str) -> bool:
     if not num_str.isdigit():
         return False
     if len(num_str) >= 10:
-        # Телефон: часто начинается с 7 или 8
         if num_str.startswith('7') or num_str.startswith('8'):
             return True
-        # Серийный номер: любая длинная цифровая последовательность
         return True
     return False
 
 def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
-    """
-    Извлекает из текста суммы по типам оплаты.
-    Возвращает словарь с ключами:
-    cash, terminal, qr, transfer, invoice, installment
-    Если ignore_prepay=True, строки содержащие П/О или предоплату игнорируются.
-    """
     patterns = {
         'cash': [r'Наличными', r'Наличные', r'наличными'],
         'terminal': [r'Терминал'],
@@ -36,7 +28,6 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         'installment': [r'Рассрочка'],
     }
 
-    # Если нужно игнорировать предоплату, удаляем строки с ней
     if ignore_prepay:
         lines = []
         for line in text.splitlines():
@@ -48,24 +39,21 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
     results = {key: 0.0 for key in patterns}
 
-    # Находим все числа с их позициями
     numbers = []
     for match in re.finditer(number_pattern, text):
         num_str = match.group(1).replace(' ', '').replace(',', '.')
         try:
             amount = float(num_str)
-            # Фильтруем слишком большие суммы (> 10 млн) и телефонные номера
             if amount > 10_000_000:
-                logger.debug(f"Пропущено слишком большое число: {amount}")
+                logger.info(f"Пропущено слишком большое число: {amount}")
                 continue
             if is_likely_phone_or_serial(num_str):
-                logger.debug(f"Пропущено число, похожее на телефон/серийник: {num_str}")
+                logger.info(f"Пропущено число, похожее на телефон/серийник: {num_str}")
                 continue
             numbers.append((amount, match.start()))
         except ValueError:
             continue
 
-    # Контекстный поиск
     for amount, pos in numbers:
         left = max(0, pos - 100)
         right = min(len(text), pos + len(str(int(amount))) + 100)
@@ -82,34 +70,31 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
 
         if found_type:
             results[found_type] += amount
-        else:
-            # Если тип не найден, возможно, это общая сумма – игнорируем
-            pass
 
-    # Дополнительно обрабатываем форматы "ключ - сумма" и "сумма - ключ"
-    # с той же фильтрацией
     for pay_type, keywords in patterns.items():
         for kw in keywords:
-            # ключ - сумма
             for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     amount = float(num_str)
                     if amount > 10_000_000:
+                        logger.info(f"Пропущена большая сумма (ключ-сумма): {amount}")
                         continue
                     if is_likely_phone_or_serial(num_str):
+                        logger.info(f"Пропущено число (ключ-сумма), похожее на телефон: {num_str}")
                         continue
                     results[pay_type] += amount
                 except ValueError:
                     continue
-            # сумма - ключ
             for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     amount = float(num_str)
                     if amount > 10_000_000:
+                        logger.info(f"Пропущена большая сумма (сумма-ключ): {amount}")
                         continue
                     if is_likely_phone_or_serial(num_str):
+                        logger.info(f"Пропущено число (сумма-ключ), похожее на телефон: {num_str}")
                         continue
                     results[pay_type] += amount
                 except ValueError:
@@ -118,30 +103,16 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     return results
 
 def extract_prepayments(text: str) -> Dict[str, float]:
-    """
-    Извлекает суммы предоплаты (строки с П/О или предоплата) и определяет тип оплаты.
-    Возвращает словарь с ключами: cash, terminal, qr, transfer, invoice, installment.
-    """
-    # Выделяем строки, содержащие П/О или предоплата
     lines = []
     for line in text.splitlines():
         if re.search(r'П[/\\]О|предоплата', line, re.IGNORECASE):
             lines.append(line)
     if not lines:
         return {key: 0.0 for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
-
-    # Объединяем эти строки в один текст
     prepay_text = '\n'.join(lines)
-
-    # Используем основную функцию, но без удаления строк (ignore_prepay=False)
     return extract_payment_amounts(prepay_text, ignore_prepay=False)
 
 def parse_client_data(text: str) -> dict:
-    """
-    Извлекает данные клиента из текста сообщения.
-    Возвращает словарь с полями:
-    full_name, phones, telegram_username, social_network, referral_source, items, payments, total, main_phone.
-    """
     result = {
         'full_name': None,
         'phones': [],
@@ -158,7 +129,6 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
-        # Телефоны
         phone_pattern = r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
         for match in re.finditer(phone_pattern, line):
             full_number = match.group(0)
@@ -170,7 +140,6 @@ def parse_client_data(text: str) -> dict:
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)
 
-        # ФИО
         if not result['full_name']:
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
@@ -186,13 +155,11 @@ def parse_client_data(text: str) -> dict:
                     if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
                         result['full_name'] = line
 
-        # Telegram
         if '@' in line and not result['telegram_username']:
             match = re.search(r'@(\w+)', line)
             if match:
                 result['telegram_username'] = match.group(1)
 
-        # Соцсети / площадка
         if re.search(r'соц\s*сети|social|площадка', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
@@ -202,13 +169,11 @@ def parse_client_data(text: str) -> dict:
                 if match:
                     result['social_network'] = match.group(1).strip()
 
-        # Откуда узнал
         if re.search(r'как\s+о\s+нас\s+узнал|откуда|referral', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
                 result['referral_source'] = parts[1].strip()
 
-        # Товары (с серийниками в скобках)
         if re.search(r'\([A-Z0-9-]{5,}\)', line):
             item_text = line
             price_match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|рублей|р\.?)', line, re.IGNORECASE)
@@ -222,7 +187,6 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
-        # Суммы – используем общую функцию (для продаж)
         payments = extract_payment_amounts(line, ignore_prepay=False)
         for typ, val in payments.items():
             if typ in result['payments']:
@@ -230,7 +194,6 @@ def parse_client_data(text: str) -> dict:
             else:
                 result['payments'][typ] = val
 
-    # Убедимся, что все нужные ключи присутствуют
     for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
         if key not in result['payments']:
             result['payments'][key] = 0.0
