@@ -532,3 +532,23 @@ async def cmd_show_transactions(message: Message):
         text += f"ID {tx['id']}: {tx['payment_type']} {tx['amount']} ({tx['type']})\n"
     text += f"\nИтого: {sum(totals.values())}"
     await message.answer(text)
+
+# ---------- НОВАЯ КОМАНДА: очистить все транзакции ----------
+@router.message(Command("clear_all_transactions"))
+async def cmd_clear_all_transactions(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ ДА, УДАЛИТЬ ВСЁ", callback_data="clear_all_tx:confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="clear_all_tx:cancel")]
+    ])
+    
+    await message.answer(
+        "⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит ВСЕ финансовые транзакции** (за все дни).\n\n"
+        "Статистика продаж и товары не пострадают.\n\n"
+        "Вы уверены?",
+        reply_markup=keyboard,
+        parse_mode='Markdown'
+    )
