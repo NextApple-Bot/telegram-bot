@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from bot.repositories import ItemRepository, StatsRepository, FinanceRepository
+from bot.repositories import ItemRepository, StatsRepository
 from bot.utils.validators import extract_serials
 from bot.utils.parser import extract_payment_amounts
 
@@ -37,7 +37,7 @@ class BookingService:
                 results.append({"line": item_line, "status": "not_found"})
                 continue
 
-            # Убеждаемся, что есть id (на случай, если get_item_by_text или get_item_by_serial вернули неполный словарь)
+            # Убеждаемся, что есть id
             if 'id' not in item_info:
                 logger.error(f"Item info does not contain 'id': {item_info}")
                 results.append({"line": item_line, "status": "error", "reason": "no_id"})
@@ -47,8 +47,8 @@ class BookingService:
             new_text = f"{item_info['text']} (Бронь от {today})"
             await ItemRepository.mark_item_booked(item_info['id'], new_text)
 
+            # Сохраняем только статистику брони, без финансов
             await StatsRepository.add_booking(item_info['id'], amount_per_item)
-            await FinanceRepository.add_payments(bookings_total=amount_per_item)
 
             results.append({"line": item_line, "status": "booked", "serial": item_info.get('serial')})
 
