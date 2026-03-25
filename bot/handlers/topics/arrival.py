@@ -13,6 +13,7 @@ from bot.services.assortment import AssortmentService
 from bot.handlers.states import ArrivalConfirmState
 from bot.utils.validators import extract_serials
 from bot.utils.sort import find_category_for_item, extract_base_name, normalize_name
+from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -109,15 +110,16 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         await message.reply("❌ Нет ни одной позиции после фильтрации.")
         return
 
-    # Получаем существующие товары для проверки дубликатов
+    # ОДИН РАЗ загружаем существующие данные
     existing_items = await ItemRepository.get_all_items_serials()
     existing_texts = {item['text'] for item in existing_items}
     existing_serials = {item['serial'] for item in existing_items if item['serial']}
 
-    # Загружаем текущие категории для определения подходящей
+    # ОДИН РАЗ загружаем текущие категории
     current_categories = await AssortmentService.load_inventory()
 
-    added_lines = []
+    # Группируем новые товары по категориям для последующей массовой вставки
+    cat_to_items = {}
     skipped_lines = []
 
     for line in lines:
@@ -130,19 +132,18 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
             continue
 
+        # Определяем категорию (используем текущие категории, не делая запросов)
         category_name = await determine_category_for_item(line, current_categories)
-        added_lines.append((line, serial, category_name))
-        existing_texts.add(line)
-        if serial:
-            existing_serials.add(serial)
+        cat_to_items.setdefault(category_name, []).append((line, serial))
 
-    if not added_lines:
+    if not cat_to_items:
         await message.reply("❌ Нет новых позиций для добавления (все дубликаты).")
         return
 
+    # Сохраняем данные для подтверждения
     await state.set_state(ArrivalConfirmState.waiting_for_confirm)
     await state.update_data(
-        added_lines=added_lines,
+        cat_to_items=cat_to_items,
         skipped_lines=skipped_lines,
         original_lines=lines,
         message_id=message.message_id,
@@ -150,7 +151,8 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         thread_id=message.message_thread_id
     )
 
-    response = f"📦 Найдено новых позиций: {len(added_lines)}\n"
+    total_new = sum(len(items) for items in cat_to_items.values())
+    response = f"📦 Найдено новых позиций: {total_new}\n"
     if skipped_lines:
         response += f"⏭ Пропущено (дубликаты): {len(skipped_lines)}\n"
     response += "Подтвердите добавление?"
@@ -163,30 +165,44 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
 
 @router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
 async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
-    logger.info(f"Получен callback с данными: {callback.data}")
     try:
         await callback.answer()
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     data = await state.get_data()
-    added_lines = data.get("added_lines")
+    cat_to_items = data.get("cat_to_items")
     action = callback.data.split(":")[1]
 
-    if action == "yes":
-        if added_lines:
-            for line, serial, category_name in added_lines:
-                cat_id = await ItemRepository.get_or_create_category(category_name)
-                await ItemRepository.add_item(text=line, serial=serial, category_id=cat_id)
-            AssortmentService.invalidate_cache()
-            await callback.message.edit_text(f"✅ Добавлено {len(added_lines)} новых товаров.")
-        else:
-            await callback.message.edit_text("❌ Нет товаров для добавления.")
+    if action == "yes" and cat_to_items:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # 1. Создаём/получаем ID всех нужных категорий
+                cat_ids = {}
+                for cat_name in cat_to_items.keys():
+                    cat_id = await ItemRepository.get_or_create_category(cat_name)
+                    cat_ids[cat_name] = cat_id
+                # 2. Подготавливаем данные для массовой вставки
+                all_rows = []
+                for cat_name, items in cat_to_items.items():
+                    cat_id = cat_ids[cat_name]
+                    for text, serial in items:
+                        is_booked = 'Бронь от' in text
+                        all_rows.append((text, serial, cat_id, is_booked))
+                # 3. Вставляем все товары одной командой COPY
+                if all_rows:
+                    async with conn.copy_records_to_table('items', columns=['text', 'serial', 'category_id', 'is_booked']) as copy:
+                        for row in all_rows:
+                            await copy.write_row(row)
+        # Инвалидируем кэш ассортимента
+        AssortmentService.invalidate_cache()
+        total_new = sum(len(items) for items in cat_to_items.values())
+        await callback.message.edit_text(f"✅ Добавлено {total_new} новых товаров.")
     elif action == "no":
         await callback.message.edit_text("❌ Добавление отменено.")
     else:
-        await callback.message.edit_text("❌ Неизвестное действие.")
-        logger.warning(f"Неизвестное действие в arrival_confirm: {action}")
+        await callback.message.edit_text("❌ Нет товаров для добавления.")
 
     await state.clear()
 
