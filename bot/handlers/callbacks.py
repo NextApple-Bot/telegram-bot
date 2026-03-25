@@ -18,16 +18,22 @@ import os
 from datetime import datetime
 from aiogram.types import FSInputFile
 
-# Словари для хранения ID последних сообщений (чтобы удалять старые)
+# ========== [LATENT] УНИВЕРСАЛЬНЫЙ ДИАГНОСТИЧЕСКИЙ ОБРАБОТЧИК ==========
+@router.callback_query()
+async def debug_callback(callback: CallbackQuery):
+    """Ловит любой callback-запрос для диагностики"""
+    logger.info(f"🔔 ПОЛУЧЕН CALLBACK (universal): data={callback.data!r}, from={callback.from_user.id}")
+    try:
+        await callback.answer("✅ Получено (диагностика)", show_alert=False)
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+
+# ========== ОСНОВНЫЕ ОБРАБОТЧИКИ ==========
 last_stats_message = {}
 last_finance_message = {}
 last_inventory_message = {}
 last_remains_message = {}
 last_clients_month_message = {}
-
-# -------------------------------------------------------------
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# -------------------------------------------------------------
 
 async def safe_delete(message):
     try:
@@ -375,7 +381,6 @@ async def process_reset_finances(callback: CallbackQuery):
                 await conn.execute('DELETE FROM transactions WHERE DATE(created_at) = CURRENT_DATE')
             # Обновляем отображение
             fin = await FinanceRepository.get_today()
-            stats = await StatsRepository.get_today_stats()
             cash_total = fin['cash']
             terminal_total = fin['terminal']
             qr_total = fin['qr']
@@ -386,7 +391,7 @@ async def process_reset_finances(callback: CallbackQuery):
             overall_total = fin['total']
 
             text = (
-                f"План - {config.PLAN_AMOUNT}. {stats['sales_count']} продаж.\n"
+                f"План - {config.PLAN_AMOUNT}.\n"
                 f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
                 f"2) Наличные - {cash_total:.0f}\n"
                 f"3) QR-код - {qr_total:.0f}\n"
@@ -399,7 +404,6 @@ async def process_reset_finances(callback: CallbackQuery):
             last_finance_message[chat_id] = callback.message.message_id
         elif action == "no":
             fin = await FinanceRepository.get_today()
-            stats = await StatsRepository.get_today_stats()
             cash_total = fin['cash']
             terminal_total = fin['terminal']
             qr_total = fin['qr']
@@ -410,7 +414,7 @@ async def process_reset_finances(callback: CallbackQuery):
             overall_total = fin['total']
 
             text = (
-                f"План - {config.PLAN_AMOUNT}. {stats['sales_count']} продаж.\n"
+                f"План - {config.PLAN_AMOUNT}.\n"
                 f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
                 f"2) Наличные - {cash_total:.0f}\n"
                 f"3) QR-код - {qr_total:.0f}\n"
@@ -504,7 +508,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             except Exception:
                 pass
         fin = await FinanceRepository.get_today()
-        stats = await StatsRepository.get_today_stats()
         cash_total = fin['cash']
         terminal_total = fin['terminal']
         qr_total = fin['qr']
@@ -515,7 +518,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         overall_total = fin['total']
 
         text = (
-            f"План - {config.PLAN_AMOUNT}. {stats['sales_count']} продаж.\n"
+            f"План - {config.PLAN_AMOUNT}.\n"
             f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
             f"2) Наличные - {cash_total:.0f}\n"
             f"3) QR-код - {qr_total:.0f}\n"
