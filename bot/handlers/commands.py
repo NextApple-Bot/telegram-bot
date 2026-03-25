@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
 
-# Все остальные хендлеры остаются без изменений...
-
+# ---------- Основные команды ----------
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     logger.info(f"🔥 Команда /start получена от {message.from_user.id}")
@@ -462,7 +461,7 @@ async def cmd_chatid(message: Message):
         response += "Thread ID: отсутствует (сообщение не в топике)"
     await message.reply(response, parse_mode="Markdown")
 
-# ---------- Новые команды для управления транзакциями ----------
+# ---------- Команды для управления транзакциями ----------
 @router.message(Command("fix_transaction"))
 async def cmd_fix_transaction(message: Message):
     if not is_admin(message.from_user.id):
@@ -514,3 +513,22 @@ async def cmd_reset_finances(message: Message):
         async with conn.transaction():
             result = await conn.execute('DELETE FROM transactions WHERE DATE(created_at) = CURRENT_DATE')
     await message.answer(f"✅ Удалено {result.split()[1]} транзакций за сегодня")
+
+# ---------- НОВАЯ КОМАНДА: показать транзакции ----------
+@router.message(Command("show_transactions"))
+async def cmd_show_transactions(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    from datetime import date
+    today = date.today()
+    totals = await TransactionRepository.get_totals_for_date(today)
+    transactions = await TransactionRepository.get_transactions_for_date(today)
+    if not transactions:
+        await message.answer("📭 Нет транзакций за сегодня.")
+        return
+    text = f"📋 Транзакции за {today}:\n"
+    for tx in transactions:
+        text += f"ID {tx['id']}: {tx['payment_type']} {tx['amount']} ({tx['type']})\n"
+    text += f"\nИтого: {sum(totals.values())}"
+    await message.answer(text)
