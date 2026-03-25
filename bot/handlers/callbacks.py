@@ -18,17 +18,7 @@ import os
 from datetime import datetime
 from aiogram.types import FSInputFile
 
-# ========== [LATENT] УНИВЕРСАЛЬНЫЙ ДИАГНОСТИЧЕСКИЙ ОБРАБОТЧИК ==========
-@router.callback_query()
-async def debug_callback(callback: CallbackQuery):
-    """Ловит любой callback-запрос для диагностики"""
-    logger.info(f"🔔 ПОЛУЧЕН CALLBACK (universal): data={callback.data!r}, from={callback.from_user.id}")
-    try:
-        await callback.answer("✅ Получено (диагностика)", show_alert=False)
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
-# ========== ОСНОВНЫЕ ОБРАБОТЧИКИ ==========
+# Словари для хранения ID последних сообщений (чтобы удалять старые)
 last_stats_message = {}
 last_finance_message = {}
 last_inventory_message = {}
