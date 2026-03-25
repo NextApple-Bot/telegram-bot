@@ -1,7 +1,8 @@
-from typing import Optional, List, Dict
-from bot.db import get_pool, retry_on_db_error
 import logging
 import asyncpg
+from typing import Optional, List, Dict
+from bot.db import get_pool, retry_on_db_error
+from bot.utils.validators import extract_serials
 
 logger = logging.getLogger(__name__)
 
@@ -11,10 +12,7 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_or_create_category(name: str) -> int:
-        """
-        Возвращает ID категории по имени, создаёт при отсутствии.
-        Защищено от гонок через try-except UniqueViolationError.
-        """
+        """Возвращает ID категории по имени, создаёт при отсутствии."""
         norm_name = name.lower().rstrip(':')
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -127,25 +125,45 @@ class ItemRepository:
             rows = await conn.fetch('SELECT text, serial FROM items')
             return [dict(row) for row in rows]
 
+    # ========== НОВЫЙ МЕТОД ДЛЯ МАССОВОЙ ЗАМЕНЫ АССОРТИМЕНТА ==========
     @staticmethod
     @retry_on_db_error()
-    async def update_category_items(category_name: str, new_items: List[str]):
-        from bot.utils.validators import extract_serials
-        cat_id = await ItemRepository.get_or_create_category(category_name)
+    async def bulk_replace_assortment(categories: List[Dict[str, List[str]]]) -> None:
+        """
+        Полностью заменяет ассортимент: очищает таблицы и вставляет новые данные.
+        Использует COPY для максимальной скорости.
+        """
+        from bot.services.assortment import AssortmentService
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
-                await conn.execute('DELETE FROM items WHERE category_id = $1', cat_id)
-                for item_text in new_items:
-                    serials = extract_serials(item_text)
-                    serial = serials[0] if serials else None
-                    if serial:
-                        serial = serial.strip().upper()
-                    is_booked = 'Бронь от' in item_text
-                    await conn.execute('''
-                        INSERT INTO items (text, serial, category_id, is_booked)
-                        VALUES ($1, $2, $3, $4)
-                    ''', item_text, serial, cat_id, is_booked)
+                # 1. Очищаем всё (каскадное удаление)
+                await conn.execute('TRUNCATE TABLE categories CASCADE')
+                # 2. Вставляем категории
+                category_names = [cat['header'] for cat in categories]
+                async with conn.copy_records_to_table('categories', columns=['name']) as copy:
+                    for name in category_names:
+                        await copy.write_row((name,))
+                # 3. Получаем id категорий
+                rows = await conn.fetch('SELECT id, name FROM categories')
+                cat_id_map = {row['name']: row['id'] for row in rows}
+                # 4. Подготавливаем данные для товаров
+                items_data = []
+                for cat in categories:
+                    cat_id = cat_id_map[cat['header']]
+                    for item_text in cat['items']:
+                        serials = extract_serials(item_text)
+                        serial = serials[0].strip().upper() if serials else None
+                        is_booked = 'Бронь от' in item_text
+                        items_data.append((item_text, serial, cat_id, is_booked))
+                # 5. Вставляем товары пакетно
+                if items_data:
+                    async with conn.copy_records_to_table('items', columns=['text', 'serial', 'category_id', 'is_booked']) as copy:
+                        for row in items_data:
+                            await copy.write_row(row)
+        AssortmentService.invalidate_cache()
+
+    # ========== СТАРЫЙ МЕТОД update_category_items — УДАЛЁН, ИСПОЛЬЗУЙТЕ bulk_replace_assortment ==========
 
     @staticmethod
     @retry_on_db_error()
