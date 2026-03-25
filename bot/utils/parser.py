@@ -7,14 +7,14 @@ logger = logging.getLogger(__name__)
 def is_likely_phone_or_serial(num_str: str) -> bool:
     """
     Проверяет, похоже ли число на телефонный номер или серийный номер.
-    - Если строка состоит только из цифр и её длина ≥ 10 → True
-    - Если строка начинается с 7 или 8 и длина ≥ 10 → True (телефон)
     """
     if not num_str.isdigit():
         return False
-    if len(num_str) >= 10:
-        if num_str.startswith('7') or num_str.startswith('8'):
-            return True
+    # Если длина >= 10 и начинается с 7 или 8 – это телефон
+    if len(num_str) >= 10 and (num_str.startswith('7') or num_str.startswith('8')):
+        return True
+    # Если длина 10-15 цифр без лидирующих 7/8 – тоже вероятно телефон (например, 9625021944)
+    if 10 <= len(num_str) <= 15:
         return True
     return False
 
@@ -39,44 +39,15 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
     results = {key: 0.0 for key in patterns}
 
-    numbers = []
-    for match in re.finditer(number_pattern, text):
-        num_str = match.group(1).replace(' ', '').replace(',', '.')
-        try:
-            amount = float(num_str)
-            if amount > 10_000_000:
-                logger.info(f"Пропущено слишком большое число: {amount}")
-                continue
-            if is_likely_phone_or_serial(num_str):
-                logger.info(f"Пропущено число, похожее на телефон/серийник: {num_str}")
-                continue
-            numbers.append((amount, match.start()))
-        except ValueError:
-            continue
-
-    for amount, pos in numbers:
-        left = max(0, pos - 100)
-        right = min(len(text), pos + len(str(int(amount))) + 100)
-        context = text[left:right]
-
-        found_type = None
-        for pay_type, keywords in patterns.items():
-            for kw in keywords:
-                if re.search(kw, context, re.IGNORECASE):
-                    found_type = pay_type
-                    break
-            if found_type:
-                break
-
-        if found_type:
-            results[found_type] += amount
-
+    # Сначала ищем суммы, привязанные к ключевым словам (ключ-сумма или сумма-ключ)
     for pay_type, keywords in patterns.items():
         for kw in keywords:
+            # Ищем: ключевое слово, затем пробелы/тире, затем число
             for match in re.finditer(rf'(?:{kw})\s*[-–—]?\s*{number_pattern}', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
                     amount = float(num_str)
+                    # Игнорируем слишком большие суммы (защита от телефонов)
                     if amount > 10_000_000:
                         logger.info(f"Пропущена большая сумма (ключ-сумма): {amount}")
                         continue
@@ -86,6 +57,7 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
                     results[pay_type] += amount
                 except ValueError:
                     continue
+            # Ищем: число, затем пробелы/тире, затем ключевое слово
             for match in re.finditer(rf'{number_pattern}\s*[-–—]?\s*(?:{kw})', text, re.IGNORECASE):
                 num_str = match.group(1).replace(' ', '').replace(',', '.')
                 try:
@@ -99,6 +71,9 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
                     results[pay_type] += amount
                 except ValueError:
                     continue
+
+    # Дополнительно ищем числа в строках, где нет ключевых слов, но это могут быть суммы (например, строка "Наличными - 1000")
+    # Однако мы уже обработали такие выше. Оставляем без изменений.
 
     return results
 
@@ -129,6 +104,7 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
+        # Поиск телефонов
         phone_pattern = r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
         for match in re.finditer(phone_pattern, line):
             full_number = match.group(0)
@@ -140,6 +116,7 @@ def parse_client_data(text: str) -> dict:
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)
 
+        # Поиск ФИО
         if not result['full_name']:
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
@@ -150,16 +127,18 @@ def parse_client_data(text: str) -> dict:
                     if match:
                         result['full_name'] = match.group(1).strip()
             else:
-                if re.search(r'\d', line):
-                    words = line.split()
-                    if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
-                        result['full_name'] = line
+                # Если строка состоит только из слов на кириллице и длиной 2-4 слова, считаем ФИО
+                words = line.split()
+                if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
+                    result['full_name'] = line
 
+        # Telegram
         if '@' in line and not result['telegram_username']:
             match = re.search(r'@(\w+)', line)
             if match:
                 result['telegram_username'] = match.group(1)
 
+        # Соцсеть
         if re.search(r'соц\s*сети|social|площадка', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
@@ -169,11 +148,13 @@ def parse_client_data(text: str) -> dict:
                 if match:
                     result['social_network'] = match.group(1).strip()
 
+        # Откуда узнал
         if re.search(r'как\s+о\s+нас\s+узнал|откуда|referral', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
                 result['referral_source'] = parts[1].strip()
 
+        # Товары
         if re.search(r'\([A-Z0-9-]{5,}\)', line):
             item_text = line
             price_match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|рублей|р\.?)', line, re.IGNORECASE)
@@ -187,13 +168,16 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
-        payments = extract_payment_amounts(line, ignore_prepay=False)
-        for typ, val in payments.items():
+        # Платежи – теперь используем extract_payment_amounts только для строки (не для всего текста)
+        # Это может привести к дублированию, но безопаснее оставить.
+        payments_line = extract_payment_amounts(line, ignore_prepay=False)
+        for typ, val in payments_line.items():
             if typ in result['payments']:
                 result['payments'][typ] += val
             else:
                 result['payments'][typ] = val
 
+    # Убедимся, что все ключи присутствуют
     for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
         if key not in result['payments']:
             result['payments'][key] = 0.0
