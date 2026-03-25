@@ -2,6 +2,7 @@ import re
 import tempfile
 import os
 import aiofiles
+import logging
 from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -10,7 +11,9 @@ from bot import config
 from bot.services.assortment import AssortmentService
 from bot.utils.sort import sort_assortment_to_categories
 from bot.handlers.states import AssortmentConfirmState
+from bot.repositories.item import ItemRepository
 
+logger = logging.getLogger(__name__)
 router = Router()
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -76,7 +79,8 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
     action = callback.data.split(":")[1]
     if action == "yes":
         if categories:
-            await AssortmentService.save_inventory(categories)
+            # Используем новый метод массовой замены
+            await ItemRepository.bulk_replace_assortment(categories)
             await callback.message.edit_text("✅ Ассортимент успешно загружен и сохранён.")
         else:
             await callback.message.edit_text("❌ Ошибка: данные не найдены.")
