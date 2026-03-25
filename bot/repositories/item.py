@@ -131,7 +131,7 @@ class ItemRepository:
     async def bulk_replace_assortment(categories: List[Dict[str, List[str]]]) -> None:
         """
         Полностью заменяет ассортимент: очищает таблицы и вставляет новые данные.
-        Использует COPY для максимальной скорости.
+        Использует массовую вставку (один INSERT для категорий, один для товаров).
         """
         from bot.services.assortment import AssortmentService
         pool = await get_pool()
@@ -139,14 +139,19 @@ class ItemRepository:
             async with conn.transaction():
                 # 1. Очищаем всё (каскадное удаление)
                 await conn.execute('TRUNCATE TABLE categories CASCADE')
-                # 2. Вставляем категории
+
+                # 2. Вставляем категории одним запросом
                 category_names = [cat['header'] for cat in categories]
-                async with conn.copy_records_to_table('categories', columns=['name']) as copy:
-                    for name in category_names:
-                        await copy.write_row((name,))
+                if category_names:
+                    # Формируем VALUES для массовой вставки
+                    values_placeholder = ', '.join(f"(${i})" for i in range(1, len(category_names) + 1))
+                    query = f'INSERT INTO categories (name) VALUES {values_placeholder}'
+                    await conn.execute(query, *category_names)
+
                 # 3. Получаем id категорий
                 rows = await conn.fetch('SELECT id, name FROM categories')
                 cat_id_map = {row['name']: row['id'] for row in rows}
+
                 # 4. Подготавливаем данные для товаров
                 items_data = []
                 for cat in categories:
@@ -156,14 +161,22 @@ class ItemRepository:
                         serial = serials[0].strip().upper() if serials else None
                         is_booked = 'Бронь от' in item_text
                         items_data.append((item_text, serial, cat_id, is_booked))
-                # 5. Вставляем товары пакетно
-                if items_data:
-                    async with conn.copy_records_to_table('items', columns=['text', 'serial', 'category_id', 'is_booked']) as copy:
-                        for row in items_data:
-                            await copy.write_row(row)
-        AssortmentService.invalidate_cache()
 
-    # ========== СТАРЫЙ МЕТОД update_category_items — УДАЛЁН, ИСПОЛЬЗУЙТЕ bulk_replace_assortment ==========
+                # 5. Вставляем товары одним массовым запросом
+                if items_data:
+                    # Формируем VALUES для каждого товара
+                    # (text, serial, category_id, is_booked)
+                    values_placeholder = []
+                    params = []
+                    idx = 1
+                    for text, serial, cat_id, is_booked in items_data:
+                        values_placeholder.append(f"(${idx}, ${idx+1}, ${idx+2}, ${idx+3})")
+                        params.extend([text, serial, cat_id, is_booked])
+                        idx += 4
+                    query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
+                    await conn.execute(query, *params)
+
+        AssortmentService.invalidate_cache()
 
     @staticmethod
     @retry_on_db_error()
