@@ -578,3 +578,24 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
 
     else:
         await callback.message.answer("Неизвестная команда")
+
+# ---------- Обработчик для очистки всех транзакций ----------
+@router.callback_query(F.data.startswith("clear_all_tx:"))
+async def process_clear_all_transactions(callback: CallbackQuery):
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+    
+    action = callback.data.split(":")[1]
+    
+    if action == "confirm":
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                result = await conn.execute('DELETE FROM transactions')
+                deleted_count = int(result.split()[1]) if result.startswith('DELETE') else 0
+        
+        await callback.message.edit_text(f"✅ Удалено {deleted_count} транзакций (за все дни).")
+    elif action == "cancel":
+        await callback.message.edit_text("❌ Очистка отменена.")
