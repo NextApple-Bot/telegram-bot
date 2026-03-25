@@ -532,3 +532,115 @@ async def cmd_show_transactions(message: Message):
         text += f"ID {tx['id']}: {tx['payment_type']} {tx['amount']} ({tx['type']})\n"
     text += f"\nИтого: {sum(totals.values())}"
     await message.answer(text)
+    
+# ... все предыдущие команды без изменений ...
+
+# ---------- Команды для управления транзакциями ----------
+@router.message(Command("fix_transaction"))
+async def cmd_fix_transaction(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 3:
+        await message.answer("❌ Используйте: /fix_transaction <id> <new_amount>")
+        return
+    try:
+        tx_id = int(args[1])
+        new_amount = float(args[2])
+    except ValueError:
+        await message.answer("❌ ID и сумма должны быть числами")
+        return
+    success = await TransactionRepository.update_transaction_amount(tx_id, new_amount)
+    if success:
+        await message.answer(f"✅ Транзакция {tx_id} исправлена на {new_amount}")
+    else:
+        await message.answer(f"❌ Транзакция {tx_id} не найдена")
+
+@router.message(Command("delete_transaction"))
+async def cmd_delete_transaction(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("❌ Используйте: /delete_transaction <id>")
+        return
+    try:
+        tx_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ ID должен быть числом")
+        return
+    success = await TransactionRepository.delete_transaction(tx_id)
+    if success:
+        await message.answer(f"✅ Транзакция {tx_id} удалена")
+    else:
+        await message.answer(f"❌ Транзакция {tx_id} не найдена")
+
+@router.message(Command("reset_finances"))
+async def cmd_reset_finances(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.execute('DELETE FROM transactions WHERE DATE(created_at AT TIME ZONE \'UTC\') = CURRENT_DATE')
+            deleted = int(result.split()[1]) if result.startswith('DELETE') else 0
+    await message.answer(f"✅ Удалено {deleted} транзакций за сегодня (UTC).")
+
+@router.message(Command("clear_all_transactions"))
+async def cmd_clear_all_transactions(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    # Подтверждение
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ ДА, УДАЛИТЬ ВСЕ ТРАНЗАКЦИИ", callback_data="clear_all_tx:confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+    ])
+    await message.answer(
+        "⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит все транзакции** из таблицы `transactions`.\n"
+        "Статистика продаж обнулится полностью.\n\n"
+        "Вы уверены?",
+        reply_markup=keyboard,
+        parse_mode='Markdown'
+    )
+
+@router.callback_query(F.data == "clear_all_tx:confirm")
+async def process_clear_all_transactions(callback: CallbackQuery):
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+    try:
+        await callback.answer()
+    except:
+        pass
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.execute('DELETE FROM transactions')
+            deleted = int(result.split()[1]) if result.startswith('DELETE') else 0
+    await callback.message.edit_text(f"✅ Удалено {deleted} транзакций.")
+    # Отправим меню
+    from .base import get_main_menu_keyboard
+    await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
+
+@router.message(Command("show_transactions"))
+async def cmd_show_transactions(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Доступ запрещён")
+        return
+    from datetime import datetime, timezone
+    # Показываем транзакции за сегодня по UTC
+    today = datetime.now(timezone.utc).date()
+    totals = await TransactionRepository.get_totals_for_date(today)
+    transactions = await TransactionRepository.get_transactions_for_date(today)
+    if not transactions:
+        await message.answer("📭 Нет транзакций за сегодня (UTC).")
+        return
+    text = f"📋 Транзакции за {today} (UTC):\n"
+    for tx in transactions:
+        text += f"ID {tx['id']}: {tx['payment_type']} {tx['amount']} ({tx['type']})\n"
+    text += f"\nИтого: {sum(totals.values())}"
+    await message.answer(text)
