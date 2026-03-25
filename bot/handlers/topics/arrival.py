@@ -65,19 +65,6 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
             new_header = ' '.join(words[:2]).strip() + ':'
         return normalize_name(new_header)
 
-def is_likely_item(line: str) -> bool:
-    """
-    Проверяет, похожа ли строка на товар.
-    """
-    stripped = line.strip()
-    if extract_serials(line):
-        return True
-    if stripped.startswith('Б/У') or stripped.startswith('NS'):
-        return True
-    if '(' in line and ')' in line and re.search(r'\d', line):
-        return True
-    return False
-
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
     F.message_thread_id == config.THREAD_ARRIVAL,
@@ -117,38 +104,34 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     # Удаляем строки, состоящие только из дефисов
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
 
-    # Фильтруем строки, которые не похожи на товары
+    # ========== НОВАЯ ЛОГИКА: добавляем только строки, содержащие серийный номер ==========
     filtered_lines = []
-    skipped_not_item = []
+    skipped_no_serial = []
     for line in lines:
-        if is_likely_item(line):
+        serials = extract_serials(line)
+        if serials:
             filtered_lines.append(line)
         else:
-            skipped_not_item.append(line)
+            skipped_no_serial.append(line)
+            logger.info(f"Пропущена строка без серийного номера: {line}")
 
     if not filtered_lines:
-        await message.reply("❌ Нет ни одной позиции, похожей на товар (все строки пропущены).")
-        if skipped_not_item:
-            logger.info(f"Пропущены строки, не похожие на товары: {skipped_not_item}")
+        await message.reply("❌ Нет ни одной строки с серийным номером. Добавление отменено.")
         return
 
-    # ОДИН РАЗ загружаем существующие товары из БД (текст и серийники)
+    # Загружаем существующие товары
     existing_items = await ItemRepository.get_all_items_serials()
-    # Для быстрого поиска по тексту
     existing_texts = {item['text'] for item in existing_items}
-    # Для быстрого поиска по серийному номеру (регистронезависимо)
     existing_serials = {item['serial'].strip().upper() for item in existing_items if item['serial']}
-    
+
     logger.info(f"Загружено существующих товаров: {len(existing_texts)} текстов, {len(existing_serials)} серийников")
 
-    # Загружаем текущие категории
     current_categories = await AssortmentService.load_inventory()
 
     cat_to_items = {}
     skipped_duplicates = []
 
     for line in filtered_lines:
-        # Проверка дубликата по тексту
         if line in existing_texts:
             skipped_duplicates.append(f"[Дубликат текста] {line}")
             logger.info(f"Дубликат по тексту: {line}")
@@ -172,16 +155,16 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     await state.update_data(
         cat_to_items=cat_to_items,
         skipped_lines=skipped_duplicates,
-        skipped_not_item=skipped_not_item,
+        skipped_no_serial=skipped_no_serial,
         message_id=message.message_id,
         chat_id=message.chat.id,
         thread_id=message.message_thread_id
     )
 
     total_new = sum(len(items) for items in cat_to_items.values())
-    response = f"📦 Найдено новых позиций: {total_new}\n"
-    if skipped_not_item:
-        response += f"⚠️ Пропущено (не похожи на товары): {len(skipped_not_item)}\n"
+    response = f"📦 Найдено новых позиций с серийными номерами: {total_new}\n"
+    if skipped_no_serial:
+        response += f"⚠️ Пропущено (нет серийного номера): {len(skipped_no_serial)}\n"
     if skipped_duplicates:
         response += f"⏭ Пропущено (дубликаты): {len(skipped_duplicates)}\n"
     response += "Подтвердите добавление?"
