@@ -2,60 +2,28 @@ import sys
 import logging
 import os
 import traceback
+from starlette.applications import Starlette
+from starlette.routing import Route
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse, Response
+import uvicorn
+from dotenv import load_dotenv
 
-# Настройка логирования с выводом в stderr
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Принудительный вывод в stderr
-print("=== STARTING BOT ===", file=sys.stderr)
-sys.stderr.flush()
-
-try:
-    print("Импортируем starlette...", file=sys.stderr)
-    from starlette.applications import Starlette
-    from starlette.routing import Route
-    from starlette.requests import Request
-    from starlette.responses import PlainTextResponse, Response
-    import uvicorn
-    from dotenv import load_dotenv
-    print("✅ Базовые модули импортированы", file=sys.stderr)
-except Exception as e:
-    print(f"❌ Ошибка импорта базовых модулей: {e}", file=sys.stderr)
-    traceback.print_exc(file=sys.stderr)
-    sys.exit(1)
-
 load_dotenv()
-
-print("Загружаем переменные окружения...", file=sys.stderr)
 
 # Глобальные переменные
 bot = None
 dp = None
 config = None
 
-print("Импортируем модули бота...", file=sys.stderr)
-try:
-    from aiogram import Bot, Dispatcher
-    from aiogram.fsm.storage.memory import MemoryStorage
-    from aiogram.types import Update
-    from bot.handlers import router
-    from bot.db import init_db
-    from bot import config as bot_config
-    config = bot_config
-    print("✅ Модули бота импортированы", file=sys.stderr)
-
-    print("Создаём экземпляр Bot...", file=sys.stderr)
-    bot = Bot(token=config.TOKEN)
-    print("Создаём Dispatcher...", file=sys.stderr)
-    dp = Dispatcher(storage=MemoryStorage())
-    dp.include_router(router)
-    print("✅ Бот и диспетчер созданы", file=sys.stderr)
-except Exception as e:
-    print(f"❌ ОШИБКА ПРИ ИНИЦИАЛИЗАЦИИ БОТА: {e}", file=sys.stderr)
-    traceback.print_exc(file=sys.stderr)
-    # не выходим, чтобы сервер всё равно запустился
-
+# Импортируем модули бота
 try:
     from aiogram import Bot, Dispatcher
     from aiogram.fsm.storage.memory import MemoryStorage
