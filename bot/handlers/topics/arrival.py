@@ -12,7 +12,7 @@ from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.handlers.states import ArrivalConfirmState
 from bot.utils.validators import extract_serials
-from bot.utils.sort import find_category_for_item, extract_base_name, normalize_name
+from bot.utils.sort import extract_base_name, normalize_name
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
@@ -24,9 +24,7 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     """
     Определяет имя категории для товара на основе текущего списка категорий.
     Возвращает имя категории (с двоеточием в конце).
-    Выбирает категорию с самым длинным совпадающим именем.
     """
-    # Специальные категории "Б/У:" и "NS:" обрабатываем сразу
     stripped = item_text.strip()
     if stripped.startswith("Б/У -") or stripped.startswith("Б/У "):
         return "Б/У:"
@@ -56,7 +54,6 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     if best_match:
         return best_match
 
-    # Если ничего не найдено, создаём новую категорию по правилам старого add_item_to_categories
     if 'iphone' in item_text.lower():
         base = extract_base_name(item_text)
         return f"{base}:"
@@ -67,6 +64,19 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
             words = item_text.split()
             new_header = ' '.join(words[:2]).strip() + ':'
         return normalize_name(new_header)
+
+def is_likely_item(line: str) -> bool:
+    """
+    Проверяет, похожа ли строка на товар.
+    """
+    stripped = line.strip()
+    if extract_serials(line):
+        return True
+    if stripped.startswith('Б/У') or stripped.startswith('NS'):
+        return True
+    if '(' in line and ')' in line and re.search(r'\d', line):
+        return True
+    return False
 
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
@@ -106,33 +116,51 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
 
     # Удаляем строки, состоящие только из дефисов
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
-    if not lines:
-        await message.reply("❌ Нет ни одной позиции после фильтрации.")
+
+    # Фильтруем строки, которые не похожи на товары
+    filtered_lines = []
+    skipped_not_item = []
+    for line in lines:
+        if is_likely_item(line):
+            filtered_lines.append(line)
+        else:
+            skipped_not_item.append(line)
+
+    if not filtered_lines:
+        await message.reply("❌ Нет ни одной позиции, похожей на товар (все строки пропущены).")
+        if skipped_not_item:
+            logger.info(f"Пропущены строки, не похожие на товары: {skipped_not_item}")
         return
 
-    # ОДИН РАЗ загружаем существующие данные
+    # ОДИН РАЗ загружаем существующие товары из БД (текст и серийники)
     existing_items = await ItemRepository.get_all_items_serials()
+    # Для быстрого поиска по тексту
     existing_texts = {item['text'] for item in existing_items}
-    existing_serials = {item['serial'] for item in existing_items if item['serial']}
+    # Для быстрого поиска по серийному номеру (регистронезависимо)
+    existing_serials = {item['serial'].strip().upper() for item in existing_items if item['serial']}
+    
+    logger.info(f"Загружено существующих товаров: {len(existing_texts)} текстов, {len(existing_serials)} серийников")
 
-    # ОДИН РАЗ загружаем текущие категории
+    # Загружаем текущие категории
     current_categories = await AssortmentService.load_inventory()
 
-    # Группируем новые товары по категориям для последующей массовой вставки
     cat_to_items = {}
-    skipped_lines = []
+    skipped_duplicates = []
 
-    for line in lines:
+    for line in filtered_lines:
+        # Проверка дубликата по тексту
         if line in existing_texts:
-            skipped_lines.append(f"[Дубликат текста] {line}")
-            continue
-        serials = extract_serials(line)
-        serial = serials[0] if serials else None
-        if serial and serial in existing_serials:
-            skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
+            skipped_duplicates.append(f"[Дубликат текста] {line}")
+            logger.info(f"Дубликат по тексту: {line}")
             continue
 
-        # Определяем категорию (используем текущие категории, не делая запросов)
+        serials = extract_serials(line)
+        serial = serials[0].strip().upper() if serials else None
+        if serial and serial in existing_serials:
+            skipped_duplicates.append(f"[Дубликат серийного номера {serial}] {line}")
+            logger.info(f"Дубликат по серийному номеру {serial}: {line}")
+            continue
+
         category_name = await determine_category_for_item(line, current_categories)
         cat_to_items.setdefault(category_name, []).append((line, serial))
 
@@ -140,12 +168,11 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         await message.reply("❌ Нет новых позиций для добавления (все дубликаты).")
         return
 
-    # Сохраняем данные для подтверждения
     await state.set_state(ArrivalConfirmState.waiting_for_confirm)
     await state.update_data(
         cat_to_items=cat_to_items,
-        skipped_lines=skipped_lines,
-        original_lines=lines,
+        skipped_lines=skipped_duplicates,
+        skipped_not_item=skipped_not_item,
         message_id=message.message_id,
         chat_id=message.chat.id,
         thread_id=message.message_thread_id
@@ -153,8 +180,10 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
 
     total_new = sum(len(items) for items in cat_to_items.values())
     response = f"📦 Найдено новых позиций: {total_new}\n"
-    if skipped_lines:
-        response += f"⏭ Пропущено (дубликаты): {len(skipped_lines)}\n"
+    if skipped_not_item:
+        response += f"⚠️ Пропущено (не похожи на товары): {len(skipped_not_item)}\n"
+    if skipped_duplicates:
+        response += f"⏭ Пропущено (дубликаты): {len(skipped_duplicates)}\n"
     response += "Подтвердите добавление?"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -178,13 +207,11 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # 1. Создаём/получаем ID всех нужных категорий
                 cat_ids = {}
                 for cat_name in cat_to_items.keys():
                     cat_id = await ItemRepository.get_or_create_category(cat_name)
                     cat_ids[cat_name] = cat_id
 
-                # 2. Подготавливаем данные для массовой вставки
                 all_rows = []
                 for cat_name, items in cat_to_items.items():
                     cat_id = cat_ids[cat_name]
@@ -192,7 +219,6 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
                         is_booked = 'Бронь от' in text
                         all_rows.append((text, serial, cat_id, is_booked))
 
-                # 3. Вставляем все товары одним запросом
                 if all_rows:
                     values_placeholder = []
                     params = []
@@ -204,7 +230,6 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
                     query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
                     await conn.execute(query, *params)
 
-        # Инвалидируем кэш ассортимента
         AssortmentService.invalidate_cache()
         total_new = sum(len(items) for items in cat_to_items.values())
         await callback.message.edit_text(f"✅ Добавлено {total_new} новых товаров.")
