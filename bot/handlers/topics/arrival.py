@@ -1,216 +1,226 @@
-import re
-import tempfile
-import os
-import aiofiles
 import logging
-from aiogram import F, Router
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.context import FSMContext
-
-from bot import config
-from bot.repositories import ItemRepository
-from bot.services.assortment import AssortmentService
-from bot.handlers.states import ArrivalConfirmState
+import asyncpg
+from typing import Optional, List, Dict
+from bot.db import get_pool, retry_on_db_error
 from bot.utils.validators import extract_serials
-from bot.utils.sort import find_category_for_item, extract_base_name, normalize_name
-from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
 
-router = Router()
-MAX_FILE_SIZE = 10 * 1024 * 1024
+class ItemRepository:
+    """Репозиторий для работы с товарами и категориями."""
 
-async def determine_category_for_item(item_text: str, categories: list) -> str:
-    """
-    Определяет имя категории для товара на основе текущего списка категорий.
-    Возвращает имя категории (с двоеточием в конце).
-    Выбирает категорию с самым длинным совпадающим именем.
-    """
-    # Специальные категории "Б/У:" и "NS:" обрабатываем сразу
-    stripped = item_text.strip()
-    if stripped.startswith("Б/У -") or stripped.startswith("Б/У "):
-        return "Б/У:"
-    if stripped.startswith("NS -") or stripped.startswith("NS "):
-        return "NS:"
+    @staticmethod
+    @retry_on_db_error()
+    async def get_or_create_category(name: str) -> int:
+        """Возвращает ID категории по имени, создаёт при отсутствии."""
+        norm_name = name.lower().rstrip(':')
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
+            if row:
+                return row['id']
+            try:
+                row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', name)
+                return row['id']
+            except asyncpg.UniqueViolationError:
+                row = await conn.fetchrow('SELECT id FROM categories WHERE name = $1', name)
+                if row:
+                    return row['id']
+                else:
+                    logger.error(f"Не удалось создать или найти категорию {name} после UniqueViolation")
+                    raise
 
-    base = extract_base_name(item_text).lower()
-    best_match = None
-    best_len = 0
-
-    for cat in categories:
-        cat_name = normalize_name(cat['header']).lower().rstrip(':')
-        if not cat_name:
-            continue
-
-        if base.startswith(cat_name):
-            remainder = base[len(cat_name):]
-            if remainder == '' or remainder[0] == ' ':
-                if len(cat_name) > best_len:
-                    best_len = len(cat_name)
-                    best_match = cat['header']
-        elif cat_name in base:
-            if len(cat_name) > best_len:
-                best_len = len(cat_name)
-                best_match = cat['header']
-
-    if best_match:
-        return best_match
-
-    # Если ничего не найдено, создаём новую категорию по правилам старого add_item_to_categories
-    if 'iphone' in item_text.lower():
-        base = extract_base_name(item_text)
-        return f"{base}:"
-    else:
-        if ',' in item_text:
-            new_header = item_text.split(',')[0].strip() + ':'
+    @staticmethod
+    @retry_on_db_error()
+    async def add_item(text: str, serial: Optional[str] = None, category_id: Optional[int] = None, category_name: Optional[str] = None):
+        """Добавляет товар. Можно указать category_id или category_name."""
+        if category_id is None:
+            if category_name is None:
+                category_name = "Общее:"
+            cat_id = await ItemRepository.get_or_create_category(category_name)
         else:
-            words = item_text.split()
-            new_header = ' '.join(words[:2]).strip() + ':'
-        return normalize_name(new_header)
+            cat_id = category_id
+        normalized_serial = serial.strip().upper() if serial else None
+        is_booked = 'Бронь от' in text
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute('''
+                INSERT INTO items (text, serial, category_id, is_booked)
+                VALUES ($1, $2, $3, $4)
+            ''', text, normalized_serial, cat_id, is_booked)
 
-@router.message(
-    F.chat.id == config.MAIN_GROUP_ID,
-    F.message_thread_id == config.THREAD_ARRIVAL,
-    (F.text | F.caption | F.document)
-)
-async def handle_arrival(message: Message, bot, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state == ArrivalConfirmState.waiting_for_confirm.state:
-        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки).")
-        return
+    @staticmethod
+    @retry_on_db_error()
+    async def get_item_id_by_serial(serial: str) -> Optional[int]:
+        if not serial:
+            return None
+        normalized = serial.strip().upper()
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('SELECT id FROM items WHERE UPPER(serial) = $1', normalized)
+            return row['id'] if row else None
 
-    lines = []
-    if message.document:
-        document = message.document
-        if document.file_size > MAX_FILE_SIZE:
-            await message.reply("❌ Файл слишком большой (макс. 10 МБ).")
-            return
-        if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
-            await message.reply("⚠️ Отправьте текстовый файл .txt")
-            return
-        file_path = f"/tmp/{document.file_name}"
-        await bot.download(document, destination=file_path)
-        try:
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-            lines = [line.strip() for line in content.splitlines() if line.strip()]
-        finally:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-    else:
-        content = message.text or message.caption
-        if not content:
-            await message.reply("⚠️ Отправьте текст, файл или фото с подписью.")
-            return
-        lines = [line.strip() for line in content.splitlines() if line.strip()]
+    @staticmethod
+    @retry_on_db_error()
+    async def get_item_by_serial(serial: str) -> Optional[Dict]:
+        normalized = serial.strip().upper()
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('''
+                SELECT i.id, i.text, c.id as category_id, c.name as category_name
+                FROM items i
+                JOIN categories c ON i.category_id = c.id
+                WHERE UPPER(i.serial) = $1
+            ''', normalized)
+            return dict(row) if row else None
 
-    # Удаляем строки, состоящие только из дефисов
-    lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
-    if not lines:
-        await message.reply("❌ Нет ни одной позиции после фильтрации.")
-        return
+    @staticmethod
+    @retry_on_db_error()
+    async def get_item_by_text(text: str) -> Optional[Dict]:
+        """Ищет товар по точному тексту, возвращает id, текст и имя категории."""
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('''
+                SELECT i.id, i.text, c.name as category_name
+                FROM items i
+                JOIN categories c ON i.category_id = c.id
+                WHERE i.text = $1
+            ''', text)
+            return dict(row) if row else None
 
-    # ОДИН РАЗ загружаем существующие данные
-    existing_items = await ItemRepository.get_all_items_serials()
-    existing_texts = {item['text'] for item in existing_items}
-    existing_serials = {item['serial'] for item in existing_items if item['serial']}
+    @staticmethod
+    @retry_on_db_error()
+    async def remove_item_by_serial(serial: str) -> int:
+        normalized = serial.strip().upper() if serial else None
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute('DELETE FROM items WHERE UPPER(serial) = $1', normalized)
+            return int(result.split()[1]) if result.startswith('DELETE') else 0
 
-    # ОДИН РАЗ загружаем текущие категории
-    current_categories = await AssortmentService.load_inventory()
+    @staticmethod
+    @retry_on_db_error()
+    async def get_all_categories_with_items():
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT c.name as category_name, i.text as item_text
+                FROM categories c
+                LEFT JOIN items i ON c.id = i.category_id
+                ORDER BY c.id, i.id
+            ''')
+            categories = {}
+            for row in rows:
+                cat = row['category_name']
+                if cat not in categories:
+                    categories[cat] = []
+                if row['item_text']:
+                    categories[cat].append(row['item_text'])
+            return [{"header": cat, "items": items} for cat, items in categories.items()]
 
-    # Группируем новые товары по категориям для последующей массовой вставки
-    cat_to_items = {}
-    skipped_lines = []
+    @staticmethod
+    @retry_on_db_error()
+    async def get_all_items_serials():
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch('SELECT text, serial FROM items')
+            return [dict(row) for row in rows]
 
-    for line in lines:
-        if line in existing_texts:
-            skipped_lines.append(f"[Дубликат текста] {line}")
-            continue
-        serials = extract_serials(line)
-        serial = serials[0] if serials else None
-        if serial and serial in existing_serials:
-            skipped_lines.append(f"[Дубликат серийного номера {serial}] {line}")
-            continue
-
-        # Определяем категорию (используем текущие категории, не делая запросов)
-        category_name = await determine_category_for_item(line, current_categories)
-        cat_to_items.setdefault(category_name, []).append((line, serial))
-
-    if not cat_to_items:
-        await message.reply("❌ Нет новых позиций для добавления (все дубликаты).")
-        return
-
-    # Сохраняем данные для подтверждения
-    await state.set_state(ArrivalConfirmState.waiting_for_confirm)
-    await state.update_data(
-        cat_to_items=cat_to_items,
-        skipped_lines=skipped_lines,
-        original_lines=lines,
-        message_id=message.message_id,
-        chat_id=message.chat.id,
-        thread_id=message.message_thread_id
-    )
-
-    total_new = sum(len(items) for items in cat_to_items.values())
-    response = f"📦 Найдено новых позиций: {total_new}\n"
-    if skipped_lines:
-        response += f"⏭ Пропущено (дубликаты): {len(skipped_lines)}\n"
-    response += "Подтвердите добавление?"
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Подтвердить", callback_data="arrival_confirm:yes"),
-         InlineKeyboardButton(text="❌ Отмена", callback_data="arrival_confirm:no")]
-    ])
-    await message.reply(response, reply_markup=keyboard)
-
-@router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
-async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
-    try:
-        await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
-    data = await state.get_data()
-    cat_to_items = data.get("cat_to_items")
-    action = callback.data.split(":")[1]
-
-    if action == "yes" and cat_to_items:
+    # ========== НОВЫЙ МЕТОД ДЛЯ МАССОВОЙ ЗАМЕНЫ АССОРТИМЕНТА ==========
+    @staticmethod
+    @retry_on_db_error()
+    async def bulk_replace_assortment(categories: List[Dict[str, List[str]]]) -> None:
+        """
+        Полностью заменяет ассортимент: очищает таблицы и вставляет новые данные.
+        Использует массовую вставку (один INSERT для категорий, один для товаров).
+        """
+        from bot.services.assortment import AssortmentService
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # 1. Создаём/получаем ID всех нужных категорий
-                cat_ids = {}
-                for cat_name in cat_to_items.keys():
-                    cat_id = await ItemRepository.get_or_create_category(cat_name)
-                    cat_ids[cat_name] = cat_id
-                # 2. Подготавливаем данные для массовой вставки
-                all_rows = []
-                for cat_name, items in cat_to_items.items():
-                    cat_id = cat_ids[cat_name]
-                    for text, serial in items:
-                        is_booked = 'Бронь от' in text
-                        all_rows.append((text, serial, cat_id, is_booked))
-                # 3. Вставляем все товары одной командой COPY
-                if all_rows:
-                    async with conn.copy_records_to_table('items', columns=['text', 'serial', 'category_id', 'is_booked']) as copy:
-                        for row in all_rows:
-                            await copy.write_row(row)
-        # Инвалидируем кэш ассортимента
+                # 1. Очищаем всё (каскадное удаление)
+                await conn.execute('TRUNCATE TABLE categories CASCADE')
+
+                # 2. Вставляем категории одним запросом
+                category_names = [cat['header'] for cat in categories]
+                if category_names:
+                    # Формируем VALUES для массовой вставки
+                    values_placeholder = ', '.join(f"(${i})" for i in range(1, len(category_names) + 1))
+                    query = f'INSERT INTO categories (name) VALUES {values_placeholder}'
+                    await conn.execute(query, *category_names)
+
+                # 3. Получаем id категорий
+                rows = await conn.fetch('SELECT id, name FROM categories')
+                cat_id_map = {row['name']: row['id'] for row in rows}
+
+                # 4. Подготавливаем данные для товаров
+                items_data = []
+                for cat in categories:
+                    cat_id = cat_id_map[cat['header']]
+                    for item_text in cat['items']:
+                        serials = extract_serials(item_text)
+                        serial = serials[0].strip().upper() if serials else None
+                        is_booked = 'Бронь от' in item_text
+                        items_data.append((item_text, serial, cat_id, is_booked))
+
+                # 5. Вставляем товары одним массовым запросом
+                if items_data:
+                    # Формируем VALUES для каждого товара
+                    # (text, serial, category_id, is_booked)
+                    values_placeholder = []
+                    params = []
+                    idx = 1
+                    for text, serial, cat_id, is_booked in items_data:
+                        values_placeholder.append(f"(${idx}, ${idx+1}, ${idx+2}, ${idx+3})")
+                        params.extend([text, serial, cat_id, is_booked])
+                        idx += 4
+                    query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
+                    await conn.execute(query, *params)
+
         AssortmentService.invalidate_cache()
-        total_new = sum(len(items) for items in cat_to_items.values())
-        await callback.message.edit_text(f"✅ Добавлено {total_new} новых товаров.")
-    elif action == "no":
-        await callback.message.edit_text("❌ Добавление отменено.")
-    else:
-        await callback.message.edit_text("❌ Нет товаров для добавления.")
 
-    await state.clear()
+    @staticmethod
+    @retry_on_db_error()
+    async def clear_all_inventory():
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute('DELETE FROM categories')
 
-@router.message(ArrivalConfirmState.waiting_for_confirm, F.text.lower() == "отмена")
-async def cancel_arrival_confirm_by_text(message: Message, state: FSMContext):
-    await state.clear()
-    await message.reply("❌ Добавление отменено.")
+    @staticmethod
+    @retry_on_db_error()
+    async def add_deleted_item(item_id: int, text: str, serial: str, category_id: int, reason: str = 'manual'):
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute('''
+                INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                VALUES ($1, $2, $3, $4, $5)
+            ''', item_id, text, serial, category_id, reason)
 
-@router.message(ArrivalConfirmState.waiting_for_confirm)
-async def unexpected_message_in_arrival_confirm(message: Message, state: FSMContext):
-    await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите 'отмена').")
+    @staticmethod
+    @retry_on_db_error()
+    async def get_last_deleted_item() -> Optional[Dict]:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('''
+                SELECT * FROM deleted_items
+                WHERE restored = FALSE
+                ORDER BY deleted_at DESC
+                LIMIT 1
+            ''')
+            return dict(row) if row else None
+
+    @staticmethod
+    @retry_on_db_error()
+    async def restore_deleted_item(deleted_id: int) -> bool:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute('UPDATE deleted_items SET restored = TRUE WHERE id = $1', deleted_id)
+            return result == "UPDATE 1"
+
+    @staticmethod
+    @retry_on_db_error()
+    async def mark_item_booked(item_id: int, book_text: str):
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute('''
+                UPDATE items SET text = $1, is_booked = TRUE WHERE id = $2
+            ''', book_text, item_id)
