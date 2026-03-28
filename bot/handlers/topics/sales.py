@@ -12,7 +12,6 @@ from bot.db import get_pool
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Шаблоны для строк Trade In (игнорировать)
 TRADE_IN_PATTERNS = [
     r'trade\s*in',
     r'трейд\s*ин',
@@ -23,7 +22,6 @@ TRADE_IN_PATTERNS = [
 ]
 
 def remove_trade_in_lines(text: str) -> str:
-    """Удаляет строки, содержащие Trade In или его варианты."""
     lines = text.splitlines()
     filtered = []
     for line in lines:
@@ -58,16 +56,11 @@ async def handle_sales_message(message: Message):
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
-    # Удаляем строки с Trade In
     content = remove_trade_in_lines(content)
 
-    # 1. Извлекаем суммы оплаты (игнорируем П/О)
     payments = extract_payment_amounts(content, ignore_prepay=True)
-
-    # 2. Удаляем проданные товары (через SaleService)
     result = await SaleService.process_sale(content, message.chat.id, message.message_id)
 
-    # 3. Сохраняем клиента (всегда, если есть данные)
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
@@ -82,11 +75,11 @@ async def handle_sales_message(message: Message):
     except Exception as e:
         logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-    # 4. Сохраняем статистику продаж только если были удалены товары с серийными номерами
     count = len(result["sold_items"])
     logger.info(f"🔍 Продажа: найдено товаров с серийниками: {count}, sold_items={result['sold_items']}")
 
     if count > 0:
+        # Передаём message_id для уникальности
         await StatsRepository.add_sale(
             count=count,
             cash=payments['cash'],
@@ -95,13 +88,13 @@ async def handle_sales_message(message: Message):
             transfer=payments['transfer'],
             invoice=payments['invoice'],
             installment=payments['installment'],
-            is_accessory=False
+            is_accessory=False,
+            message_id=message.message_id
         )
         logger.info(f"✅ Продажа добавлена в статистику: товаров {count}, суммы: cash={payments['cash']}, term={payments['terminal']}, qr={payments['qr']}")
     else:
         logger.info("❌ Нет товаров с серийными номерами, статистика продаж НЕ сохранена (аксессуар или неверные серийники)")
 
-    # 5. Сохраняем платежи в daily_payments (всегда, даже если аксессуар)
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -113,7 +106,6 @@ async def handle_sales_message(message: Message):
                     )
                     logger.info(f"💸 Платёж сохранён: sale {pay_type} = {amount}")
 
-    # 6. Реакция и уведомления
     if result["sold_items"]:
         await message.react([ReactionTypeEmoji(emoji='🔥')])
     else:
