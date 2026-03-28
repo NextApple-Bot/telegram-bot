@@ -72,9 +72,21 @@ async def handle_sales_message(message: Message):
         )
         logger.info(f"Продажа: товаров {count}, суммы: cash={payments['cash']}, term={payments['terminal']}, qr={payments['qr']}")
     else:
-        logger.info("Нет товаров с серийными номерами, статистика не сохранена")
+        logger.info("Нет товаров с серийными номерами, статистика продаж не сохранена")
 
-    # 5. Реакция и уведомления
+    # 5. Сохраняем платежи в daily_payments (всегда, даже если аксессуар)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for pay_type, amount in payments.items():
+                if amount > 0:
+                    await conn.execute(
+                        'INSERT INTO daily_payments (type, payment_type, amount) VALUES ($1, $2, $3)',
+                        'sale', pay_type, amount
+                    )
+                    logger.info(f"Платёж сохранён: sale {pay_type} = {amount}")
+
+    # 6. Реакция и уведомления
     if result["sold_items"]:
         await message.react([ReactionTypeEmoji(emoji='🔥')])
     else:
