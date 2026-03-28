@@ -67,11 +67,24 @@ async def handle_preorder(message: Message):
 
                 # Сохраняем статистику предзаказа
                 await StatsRepository.add_preorder(**payments)
+
+                # Сохраняем платежи в daily_payments
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    async with conn.transaction():
+                        for pay_type, amount in payments.items():
+                            if amount > 0:
+                                await conn.execute(
+                                    'INSERT INTO daily_payments (type, payment_type, amount) VALUES ($1, $2, $3)',
+                                    'preorder', pay_type, amount
+                                )
+                                logger.info(f"Платёж предзаказа сохранён: {pay_type} = {amount}")
+
                 await message.react([ReactionTypeEmoji(emoji='👌')])
             else:
                 logger.info("Нет платежей в предзаказе, реакция не ставится")
 
-        # Обрабатываем каждый блок брони (брони не влияют на статистику предзаказов)
+        # Обрабатываем каждый блок брони (брони не влияют на статистику предзаказов и платежи)
         for idx in booking_indices:
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
@@ -112,6 +125,19 @@ async def handle_preorder(message: Message):
 
             # Сохраняем статистику предзаказа
             await StatsRepository.add_preorder(**payments)
+
+            # Сохраняем платежи в daily_payments
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    for pay_type, amount in payments.items():
+                        if amount > 0:
+                            await conn.execute(
+                                'INSERT INTO daily_payments (type, payment_type, amount) VALUES ($1, $2, $3)',
+                                'preorder', pay_type, amount
+                            )
+                            logger.info(f"Платёж предзаказа сохранён: {pay_type} = {amount}")
+
             await message.react([ReactionTypeEmoji(emoji='👌')])
         else:
             logger.info("Нет платежей, пропускаем.")
