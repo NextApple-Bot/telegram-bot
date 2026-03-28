@@ -402,28 +402,31 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             except Exception:
                 pass
 
-        # 1. Удаляем старые записи из daily_payments (за предыдущие дни)
+        # ===== ИСПРАВЛЕНИЕ: разделяем операции на два отдельных соединения =====
         pool = await get_pool()
+
+        # 1. Удаляем старые записи (за предыдущие дни)
         async with pool.acquire() as conn:
             await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) < CURRENT_DATE')
 
-        # 2. Получаем статистику продаж, предзаказов, броней
-        s = await StatsRepository.get_today_stats()
+        # 2. Получаем суммы за сегодня
+        async with pool.acquire() as conn:
+            rows = await conn.fetch('''
+                SELECT payment_type, SUM(amount) as total
+                FROM daily_payments
+                WHERE DATE(created_at) = CURRENT_DATE
+                GROUP BY payment_type
+            ''')
 
-        # 3. Получаем суммы по способам оплаты за сегодня из daily_payments
-        rows = await conn.fetch('''
-            SELECT payment_type, SUM(amount) as total
-            FROM daily_payments
-            WHERE DATE(created_at) = CURRENT_DATE
-            GROUP BY payment_type
-        ''')
         payments = {row['payment_type']: float(row['total']) for row in rows}
-        # Убедимся, что все типы есть (для отображения нулей)
         for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
             payments.setdefault(pt, 0.0)
         overall_total = sum(payments.values())
 
-        # Формируем текст отчёта
+        # 3. Статистика продаж, предзаказов, броней
+        s = await StatsRepository.get_today_stats()
+
+        # 4. Формируем текст
         text = f"📊 Статистика за {s['date']}:\n"
         text += f"• Продаж: {s['sales_count']}\n"
         text += f"• Предзаказов: {s['preorders_count']}\n"
