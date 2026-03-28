@@ -18,7 +18,7 @@ import os
 from datetime import datetime
 from aiogram.types import FSInputFile
 
-# Словари для хранения ID последних сообщений (чтобы удалять старые)
+# Словари для хранения ID последних сообщений
 last_stats_message = {}
 last_inventory_message = {}
 last_remains_message = {}
@@ -372,7 +372,7 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
 
 # -------------------------------------------------------------
-# ОСНОВНОЙ ОБРАБОТЧИК МЕНЮ (без финансов)
+# ОСНОВНОЙ ОБРАБОТЧИК МЕНЮ
 # -------------------------------------------------------------
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
@@ -401,13 +401,42 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                 await bot.delete_message(chat_id, last_stats_message[chat_id])
             except Exception:
                 pass
+
+        # 1. Удаляем старые записи из daily_payments (за предыдущие дни)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) < CURRENT_DATE')
+
+        # 2. Получаем статистику продаж, предзаказов, броней
         s = await StatsRepository.get_today_stats()
-        text = (
-            f"📊 Статистика за {s['date']}:\n"
-            f"• Предзаказов: {s['preorders_count']}\n"
-            f"• Броней: {s['bookings_count']}\n"
-            f"• Продаж: {s['sales_count']}"
-        )
+
+        # 3. Получаем суммы по способам оплаты за сегодня из daily_payments
+        rows = await conn.fetch('''
+            SELECT payment_type, SUM(amount) as total
+            FROM daily_payments
+            WHERE DATE(created_at) = CURRENT_DATE
+            GROUP BY payment_type
+        ''')
+        payments = {row['payment_type']: float(row['total']) for row in rows}
+        # Убедимся, что все типы есть (для отображения нулей)
+        for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
+            payments.setdefault(pt, 0.0)
+        overall_total = sum(payments.values())
+
+        # Формируем текст отчёта
+        text = f"📊 Статистика за {s['date']}:\n"
+        text += f"• Продаж: {s['sales_count']}\n"
+        text += f"• Предзаказов: {s['preorders_count']}\n"
+        text += f"• Броней: {s['bookings_count']}\n\n"
+        text += f"План - {config.PLAN_AMOUNT}.\n"
+        text += f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
+        text += f"2) Наличные - {payments['cash']:.0f}\n"
+        text += f"3) QR-код - {payments['qr']:.0f}\n"
+        text += f"4) Рассрочка - {payments['installment']:.0f}\n"
+        text += f"5) Оплата по счету - {payments['invoice']:.0f}\n"
+        text += f"6) Терминал - {payments['terminal']:.0f}\n"
+        text += f"7) Перевод - {payments['transfer']:.0f}"
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
         ])
