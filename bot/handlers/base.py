@@ -14,10 +14,6 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 async def show_inventory(bot: Bot, chat_id: int) -> Message | None:
-    """
-    Отправляет файл с текущим ассортиментом в указанный чат.
-    Возвращает отправленное сообщение или None.
-    """
     categories = await AssortmentService.load_inventory()
     if not categories:
         return await bot.send_message(chat_id, "📭 Ассортимент пуст.")
@@ -33,7 +29,6 @@ async def show_inventory(bot: Bot, chat_id: int) -> Message | None:
         os.unlink(tmp_path)
 
 async def show_help(bot: Bot, chat_id: int):
-    """Отправляет справочное сообщение со списком команд."""
     help_text = """
 👋 **Справка по командам бота**
 
@@ -44,27 +39,26 @@ async def show_help(bot: Bot, chat_id: int):
 • /help – эта справка
 
 **Экспорт данных (только для админа):**
-• /export\_clients – выгрузить всех клиентов в CSV
-• /export\_purchases – выгрузить все покупки в CSV
-• /export\_full\_report – полный отчёт (клиенты + покупки)
-• /client\_info <телефон/имя> – информация о клиенте
+• /export_clients – выгрузить всех клиентов в CSV
+• /export_purchases – выгрузить все покупки в CSV
+• /export_full_report – полный отчёт (клиенты + покупки)
+• /client_info <телефон/имя> – информация о клиенте
 
 **Управление категориями (админ):**
-• /show\_categories – список категорий с ID
-• /clean\_empty – удалить все пустые категории
-• /delete\_category <ID> – удалить пустую категорию
-• /merge\_categories <from\_id> <to\_id> – объединить категории (перенести товары)
+• /show_categories – список категорий с ID
+• /clean_empty – удалить все пустые категории
+• /delete_category <ID> – удалить пустую категорию
+• /merge_categories <from_id> <to_id> – объединить категории (перенести товары)
 
 **Управление данными (админ):**
-• /reset\_assortment – полностью очистить ассортимент
-• /delete\_client <ID> – удалить клиента и его покупки
-• /delete\_purchase <ID> – удалить конкретную покупку
+• /reset_assortment – полностью очистить ассортимент
+• /delete_client <ID> – удалить клиента и его покупки
+• /delete_purchase <ID> – удалить конкретную покупку
 • /undo – восстановить последний удалённый товар
 
 **Кнопки в меню:**
 • «Показать ассортимент» – аналог /inventory
 • «Статистика» – продажи/брони за сегодня
-• «Финансы» – суммы за сегодня
 • «Выгрузить ассортимент» – отправить ассортимент в топик
 • «Остатки» – остатки товаров (без брони и Б/У/NS)
 • «Клиенты по месяцам» – скачать данные за месяц
@@ -72,20 +66,18 @@ async def show_help(bot: Bot, chat_id: int):
     await bot.send_message(chat_id, help_text, parse_mode='Markdown')
 
 async def cancel_action(bot: Bot, chat_id: int, state: FSMContext):
-    """Отменяет текущее состояние FSM и отправляет подтверждение."""
     await state.clear()
     await bot.send_message(chat_id, "✅ Действие отменено.")
 
 def get_main_menu_keyboard():
-    """Возвращает inline-клавиатуру главного меню."""
+    """Возвращает inline-клавиатуру главного меню (без кнопки «Финансы»)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📦 Показать ассортимент", callback_data="menu:inventory"),
          InlineKeyboardButton(text="📊 Статистика", callback_data="menu:stats")],
-        [InlineKeyboardButton(text="💰 Финансы", callback_data="menu:finance"),
-         InlineKeyboardButton(text="📤 Выгрузить ассортимент", callback_data="menu:export_assortment")],
-        [InlineKeyboardButton(text="📦 Остатки", callback_data="menu:remains"),
-         InlineKeyboardButton(text="📅 Клиенты по месяцам", callback_data="menu:clients_by_month")],
-        [InlineKeyboardButton(text="🗑️ Очистить ассортимент", callback_data="menu:clear"),
-         InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
+        [InlineKeyboardButton(text="📤 Выгрузить ассортимент", callback_data="menu:export_assortment"),
+         InlineKeyboardButton(text="📦 Остатки", callback_data="menu:remains")],
+        [InlineKeyboardButton(text="📅 Клиенты по месяцам", callback_data="menu:clients_by_month"),
+         InlineKeyboardButton(text="🗑️ Очистить ассортимент", callback_data="menu:clear")],
+        [InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
          InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
     ])
