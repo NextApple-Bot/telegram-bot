@@ -60,8 +60,7 @@ class SaleService:
             is_accessory=is_accessory
         )
 
-        # Финансы теперь сохраняются в хендлере через TransactionRepository,
-        # поэтому вызов FinanceRepository.add_payments удалён
+        # Финансы теперь не сохраняются, поэтому вызов FinanceRepository удалён
 
         try:
             data_dict = parse_client_data(content)
