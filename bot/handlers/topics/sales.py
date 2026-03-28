@@ -1,3 +1,4 @@
+import re
 import logging
 from aiogram import F, Router
 from aiogram.types import Message, ReactionTypeEmoji
@@ -10,6 +11,27 @@ from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+# Шаблоны для строк Trade In (игнорировать)
+TRADE_IN_PATTERNS = [
+    r'trade\s*in',
+    r'трейд\s*ин',
+    r'trade\-in',
+    r'trade–in',
+    r'trade—in',
+    r'trade‑in',
+]
+
+def remove_trade_in_lines(text: str) -> str:
+    """Удаляет строки, содержащие Trade In или его варианты."""
+    lines = text.splitlines()
+    filtered = []
+    for line in lines:
+        if any(re.search(p, line, re.IGNORECASE) for p in TRADE_IN_PATTERNS):
+            logger.info(f"🔧 Игнорируем строку с Trade In: {line[:50]}")
+            continue
+        filtered.append(line)
+    return '\n'.join(filtered)
 
 async def is_message_processed(chat_id: int, message_id: int) -> bool:
     pool = await get_pool()
@@ -36,6 +58,9 @@ async def handle_sales_message(message: Message):
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
+    # Удаляем строки с Trade In
+    content = remove_trade_in_lines(content)
+
     # 1. Извлекаем суммы оплаты (игнорируем П/О)
     payments = extract_payment_amounts(content, ignore_prepay=True)
 
@@ -59,6 +84,8 @@ async def handle_sales_message(message: Message):
 
     # 4. Сохраняем статистику продаж только если были удалены товары с серийными номерами
     count = len(result["sold_items"])
+    logger.info(f"🔍 Продажа: найдено товаров с серийниками: {count}, sold_items={result['sold_items']}")
+
     if count > 0:
         await StatsRepository.add_sale(
             count=count,
@@ -70,9 +97,9 @@ async def handle_sales_message(message: Message):
             installment=payments['installment'],
             is_accessory=False
         )
-        logger.info(f"Продажа: товаров {count}, суммы: cash={payments['cash']}, term={payments['terminal']}, qr={payments['qr']}")
+        logger.info(f"✅ Продажа добавлена в статистику: товаров {count}, суммы: cash={payments['cash']}, term={payments['terminal']}, qr={payments['qr']}")
     else:
-        logger.info("Нет товаров с серийными номерами, статистика продаж не сохранена")
+        logger.info("❌ Нет товаров с серийными номерами, статистика продаж НЕ сохранена (аксессуар или неверные серийники)")
 
     # 5. Сохраняем платежи в daily_payments (всегда, даже если аксессуар)
     pool = await get_pool()
@@ -84,7 +111,7 @@ async def handle_sales_message(message: Message):
                         'INSERT INTO daily_payments (type, payment_type, amount) VALUES ($1, $2, $3)',
                         'sale', pay_type, amount
                     )
-                    logger.info(f"Платёж сохранён: sale {pay_type} = {amount}")
+                    logger.info(f"💸 Платёж сохранён: sale {pay_type} = {amount}")
 
     # 6. Реакция и уведомления
     if result["sold_items"]:
