@@ -318,9 +318,15 @@ async def process_reset_stats(callback: CallbackQuery):
                 [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_stats:yes"),
                  InlineKeyboardButton(text="❌ Нет", callback_data="reset_stats:no")]
             ])
-            await callback.message.edit_text("Вы уверены, что хотите обнулить статистику?", reply_markup=keyboard)
+            await callback.message.edit_text("Вы уверены, что хотите обнулить статистику и финансовые суммы за сегодня?", reply_markup=keyboard)
         elif action == "yes":
+            # Сбрасываем статистику продаж, предзаказов, броней
             await StatsRepository.reset_today_stats()
+            # Сбрасываем платежи за сегодня
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = CURRENT_DATE')
+            # Обновляем отображение статистики
             s = await StatsRepository.get_today_stats()
             text = (
                 f"📊 Статистика за {s['date']}:\n"
@@ -402,14 +408,13 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             except Exception:
                 pass
 
-        # ===== ИСПРАВЛЕНИЕ: разделяем операции на два отдельных соединения =====
         pool = await get_pool()
 
-        # 1. Удаляем старые записи (за предыдущие дни)
+        # Удаляем старые записи (за предыдущие дни)
         async with pool.acquire() as conn:
             await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) < CURRENT_DATE')
 
-        # 2. Получаем суммы за сегодня
+        # Получаем суммы за сегодня
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT payment_type, SUM(amount) as total
@@ -423,10 +428,8 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
             payments.setdefault(pt, 0.0)
         overall_total = sum(payments.values())
 
-        # 3. Статистика продаж, предзаказов, броней
         s = await StatsRepository.get_today_stats()
 
-        # 4. Формируем текст
         text = f"📊 Статистика за {s['date']}:\n"
         text += f"• Продаж: {s['sales_count']}\n"
         text += f"• Предзаказов: {s['preorders_count']}\n"
