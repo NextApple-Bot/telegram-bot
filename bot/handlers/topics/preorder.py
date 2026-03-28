@@ -6,8 +6,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 from bot import config
 from bot.services.booking import BookingService
 from bot.repositories import StatsRepository, ClientRepository
-from bot.repositories.transaction import TransactionRepository
-from bot.utils.parser import extract_payment_amounts, extract_prepayments, parse_client_data
+from bot.utils.parser import extract_prepayments, parse_client_data
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
@@ -52,11 +51,10 @@ async def handle_preorder(message: Message):
             payments = extract_prepayments('\n'.join(preorder_lines))
             if any(payments.values()):
                 # Сохраняем клиента для предзаказа
-                client_id = None
                 try:
                     data = parse_client_data('\n'.join(preorder_lines))
                     if data['phones'] or data['full_name']:
-                        client_id = await ClientRepository.get_or_create_client(
+                        await ClientRepository.get_or_create_client(
                             phone=data['main_phone'],
                             phones=data['phones'],
                             full_name=data['full_name'],
@@ -67,20 +65,13 @@ async def handle_preorder(message: Message):
                 except Exception as e:
                     logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-                for pay_type, amount in payments.items():
-                    if amount > 0:
-                        await TransactionRepository.add_transaction(
-                            t_type='preorder',
-                            payment_type=pay_type,
-                            amount=amount,
-                            message_id=message.message_id,
-                            client_id=client_id
-                        )
+                # Сохраняем статистику предзаказа
+                await StatsRepository.add_preorder(**payments)
                 await message.react([ReactionTypeEmoji(emoji='👌')])
             else:
                 logger.info("Нет платежей в предзаказе, реакция не ставится")
 
-        # Обрабатываем каждый блок брони (транзакции для броней не создаём)
+        # Обрабатываем каждый блок брони (брони не влияют на статистику предзаказов)
         for idx in booking_indices:
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
@@ -105,11 +96,10 @@ async def handle_preorder(message: Message):
         logger.info(f"Предзаказ без броней: платежи {payments}")
         if any(payments.values()):
             # Сохраняем клиента
-            client_id = None
             try:
                 data = parse_client_data(content)
                 if data['phones'] or data['full_name']:
-                    client_id = await ClientRepository.get_or_create_client(
+                    await ClientRepository.get_or_create_client(
                         phone=data['main_phone'],
                         phones=data['phones'],
                         full_name=data['full_name'],
@@ -120,15 +110,8 @@ async def handle_preorder(message: Message):
             except Exception as e:
                 logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-            for pay_type, amount in payments.items():
-                if amount > 0:
-                    await TransactionRepository.add_transaction(
-                        t_type='preorder',
-                        payment_type=pay_type,
-                        amount=amount,
-                        message_id=message.message_id,
-                        client_id=client_id
-                    )
+            # Сохраняем статистику предзаказа
+            await StatsRepository.add_preorder(**payments)
             await message.react([ReactionTypeEmoji(emoji='👌')])
         else:
             logger.info("Нет платежей, пропускаем.")
