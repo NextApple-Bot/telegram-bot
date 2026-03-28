@@ -16,20 +16,22 @@ class StatsRepository:
         transfer: float = 0,
         invoice: float = 0,
         installment: float = 0,
-        is_accessory: bool = False
+        is_accessory: bool = False,
+        message_id: int = None
     ):
-        """Добавляет запись о продаже."""
+        """Добавляет запись о продаже с уникальным message_id."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
-                INSERT INTO sales (item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory)
+                INSERT INTO sales (item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (message_id) DO NOTHING
+            ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
 
+    # Остальные методы без изменений
     @staticmethod
     @retry_on_db_error()
     async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
-        """Добавляет запись о предзаказе."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
@@ -40,7 +42,6 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def add_booking(item_id: int, total_amount: float):
-        """Добавляет запись о брони."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('''
@@ -50,7 +51,6 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_today_stats() -> Dict:
-        """Возвращает статистику за сегодняшний день."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -115,7 +115,6 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def reset_today_stats():
-        """Удаляет всю статистику за сегодня (для тестов/отладки)."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
