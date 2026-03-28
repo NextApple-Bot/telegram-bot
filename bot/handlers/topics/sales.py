@@ -42,7 +42,7 @@ async def handle_sales_message(message: Message):
     # 2. Удаляем проданные товары (через SaleService)
     result = await SaleService.process_sale(content, message.chat.id, message.message_id)
 
-    # 3. Сохраняем клиента
+    # 3. Сохраняем клиента (всегда, если есть данные)
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
@@ -57,19 +57,22 @@ async def handle_sales_message(message: Message):
     except Exception as e:
         logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-    # 4. Сохраняем статистику продаж (количество продаж)
+    # 4. Сохраняем статистику продаж только если были удалены товары с серийными номерами
     count = len(result["sold_items"])
-    is_accessory = (count == 0)
-    await StatsRepository.add_sale(
-        count=count,
-        cash=payments['cash'],
-        terminal=payments['terminal'],
-        qr=payments['qr'],
-        transfer=payments['transfer'],
-        invoice=payments['invoice'],
-        installment=payments['installment'],
-        is_accessory=is_accessory
-    )
+    if count > 0:
+        await StatsRepository.add_sale(
+            count=count,
+            cash=payments['cash'],
+            terminal=payments['terminal'],
+            qr=payments['qr'],
+            transfer=payments['transfer'],
+            invoice=payments['invoice'],
+            installment=payments['installment'],
+            is_accessory=False
+        )
+        logger.info(f"Продажа: товаров {count}, суммы: cash={payments['cash']}, term={payments['terminal']}, qr={payments['qr']}")
+    else:
+        logger.info("Нет товаров с серийными номерами, статистика не сохранена")
 
     # 5. Реакция и уведомления
     if result["sold_items"]:
