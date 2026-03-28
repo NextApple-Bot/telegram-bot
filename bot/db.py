@@ -54,8 +54,21 @@ async def get_pool():
 async def init_db():
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # ... (все существующие таблицы, включая sales, preorders, bookings, processed_messages и т.д.)
-        # Добавляем новую таблицу для платежей
+        # ... (все существующие таблицы)
+        # Изменяем таблицу sales: добавляем message_id и уникальное ограничение
+        await conn.execute('''
+            ALTER TABLE sales ADD COLUMN IF NOT EXISTS message_id BIGINT
+        ''')
+        await conn.execute('''
+            DO $$ 
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_message_id_key') THEN
+                    ALTER TABLE sales ADD CONSTRAINT sales_message_id_key UNIQUE (message_id);
+                END IF;
+            END $$;
+        ''')
+
+        # Добавляем новую таблицу daily_payments (если её нет)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS daily_payments (
                 id SERIAL PRIMARY KEY,
@@ -65,5 +78,4 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Индекс для быстрой очистки старых записей
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_created_at ON daily_payments(created_at)')
