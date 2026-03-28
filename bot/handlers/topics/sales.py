@@ -5,7 +5,6 @@ from aiogram.types import Message, ReactionTypeEmoji
 from bot import config
 from bot.services.sale import SaleService
 from bot.repositories import StatsRepository, ClientRepository
-from bot.repositories.transaction import TransactionRepository
 from bot.utils.parser import extract_payment_amounts, parse_client_data
 from bot.db import get_pool
 
@@ -44,7 +43,6 @@ async def handle_sales_message(message: Message):
     result = await SaleService.process_sale(content, message.chat.id, message.message_id)
 
     # 3. Сохраняем клиента
-    client_id = None
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
@@ -59,19 +57,7 @@ async def handle_sales_message(message: Message):
     except Exception as e:
         logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-    # 4. Создаём транзакции (финансы)
-    for pay_type, amount in payments.items():
-        if amount > 0:
-            await TransactionRepository.add_transaction(
-                t_type='sale',
-                payment_type=pay_type,
-                amount=amount,
-                message_id=message.message_id,
-                client_id=client_id
-            )
-            logger.info(f"Создана транзакция: {pay_type} = {amount}")
-
-    # 5. Сохраняем статистику продаж (количество продаж)
+    # 4. Сохраняем статистику продаж (количество продаж)
     count = len(result["sold_items"])
     is_accessory = (count == 0)
     await StatsRepository.add_sale(
@@ -85,7 +71,7 @@ async def handle_sales_message(message: Message):
         is_accessory=is_accessory
     )
 
-    # 6. Реакция и уведомления
+    # 5. Реакция и уведомления
     if result["sold_items"]:
         await message.react([ReactionTypeEmoji(emoji='🔥')])
     else:
