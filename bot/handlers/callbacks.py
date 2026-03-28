@@ -430,6 +430,12 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
 
         s = await StatsRepository.get_today_stats()
 
+        # ========== ДОБАВЛЕННОЕ ЛОГИРОВАНИЕ ==========
+        async with pool.acquire() as conn:
+            sales_records = await conn.fetchval('SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = CURRENT_DATE')
+            logger.info(f"📊 Запись в stats: sales_count из таблицы sales = {sales_records}, а в репозитории = {s['sales_count']}")
+        # ===========================================
+
         text = f"📊 Статистика за {s['date']}:\n"
         text += f"• Продаж: {s['sales_count']}\n"
         text += f"• Предзаказов: {s['preorders_count']}\n"
