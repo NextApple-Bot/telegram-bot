@@ -4,7 +4,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from bot import config
 from bot.services.assortment import AssortmentService
-from bot.repositories import StatsRepository, ClientRepository, ItemRepository, FinanceRepository
+from bot.repositories import StatsRepository, ClientRepository, ItemRepository
 from bot.db import get_pool
 from bot.utils.sort import get_full_model_name, detect_sim_type
 from bot.utils.markdown import escape_markdown_v1
@@ -20,7 +20,6 @@ from aiogram.types import FSInputFile
 
 # Словари для хранения ID последних сообщений (чтобы удалять старые)
 last_stats_message = {}
-last_finance_message = {}
 last_inventory_message = {}
 last_remains_message = {}
 last_clients_month_message = {}
@@ -303,7 +302,7 @@ async def process_delete_purchase(callback: CallbackQuery):
         await conn.execute('DELETE FROM purchases WHERE id = $1', purchase_id)
         await callback.message.edit_text(f"✅ Покупка ID {purchase_id} удалена.")
 
-# ---------- Обработчики сброса статистики и финансов ----------
+# ---------- Обработчики сброса статистики ----------
 @router.callback_query(F.data.startswith("reset_stats:"))
 async def process_reset_stats(callback: CallbackQuery):
     try:
@@ -348,80 +347,6 @@ async def process_reset_stats(callback: CallbackQuery):
         logger.exception(f"Ошибка в process_reset_stats: {e}")
         await callback.message.answer("❌ Произошла ошибка")
 
-@router.callback_query(F.data.startswith("reset_finances:"))
-async def process_reset_finances(callback: CallbackQuery):
-    try:
-        await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
-    action = callback.data.split(":")[1]
-    chat_id = callback.message.chat.id
-    try:
-        if action == "confirm":
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_finances:yes"),
-                 InlineKeyboardButton(text="❌ Нет", callback_data="reset_finances:no")]
-            ])
-            await callback.message.edit_text("Вы уверены, что хотите обнулить финансовые суммы?", reply_markup=keyboard)
-        elif action == "yes":
-            # Удаляем транзакции за сегодня
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                await conn.execute('DELETE FROM transactions WHERE DATE(created_at) = CURRENT_DATE')
-            # Обновляем отображение
-            fin = await FinanceRepository.get_today()
-            cash_total = fin['cash']
-            terminal_total = fin['terminal']
-            qr_total = fin['qr']
-            transfer_total = fin['transfer']
-            invoice_total = fin['invoice']
-            installment_total = fin['installment']
-            bookings_total = fin['bookings_total']
-            overall_total = fin['total']
-
-            text = (
-                f"План - {config.PLAN_AMOUNT}.\n"
-                f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
-                f"2) Наличные - {cash_total:.0f}\n"
-                f"3) QR-код - {qr_total:.0f}\n"
-                f"4) Рассрочка - {installment_total:.0f}\n"
-                f"5) Оплата по счету - {invoice_total:.0f}\n"
-                f"6) Терминал - {terminal_total:.0f}\n"
-                f"7) Перевод - {transfer_total:.0f}"
-            )
-            await callback.message.edit_text(text)
-            last_finance_message[chat_id] = callback.message.message_id
-        elif action == "no":
-            fin = await FinanceRepository.get_today()
-            cash_total = fin['cash']
-            terminal_total = fin['terminal']
-            qr_total = fin['qr']
-            transfer_total = fin['transfer']
-            invoice_total = fin['invoice']
-            installment_total = fin['installment']
-            bookings_total = fin['bookings_total']
-            overall_total = fin['total']
-
-            text = (
-                f"План - {config.PLAN_AMOUNT}.\n"
-                f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
-                f"2) Наличные - {cash_total:.0f}\n"
-                f"3) QR-код - {qr_total:.0f}\n"
-                f"4) Рассрочка - {installment_total:.0f}\n"
-                f"5) Оплата по счету - {invoice_total:.0f}\n"
-                f"6) Терминал - {terminal_total:.0f}\n"
-                f"7) Перевод - {transfer_total:.0f}"
-            )
-            await callback.message.edit_text(text)
-            last_finance_message[chat_id] = callback.message.message_id
-    except TelegramBadRequest as e:
-        if "message is not modified" not in str(e):
-            raise
-    except Exception as e:
-        logger.exception(f"Ошибка в process_reset_finances: {e}")
-        await callback.message.answer("❌ Произошла ошибка")
-
 @router.callback_query(F.data.startswith("confirm_clear:"))
 async def process_confirm_clear(callback: CallbackQuery, bot):
     try:
@@ -438,8 +363,6 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
             await StatsRepository.reset_today_stats()
             if chat_id in last_stats_message:
                 del last_stats_message[chat_id]
-            if chat_id in last_finance_message:
-                del last_finance_message[chat_id]
             await callback.message.edit_text("✅ Ассортимент полностью очищен. Статистика сброшена.")
         else:
             await callback.message.edit_text("❌ Очистка отменена.")
@@ -449,7 +372,7 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
 
 # -------------------------------------------------------------
-# ОСНОВНОЙ ОБРАБОТЧИК МЕНЮ
+# ОСНОВНОЙ ОБРАБОТЧИК МЕНЮ (без финансов)
 # -------------------------------------------------------------
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
@@ -490,38 +413,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         ])
         msg = await callback.message.answer(text, reply_markup=keyboard)
         last_stats_message[chat_id] = msg.message_id
-
-    elif action == "finance":
-        if chat_id in last_finance_message:
-            try:
-                await bot.delete_message(chat_id, last_finance_message[chat_id])
-            except Exception:
-                pass
-        fin = await FinanceRepository.get_today()
-        cash_total = fin['cash']
-        terminal_total = fin['terminal']
-        qr_total = fin['qr']
-        transfer_total = fin['transfer']
-        invoice_total = fin['invoice']
-        installment_total = fin['installment']
-        bookings_total = fin['bookings_total']
-        overall_total = fin['total']
-
-        text = (
-            f"План - {config.PLAN_AMOUNT}.\n"
-            f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
-            f"2) Наличные - {cash_total:.0f}\n"
-            f"3) QR-код - {qr_total:.0f}\n"
-            f"4) Рассрочка - {installment_total:.0f}\n"
-            f"5) Оплата по счету - {invoice_total:.0f}\n"
-            f"6) Терминал - {terminal_total:.0f}\n"
-            f"7) Перевод - {transfer_total:.0f}"
-        )
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Сбросить финансы", callback_data="reset_finances:confirm")]
-        ])
-        msg = await callback.message.answer(text, reply_markup=keyboard)
-        last_finance_message[chat_id] = msg.message_id
 
     elif action == "export_assortment":
         await export_assortment_to_topic(bot, user_id)
@@ -578,24 +469,3 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
 
     else:
         await callback.message.answer("Неизвестная команда")
-
-# ---------- Обработчик для очистки всех транзакций ----------
-@router.callback_query(F.data.startswith("clear_all_tx:"))
-async def process_clear_all_transactions(callback: CallbackQuery):
-    try:
-        await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-    
-    action = callback.data.split(":")[1]
-    
-    if action == "confirm":
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                result = await conn.execute('DELETE FROM transactions')
-                deleted_count = int(result.split()[1]) if result.startswith('DELETE') else 0
-        
-        await callback.message.edit_text(f"✅ Удалено {deleted_count} транзакций (за все дни).")
-    elif action == "cancel":
-        await callback.message.edit_text("❌ Очистка отменена.")
