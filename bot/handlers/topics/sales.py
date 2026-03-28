@@ -46,7 +46,7 @@ async def handle_sales_message(message: Message):
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
-            client_id = await ClientRepository.get_or_create_client(
+            await ClientRepository.get_or_create_client(
                 phone=data['main_phone'],
                 phones=data['phones'],
                 full_name=data['full_name'],
