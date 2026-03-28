@@ -3,14 +3,13 @@ import json
 import tempfile
 import os
 import logging
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
 from bot import config
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
-from bot.repositories.transaction import TransactionRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.markdown import escape_markdown_v1
 from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
@@ -21,7 +20,6 @@ logger = logging.getLogger(__name__)
 def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
 
-# ---------- Основные команды ----------
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     logger.info(f"🔥 Команда /start получена от {message.from_user.id}")
@@ -460,95 +458,3 @@ async def cmd_chatid(message: Message):
     else:
         response += "Thread ID: отсутствует (сообщение не в топике)"
     await message.reply(response, parse_mode="Markdown")
-
-# ---------- Команды для управления транзакциями ----------
-@router.message(Command("fix_transaction"))
-async def cmd_fix_transaction(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
-        return
-    args = message.text.split()
-    if len(args) != 3:
-        await message.answer("❌ Используйте: /fix_transaction <id> <new_amount>")
-        return
-    try:
-        tx_id = int(args[1])
-        new_amount = float(args[2])
-    except ValueError:
-        await message.answer("❌ ID и сумма должны быть числами")
-        return
-    success = await TransactionRepository.update_transaction_amount(tx_id, new_amount)
-    if success:
-        await message.answer(f"✅ Транзакция {tx_id} исправлена на {new_amount}")
-    else:
-        await message.answer(f"❌ Транзакция {tx_id} не найдена")
-
-@router.message(Command("delete_transaction"))
-async def cmd_delete_transaction(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
-        return
-    args = message.text.split()
-    if len(args) != 2:
-        await message.answer("❌ Используйте: /delete_transaction <id>")
-        return
-    try:
-        tx_id = int(args[1])
-    except ValueError:
-        await message.answer("❌ ID должен быть числом")
-        return
-    success = await TransactionRepository.delete_transaction(tx_id)
-    if success:
-        await message.answer(f"✅ Транзакция {tx_id} удалена")
-    else:
-        await message.answer(f"❌ Транзакция {tx_id} не найдена")
-
-@router.message(Command("reset_finances"))
-async def cmd_reset_finances(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
-        return
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            result = await conn.execute('DELETE FROM transactions WHERE DATE(created_at) = CURRENT_DATE')
-    await message.answer(f"✅ Удалено {result.split()[1]} транзакций за сегодня")
-
-# ---------- КОМАНДА: показать транзакции ----------
-@router.message(Command("show_transactions"))
-async def cmd_show_transactions(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
-        return
-    from datetime import date
-    today = date.today()
-    totals = await TransactionRepository.get_totals_for_date(today)
-    transactions = await TransactionRepository.get_transactions_for_date(today)
-    if not transactions:
-        await message.answer("📭 Нет транзакций за сегодня.")
-        return
-    text = f"📋 Транзакции за {today}:\n"
-    for tx in transactions:
-        text += f"ID {tx['id']}: {tx['payment_type']} {tx['amount']} ({tx['type']})\n"
-    text += f"\nИтого: {sum(totals.values())}"
-    await message.answer(text)
-
-# ---------- НОВАЯ КОМАНДА: очистить все транзакции ----------
-@router.message(Command("clear_all_transactions"))
-async def cmd_clear_all_transactions(message: Message):
-    if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
-        return
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚠️ ДА, УДАЛИТЬ ВСЁ", callback_data="clear_all_tx:confirm")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="clear_all_tx:cancel")]
-    ])
-    
-    await message.answer(
-        "⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит ВСЕ финансовые транзакции** (за все дни).\n\n"
-        "Статистика продаж и товары не пострадают.\n\n"
-        "Вы уверены?",
-        reply_markup=keyboard,
-        parse_mode='Markdown'
-    )
