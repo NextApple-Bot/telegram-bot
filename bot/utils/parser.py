@@ -4,23 +4,17 @@ from typing import Dict
 
 logger = logging.getLogger(__name__)
 
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 def is_likely_phone_or_serial(num_str: str) -> bool:
     """
     Проверяет, похоже ли число на телефонный номер или серийный номер.
-    Возвращает True, если строка состоит только из цифр, длина ≥ 10,
-    и начинается с 7 или 8 (телефон) либо любая длинная цифровая последовательность.
     """
     if not num_str.isdigit():
         return False
     if len(num_str) >= 10:
-        # Если начинается с 7 или 8 – скорее всего телефон
         if num_str.startswith('7') or num_str.startswith('8'):
             return True
-        # Любая другая длинная цифровая последовательность – вероятно серийник
         return True
     return False
-
 
 def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
     """
@@ -109,7 +103,6 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
 
     return results
 
-
 def extract_prepayments(text: str) -> Dict[str, float]:
     """
     Извлекает суммы предоплаты (строки с П/О или предоплата) и определяет тип оплаты.
@@ -123,7 +116,6 @@ def extract_prepayments(text: str) -> Dict[str, float]:
         return {key: 0.0 for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
     prepay_text = '\n'.join(lines)
     return extract_payment_amounts(prepay_text, ignore_prepay=False)
-
 
 def parse_client_data(text: str) -> dict:
     """
