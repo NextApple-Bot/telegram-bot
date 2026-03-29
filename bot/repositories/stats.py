@@ -53,6 +53,7 @@ class StatsRepository:
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
+            # Продажи
             sale_sums = await conn.fetchrow('''
                 SELECT 
                     COALESCE(SUM(cash),0) as cash,
@@ -66,6 +67,7 @@ class StatsRepository:
                 WHERE DATE(sold_at) = $1
             ''', today)
 
+            # Предзаказы
             pre_sums = await conn.fetchrow('''
                 SELECT 
                     COALESCE(SUM(cash),0) as cash,
@@ -79,6 +81,7 @@ class StatsRepository:
                 WHERE DATE(created_at) = $1
             ''', today)
 
+            # Брони
             book_sums = await conn.fetchrow('''
                 SELECT 
                     COALESCE(SUM(total_amount),0) as total,
@@ -114,6 +117,7 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def reset_today_stats():
+        """Удаляет всю статистику за сегодня и финансовые платежи за сегодня."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -121,3 +125,5 @@ class StatsRepository:
                 await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
                 await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
                 await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
+                # Удаляем также финансовые записи за сегодня
+                await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = $1', today)
