@@ -4,19 +4,30 @@ from typing import Dict
 
 logger = logging.getLogger(__name__)
 
+# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 def is_likely_phone_or_serial(num_str: str) -> bool:
     """
     Проверяет, похоже ли число на телефонный номер или серийный номер.
+    Возвращает True, если строка состоит только из цифр, длина ≥ 10,
+    и начинается с 7 или 8 (телефон) либо любая длинная цифровая последовательность.
     """
     if not num_str.isdigit():
         return False
     if len(num_str) >= 10:
+        # Если начинается с 7 или 8 – скорее всего телефон
         if num_str.startswith('7') or num_str.startswith('8'):
             return True
+        # Любая другая длинная цифровая последовательность – вероятно серийник
         return True
     return False
 
+
 def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
+    """
+    Извлекает суммы оплаты из текста.
+    Возвращает словарь с ключами: cash, terminal, qr, transfer, invoice, installment.
+    Если ignore_prepay=True, строки с П/О или предоплатой удаляются.
+    """
     patterns = {
         'cash': [r'Наличными', r'Наличные', r'наличными'],
         'terminal': [r'Терминал'],
@@ -26,6 +37,7 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         'installment': [r'Рассрочка'],
     }
 
+    # 1. Удаление строк с предоплатой (если требуется)
     if ignore_prepay:
         lines = []
         for line in text.splitlines():
@@ -34,49 +46,75 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
             lines.append(line)
         text = '\n'.join(lines)
 
-    number_pattern = r'(\d[\d\s]*(?:[.,]\d+)?)'
+    # 2. Разбиваем текст на строки для точного позиционирования
+    lines = text.splitlines()
     results = {key: 0.0 for key in patterns}
 
-    # Находим все числа и фильтруем
-    numbers = []
-    for match in re.finditer(number_pattern, text):
-        num_str = match.group(1).replace(' ', '').replace(',', '.')
-        try:
-            amount = float(num_str)
+    # 3. Проходим по каждой строке отдельно
+    for line in lines:
+        # Ищем все числа в строке
+        for match in re.finditer(r'(\d[\d\s]*(?:[.,]\d+)?)', line):
+            num_str = match.group(1).replace(' ', '').replace(',', '.')
+            try:
+                amount = float(num_str)
+            except ValueError:
+                continue
+
+            # Фильтр 1: слишком большие суммы (> 10 млн)
             if amount > 10_000_000:
                 logger.info(f"Пропущено слишком большое число: {amount}")
                 continue
+
+            # Фильтр 2: телефонные номера и серийники
             if is_likely_phone_or_serial(num_str):
                 logger.info(f"Пропущено число, похожее на телефон/серийник: {num_str}")
                 continue
-            numbers.append((amount, match.start()))
-        except ValueError:
-            continue
 
-    # Для каждого числа ищем ключевое слово в окрестности (50 символов влево/вправо)
-    for amount, pos in numbers:
-        left = max(0, pos - 50)
-        right = min(len(text), pos + len(str(int(amount))) + 50)
-        context = text[left:right]
+            # Фильтр 3: число в скобках без ключевого слова оплаты
+            # Найдём открывающую и закрывающую скобку, если число внутри них
+            open_paren = line.rfind('(', 0, match.start())
+            if open_paren != -1:
+                close_paren = line.find(')', match.start() + len(match.group()))
+                if close_paren != -1 and close_paren > open_paren:
+                    bracket_content = line[open_paren+1:close_paren]
+                    # Проверяем, есть ли в скобках ключевое слово оплаты
+                    found_keyword = False
+                    for kw_list in patterns.values():
+                        for kw in kw_list:
+                            if re.search(kw, bracket_content, re.IGNORECASE):
+                                found_keyword = True
+                                break
+                        if found_keyword:
+                            break
+                    if not found_keyword:
+                        logger.info(f"Пропущено число в скобках без ключевого слова оплаты: {num_str}")
+                        continue
 
-        found_type = None
-        for pay_type, keywords in patterns.items():
-            for kw in keywords:
-                if re.search(kw, context, re.IGNORECASE):
-                    found_type = pay_type
+            # Определяем тип оплаты: ищем ключевое слово в этой же строке
+            found_type = None
+            for pay_type, keywords in patterns.items():
+                for kw in keywords:
+                    if re.search(kw, line, re.IGNORECASE):
+                        found_type = pay_type
+                        break
+                if found_type:
                     break
-            if found_type:
-                break
 
-        if found_type:
-            results[found_type] += amount
-        else:
-            # Если тип не найден, возможно, это общая сумма – игнорируем
-            pass
+            if found_type:
+                results[found_type] += amount
+                logger.info(f"➕ {found_type} += {amount} (строка: {line[:80]})")
+            else:
+                # Если тип не найден, возможно это общая сумма – игнорируем
+                pass
 
     return results
 
+
 def extract_prepayments(text: str) -> Dict[str, float]:
+    """
+    Извлекает суммы предоплаты (строки с П/О или предоплата) и определяет тип оплаты.
+    Возвращает словарь с ключами: cash, terminal, qr, transfer, invoice, installment.
+    """
     lines = []
     for line in text.splitlines():
         if re.search(r'П[/\\]О|предоплата', line, re.IGNORECASE):
@@ -86,7 +124,13 @@ def extract_prepayments(text: str) -> Dict[str, float]:
     prepay_text = '\n'.join(lines)
     return extract_payment_amounts(prepay_text, ignore_prepay=False)
 
+
 def parse_client_data(text: str) -> dict:
+    """
+    Извлекает данные клиента из текста сообщения.
+    Возвращает словарь с полями:
+    full_name, phones, telegram_username, social_network, referral_source, items, payments, total, main_phone.
+    """
     result = {
         'full_name': None,
         'phones': [],
@@ -167,7 +211,7 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
-        # Суммы – используем общую функцию (для продаж)
+        # Суммы – используем основную функцию (для продаж)
         payments = extract_payment_amounts(line, ignore_prepay=False)
         for typ, val in payments.items():
             if typ in result['payments']:
@@ -175,7 +219,7 @@ def parse_client_data(text: str) -> dict:
             else:
                 result['payments'][typ] = val
 
-    # Убедимся, что все нужные ключи присутствуют
+    # Гарантируем наличие всех ключей
     for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
         if key not in result['payments']:
             result['payments'][key] = 0.0
