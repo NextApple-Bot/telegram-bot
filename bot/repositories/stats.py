@@ -28,7 +28,6 @@ class StatsRepository:
                 ON CONFLICT (message_id) DO NOTHING
             ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
 
-    # Остальные методы без изменений
     @staticmethod
     @retry_on_db_error()
     async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
