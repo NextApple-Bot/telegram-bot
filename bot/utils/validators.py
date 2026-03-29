@@ -4,16 +4,19 @@ from typing import List
 def extract_serials(text: str) -> List[str]:
     """
     Извлекает серийные номера из текста.
-    Ищет содержимое круглых скобок, которое:
-    - содержит символ '№' (любая длина)
-    - ИЛИ состоит только из букв и цифр (A-Z, a-z, 0-9) длиной от 5 до 30 символов
-    - ИЛИ состоит только из цифр длиной от 10 символов (для старых форматов)
     Возвращает список уникальных серийных номеров в верхнем регистре.
     """
+    if not isinstance(text, str):
+        return []
     serials = set()
     matches = re.finditer(r'\(([^)]+)\)', text)
     for match in matches:
-        candidate = match.group(1).strip()
+        candidate = match.group(1)
+        if candidate is None:
+            continue
+        candidate = candidate.strip()
+        if not candidate:
+            continue
         # Если есть символ '№' – сразу добавляем
         if '№' in candidate:
             serials.add(candidate.upper())
