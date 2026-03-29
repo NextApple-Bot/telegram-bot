@@ -447,6 +447,43 @@ async def cmd_undo(message: Message):
 
     await message.answer(f"✅ Товар восстановлен:\n{escape_markdown_v1(deleted['text'])}")
 
+@router.message(Command("fix_sales_unique"))
+async def cmd_fix_sales_unique(message: Message):
+    """Добавляет уникальное ограничение на message_id в таблице sales (только для админов)."""
+    if message.from_user.id not in config.ADMIN_IDS:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # 1. Удаляем записи с NULL message_id
+            result1 = await conn.execute('DELETE FROM sales WHERE message_id IS NULL')
+            deleted_null = result1.split()[1] if result1.startswith('DELETE') else 0
+
+            # 2. Удаляем дубликаты (оставляем одну запись на message_id)
+            result2 = await conn.execute('''
+                DELETE FROM sales a USING sales b 
+                WHERE a.id > b.id AND a.message_id = b.message_id
+            ''')
+            deleted_dups = result2.split()[1] if result2.startswith('DELETE') else 0
+
+            # 3. Добавляем уникальное ограничение, если его нет
+            try:
+                await conn.execute('ALTER TABLE sales ADD CONSTRAINT sales_message_id_key UNIQUE (message_id)')
+                constraint_added = True
+            except asyncpg.exceptions.DuplicateTableError:
+                constraint_added = False  # ограничение уже существует
+            except Exception as e:
+                constraint_added = False
+                logger.exception(f"Ошибка при добавлении ограничения: {e}")
+
+    msg = f"✅ Исправление таблицы sales:\n"
+    msg += f"• Удалено записей с NULL message_id: {deleted_null}\n"
+    msg += f"• Удалено дубликатов: {deleted_dups}\n"
+    msg += f"• Уникальное ограничение: {'добавлено' if constraint_added else 'уже существовало'}"
+    await message.answer(msg)
+
 # ---------- Команда /chatid ----------
 @router.message(Command("chatid"))
 async def cmd_chatid(message: Message):
