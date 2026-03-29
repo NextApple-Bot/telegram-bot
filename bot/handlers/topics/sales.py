@@ -35,6 +35,7 @@ async def is_message_processed(chat_id: int, message_id: int) -> bool:
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow('SELECT 1 FROM processed_messages WHERE chat_id = $1 AND message_id = $2', chat_id, message_id)
+        logger.info(f"🔍 is_message_processed: chat_id={chat_id}, message_id={message_id}, exists={row is not None}")
         return row is not None
 
 async def mark_message_processed(chat_id: int, message_id: int):
@@ -52,8 +53,10 @@ async def handle_sales_message(message: Message):
     if not content:
         return
 
+    logger.info(f"📩 Начало обработки сообщения {message.message_id}")
+
     if await is_message_processed(message.chat.id, message.message_id):
-        logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
+        logger.info(f"✅ Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
     content = remove_trade_in_lines(content)
@@ -79,7 +82,6 @@ async def handle_sales_message(message: Message):
     logger.info(f"🔍 Продажа: найдено товаров с серийниками: {count}, sold_items={result['sold_items']}")
 
     if count > 0:
-        # Передаём message_id для уникальности
         await StatsRepository.add_sale(
             count=count,
             cash=payments['cash'],
@@ -93,7 +95,7 @@ async def handle_sales_message(message: Message):
         )
         logger.info(f"✅ Продажа добавлена в статистику: товаров {count}, суммы: cash={payments['cash']}, term={payments['terminal']}, qr={payments['qr']}")
     else:
-        logger.info("❌ Нет товаров с серийными номерами, статистика продаж НЕ сохранена (аксессуар или неверные серийники)")
+        logger.info("❌ Нет товаров с серийными номерами, статистика продаж НЕ сохранена")
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -116,3 +118,4 @@ async def handle_sales_message(message: Message):
         await message.reply(text)
 
     await mark_message_processed(message.chat.id, message.message_id)
+    logger.info(f"🏁 Обработка сообщения {message.message_id} завершена")
