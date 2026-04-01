@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 _pool = None
 _init_lock = asyncio.Lock()
 
+
 def retry_on_db_error(retries=3, delay=1, backoff=2):
     def decorator(func):
         @wraps(func)
@@ -36,6 +37,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
         return wrapper
     return decorator
 
+
 async def get_pool():
     global _pool
     if _pool is None:
@@ -51,31 +53,17 @@ async def get_pool():
                 logger.info("✅ Пул соединений создан")
     return _pool
 
-async def init_db():
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # ... (все существующие таблицы)
-        # Изменяем таблицу sales: добавляем message_id и уникальное ограничение
-        await conn.execute('''
-            ALTER TABLE sales ADD COLUMN IF NOT EXISTS message_id BIGINT
-        ''')
-        await conn.execute('''
-            DO $$ 
-            BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_message_id_key') THEN
-                    ALTER TABLE sales ADD CONSTRAINT sales_message_id_key UNIQUE (message_id);
-                END IF;
-            END $$;
-        ''')
 
-        # Добавляем новую таблицу daily_payments (если её нет)
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS daily_payments (
-                id SERIAL PRIMARY KEY,
-                type TEXT NOT NULL CHECK (type IN ('sale', 'preorder')),
-                payment_type TEXT NOT NULL CHECK (payment_type IN ('cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment')),
-                amount REAL NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_created_at ON daily_payments(created_at)')
+async def get_connection():
+    """Возвращает соединение из пула для использования в транзакциях."""
+    pool = await get_pool()
+    return await pool.acquire()
+
+
+async def close_pool():
+    """Закрывает пул соединений (для graceful shutdown)."""
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
+        logger.info("✅ Пул соединений закрыт")
