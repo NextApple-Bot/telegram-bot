@@ -29,7 +29,7 @@ try:
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.types import Update
     from bot.handlers import router
-    from bot.db import init_db
+    from bot.db import close_pool
     from bot import config as bot_config
     config = bot_config
 
@@ -45,12 +45,7 @@ except Exception as e:
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
     if bot and dp:
-        try:
-            await init_db()
-            logger.info("✅ База данных готова")
-        except Exception as e:
-            logger.error(f"❌ Ошибка при инициализации БД: {e}")
-
+        logger.info("✅ База данных: миграции должны быть применены отдельно")
         if config and hasattr(config, 'RENDER_URL') and config.RENDER_URL:
             webhook_url = f"{config.RENDER_URL}/webhook"
             try:
@@ -63,6 +58,16 @@ async def on_startup():
             logger.warning("⚠️ RENDER_URL не задан, вебхук не будет установлен")
     else:
         logger.warning("⚠️ Бот не инициализирован, пропускаем установку вебхука и БД")
+
+async def on_shutdown():
+    logger.info("🛑 Завершение работы, закрываем пул соединений...")
+    await close_pool()
+    if bot:
+        try:
+            await bot.delete_webhook()
+            logger.info("✅ Вебхук удалён")
+        except Exception as e:
+            logger.error(f"Ошибка при удалении вебхука: {e}")
 
 async def webhook(request: Request) -> Response:
     if not bot or not dp:
@@ -87,6 +92,7 @@ app = Starlette(
         Route("/health", health, methods=["GET"]),
     ],
     on_startup=[on_startup],
+    on_shutdown=[on_shutdown],
 )
 
 if __name__ == "__main__":
