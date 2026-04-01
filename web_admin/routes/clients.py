@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from bot.repositories import ClientRepository
+from bot.db import get_pool
 
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
@@ -12,8 +13,6 @@ async def list_clients(request: Request, search: str = Query(None)):
     if search:
         clients = await ClientRepository.search_clients(search)
     else:
-        # Получить всех клиентов – нужно добавить метод в репозиторий
-        from bot.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('SELECT * FROM clients ORDER BY id DESC LIMIT 100')
@@ -22,7 +21,6 @@ async def list_clients(request: Request, search: str = Query(None)):
 
 @router.get("/{client_id}", response_class=HTMLResponse)
 async def client_detail(request: Request, client_id: int):
-    from bot.db import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
         client_row = await conn.fetchrow('SELECT * FROM clients WHERE id = $1', client_id)
