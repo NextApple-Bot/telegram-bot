@@ -38,12 +38,12 @@ PORT = int(os.getenv("PORT", 8000))
 # План продаж (необязательный)
 PLAN_AMOUNT = int(os.getenv("PLAN_AMOUNT", "600000"))
 
-# Админка
-ADMIN_PASSWORD = get_env_var("ADMIN_PASSWORD")
-SECRET_KEY = get_env_var("SECRET_KEY")
+# Админка (опциональные переменные)
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+SECRET_KEY = os.getenv("SECRET_KEY")
 
-# Хешируем пароль, если он ещё не хеширован (если не начинается с $2b$)
-if not ADMIN_PASSWORD.startswith("$2b$"):
+# Если пароль задан и не является хешем bcrypt, хешируем его
+if ADMIN_PASSWORD and not ADMIN_PASSWORD.startswith("$2b$"):
     from passlib.context import CryptContext
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     ADMIN_PASSWORD = pwd_context.hash(ADMIN_PASSWORD)
