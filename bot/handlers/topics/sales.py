@@ -21,6 +21,7 @@ TRADE_IN_PATTERNS = [
     r'trade‑in',
 ]
 
+
 def remove_trade_in_lines(text: str) -> str:
     lines = text.splitlines()
     filtered = []
@@ -31,6 +32,7 @@ def remove_trade_in_lines(text: str) -> str:
         filtered.append(line)
     return '\n'.join(filtered)
 
+
 async def is_message_processed(chat_id: int, message_id: int) -> bool:
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -38,10 +40,12 @@ async def is_message_processed(chat_id: int, message_id: int) -> bool:
         logger.info(f"🔍 is_message_processed: chat_id={chat_id}, message_id={message_id}, exists={row is not None}")
         return row is not None
 
+
 async def mark_message_processed(chat_id: int, message_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute('INSERT INTO processed_messages (chat_id, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', chat_id, message_id)
+
 
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
