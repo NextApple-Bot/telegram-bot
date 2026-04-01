@@ -1,4 +1,3 @@
-# bot/database/models.py
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Float, Boolean, DateTime,
     ForeignKey, UniqueConstraint, Index, Text, JSON, CheckConstraint
@@ -7,6 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 
 Base = declarative_base()
+
 
 class Client(Base):
     __tablename__ = 'clients'
@@ -20,6 +20,7 @@ class Client(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
 
+
 class Purchase(Base):
     __tablename__ = 'purchases'
     id = Column(Integer, primary_key=True)
@@ -30,10 +31,12 @@ class Purchase(Base):
     purchase_type = Column(String)  # 'sale', 'preorder', 'booking'
     created_at = Column(DateTime, server_default=func.now())
 
+
 class Category(Base):
     __tablename__ = 'categories'
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, nullable=False)
+
 
 class Item(Base):
     __tablename__ = 'items'
@@ -43,6 +46,12 @@ class Item(Base):
     category_id = Column(Integer, ForeignKey('categories.id'))
     is_booked = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        # Уникальный индекс для серийных номеров, игнорируя NULL
+        Index('idx_items_serial_unique', 'serial', unique=True, postgresql_where=Item.serial.isnot(None)),
+    )
+
 
 class Sale(Base):
     __tablename__ = 'sales'
@@ -59,6 +68,7 @@ class Sale(Base):
     message_id = Column(BigInteger, unique=True)
     sold_at = Column(DateTime, server_default=func.now())
 
+
 class Preorder(Base):
     __tablename__ = 'preorders'
     id = Column(Integer, primary_key=True)
@@ -70,12 +80,14 @@ class Preorder(Base):
     installment = Column(Float, default=0)
     created_at = Column(DateTime, server_default=func.now())
 
+
 class Booking(Base):
     __tablename__ = 'bookings'
     id = Column(Integer, primary_key=True)
     item_id = Column(Integer)
     total_amount = Column(Float)
     booked_at = Column(DateTime, server_default=func.now())
+
 
 class DailyPayment(Base):
     __tablename__ = 'daily_payments'
@@ -91,6 +103,7 @@ class DailyPayment(Base):
         CheckConstraint("payment_type IN ('cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment')", name='payment_type_check'),
     )
 
+
 class ProcessedMessage(Base):
     __tablename__ = 'processed_messages'
     id = Column(Integer, primary_key=True)
@@ -101,6 +114,7 @@ class ProcessedMessage(Base):
     __table_args__ = (
         UniqueConstraint('chat_id', 'message_id', name='uq_processed_messages'),
     )
+
 
 class DeletedItem(Base):
     __tablename__ = 'deleted_items'
