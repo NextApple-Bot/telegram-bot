@@ -70,12 +70,4 @@ async def delete_category(request: Request, category_id: int):
             raise HTTPException(status_code=400, detail="Category not empty")
         await conn.execute('DELETE FROM categories WHERE id = $1', category_id)
     AssortmentService.invalidate_cache()
-    return RedirectResponse(url="/admin/assortment", status_code=303)    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Проверить, что категория пуста
-        count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', category_id)
-        if count > 0:
-            raise HTTPException(status_code=400, detail="Category not empty")
-        await conn.execute('DELETE FROM categories WHERE id = $1', category_id)
-    AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
