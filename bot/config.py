@@ -38,16 +38,6 @@ PORT = int(os.getenv("PORT", 8000))
 # План продаж (необязательный)
 PLAN_AMOUNT = int(os.getenv("PLAN_AMOUNT", "600000"))
 
-# Админка (опциональные переменные)
+# Админка (опциональные переменные) – пароль хранится в открытом виде
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 SECRET_KEY = os.getenv("SECRET_KEY")
-
-# Если пароль задан и не является хешем bcrypt, хешируем его
-if ADMIN_PASSWORD and not ADMIN_PASSWORD.startswith("$2b$"):
-    # Обрезаем до 72 символов (ограничение bcrypt)
-    if len(ADMIN_PASSWORD) > 72:
-        ADMIN_PASSWORD = ADMIN_PASSWORD[:72]
-        print(f"⚠️ Пароль был обрезан до 72 символов: {ADMIN_PASSWORD}")
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    ADMIN_PASSWORD = pwd_context.hash(ADMIN_PASSWORD)
