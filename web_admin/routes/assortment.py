@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from bot.services.assortment import AssortmentService
 from bot.repositories import ItemRepository
 from bot.utils.validators import extract_serials
+from bot.db import get_pool
 
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
@@ -16,8 +17,6 @@ async def list_assortment(request: Request):
 
 @router.get("/edit/{category_id}")
 async def edit_category_form(request: Request, category_id: int):
-    # Получить категорию и её товары
-    from bot.db import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
         cat = await conn.fetchrow('SELECT * FROM categories WHERE id = $1', category_id)
@@ -37,15 +36,11 @@ async def edit_category_submit(
     name: str = Form(...),
     items_text: str = Form(...)
 ):
-    # Обновить название категории
-    from bot.db import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute('UPDATE categories SET name = $1 WHERE id = $2', name, category_id)
-            # Удалить все товары в категории
             await conn.execute('DELETE FROM items WHERE category_id = $1', category_id)
-            # Добавить новые товары из текста (каждая строка - один товар)
             lines = [line.strip() for line in items_text.splitlines() if line.strip()]
             for line in lines:
                 serials = extract_serials(line)
@@ -60,7 +55,6 @@ async def edit_category_submit(
 
 @router.post("/add_category")
 async def add_category(request: Request, name: str = Form(...)):
-    from bot.db import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute('INSERT INTO categories (name) VALUES ($1)', name)
@@ -69,8 +63,14 @@ async def add_category(request: Request, name: str = Form(...)):
 
 @router.post("/delete_category/{category_id}")
 async def delete_category(request: Request, category_id: int):
-    from bot.db import get_pool
     pool = await get_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', category_id)
+        if count > 0:
+            raise HTTPException(status_code=400, detail="Category not empty")
+        await conn.execute('DELETE FROM categories WHERE id = $1', category_id)
+    AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)    pool = await get_pool()
     async with pool.acquire() as conn:
         # Проверить, что категория пуста
         count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', category_id)
