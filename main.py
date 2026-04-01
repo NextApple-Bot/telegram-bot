@@ -64,7 +64,6 @@ async def on_shutdown():
     if bot:
         try:
             await bot.delete_webhook()
-            # Закрываем внутреннюю сессию aiohttp
             await bot.session.close()
             logger.info("✅ Вебхук удалён, сессия бота закрыта")
         except Exception as e:
@@ -97,13 +96,16 @@ app = Starlette(
     on_shutdown=[on_shutdown],
 )
 
-# Монтируем веб-админку
-try:
-    from web_admin.main import app as admin_app
-    app.mount("/admin", admin_app)
-    logger.info("✅ Веб-админка смонтирована на /admin")
-except Exception as e:
-    logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
+# Монтируем веб-админку только если заданы необходимые переменные
+if config.ADMIN_PASSWORD and config.SECRET_KEY:
+    try:
+        from web_admin.main import app as admin_app
+        app.mount("/admin", admin_app)
+        logger.info("✅ Веб-админка смонтирована на /admin")
+    except Exception as e:
+        logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
+else:
+    logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
