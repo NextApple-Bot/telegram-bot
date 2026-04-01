@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Клиент {{ client.id }}{% endblock %}
+{% block content %}
+<h1>Клиент #{{ client.id }}</h1>
+<div class="card mb-3">
+    <div class="card-body">
+        <p><strong>ФИО:</strong> {{ client.full_name or '—' }}</p>
+        <p><strong>Основной телефон:</strong> {{ client.phone or '—' }}</p>
+        <p><strong>Все телефоны:</strong> {{ client.phones or '—' }}</p>
+        <p><strong>Telegram:</strong> {{ client.telegram_username or '—' }}</p>
+        <p><strong>Соцсети:</strong> {{ client.social_network or '—' }}</p>
+        <p><strong>Источник:</strong> {{ client.referral_source or '—' }}</p>
+        <p><strong>Дата регистрации:</strong> {{ client.created_at.strftime('%Y-%m-%d %H:%M') if client.created_at else '—' }}</p>
+    </div>
+</div>
+
+<h2>Покупки</h2>
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Дата</th>
+            <th>Сумма</th>
+            <th>Тип</th>
+            <th>Товары</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for purchase in purchases %}
+        <tr>
+            <td>{{ purchase.id }}</td>
+            <td>{{ purchase.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ purchase.total_amount|round(0) }} ₽</td>
+            <td>{{ purchase.purchase_type }}</td>
+            <td>
+                {% if purchase.items_json %}
+                    {% set items = purchase.items_json|fromjson %}
+                    {% for item in items %}
+                        {{ item.item_text[:50] }}{% if loop.index < loop.length %}<br>{% endif %}
+                    {% endfor %}
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<a href="/admin/clients" class="btn btn-secondary">Назад к списку</a>
+{% endblock %}
