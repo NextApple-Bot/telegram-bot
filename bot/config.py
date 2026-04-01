@@ -15,7 +15,6 @@ TOKEN = get_env_var("BOT_TOKEN")
 
 # Администраторы (можно несколько через запятую, пробелы допускаются)
 ADMIN_IDS_STR = get_env_var("ADMIN_ID")
-# Убираем пробелы вокруг запятых и пустые элементы
 ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(",") if id.strip()]
 if not ADMIN_IDS:
     raise ValueError("❌ Список ADMIN_ID не может быть пустым!")
@@ -31,7 +30,7 @@ THREAD_PREORDER = int(get_env_var("THREAD_PREORDER"))
 DATABASE_URL = get_env_var("DATABASE_URL")
 
 # Внешний URL для вебхука (Render предоставляет переменную RENDER_EXTERNAL_URL)
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")  # может быть None, если не задан
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
 
 # Порт для сервера (Render передаёт PORT)
 PORT = int(os.getenv("PORT", 8000))
@@ -39,5 +38,12 @@ PORT = int(os.getenv("PORT", 8000))
 # План продаж (необязательный)
 PLAN_AMOUNT = int(os.getenv("PLAN_AMOUNT", "600000"))
 
-ADMIN_PASSWORD = get_env_var("ADMIN_PASSWORD", required=True)
-SECRET_KEY = get_env_var("SECRET_KEY", required=True)
+# Админка
+ADMIN_PASSWORD = get_env_var("ADMIN_PASSWORD")
+SECRET_KEY = get_env_var("SECRET_KEY")
+
+# Хешируем пароль, если он ещё не хеширован (если не начинается с $2b$)
+if not ADMIN_PASSWORD.startswith("$2b$"):
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    ADMIN_PASSWORD = pwd_context.hash(ADMIN_PASSWORD)
