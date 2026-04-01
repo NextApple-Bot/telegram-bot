@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Ассортимент{% endblock %}
+{% block content %}
+<h1>Ассортимент</h1>
+<div class="mb-3">
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addCategoryModal">Добавить категорию</button>
+</div>
+<div class="accordion" id="categoriesAccordion">
+    {% for cat in categories %}
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="heading{{ loop.index }}">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}">
+                {{ cat.header }} ({{ cat.items|length }} товаров)
+            </button>
+        </h2>
+        <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#categoriesAccordion">
+            <div class="accordion-body">
+                <ul class="list-group">
+                    {% for item in cat.items %}
+                    <li class="list-group-item">{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                <div class="mt-2">
+                    <a href="/admin/assortment/edit/{{ cat.id }}" class="btn btn-sm btn-primary">Редактировать</a>
+                    <form action="/admin/assortment/delete_category/{{ cat.id }}" method="post" style="display:inline;" onsubmit="return confirm('Удалить категорию?')">
+                        <button type="submit" class="btn btn-sm btn-danger">Удалить категорию</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Модальное окно добавления категории -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="/admin/assortment/add_category" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title">Добавить категорию</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="categoryName" class="form-label">Название категории</label>
+                        <input type="text" class="form-control" id="categoryName" name="name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
