@@ -1,5 +1,10 @@
+import json
+import csv
+import tempfile
+import os
+from datetime import datetime
 from aiogram import F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
 
 from bot import config
@@ -11,24 +16,19 @@ from bot.utils.markdown import escape_markdown_v1
 from .base import router, logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
 from .topics.common import export_assortment_to_topic
 
-import json
-import csv
-import tempfile
-import os
-from datetime import datetime
-from aiogram.types import FSInputFile
-
 # Словари для хранения ID последних сообщений
 last_stats_message = {}
 last_inventory_message = {}
 last_remains_message = {}
 last_clients_month_message = {}
 
+
 async def safe_delete(message):
     try:
         await message.delete()
     except Exception as e:
         logger.warning(f"Не удалось удалить сообщение: {e}")
+
 
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
@@ -91,6 +91,7 @@ async def process_remains(callback: CallbackQuery):
 
     keyboard = get_main_menu_keyboard()
     await callback.message.answer("Выберите действие:", reply_markup=keyboard)
+
 
 @router.callback_query(F.data.startswith("month:"))
 async def process_month_selection(callback: CallbackQuery):
@@ -177,6 +178,7 @@ async def process_month_selection(callback: CallbackQuery):
         keyboard = get_main_menu_keyboard()
         await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
+
 # ---------- Обработчики для подтверждения удаления (категории, ассортимент и т.д.) ----------
 @router.callback_query(F.data.startswith("clean_empty:"))
 async def process_clean_empty(callback: CallbackQuery):
@@ -202,6 +204,7 @@ async def process_clean_empty(callback: CallbackQuery):
         deleted = int(result.split()[1]) if result.startswith('DELETE') else 0
         await callback.message.edit_text(f"✅ Удалено пустых категорий: {deleted}")
 
+
 @router.callback_query(F.data.startswith("delete_cat:"))
 async def process_delete_category(callback: CallbackQuery):
     try:
@@ -222,6 +225,7 @@ async def process_delete_category(callback: CallbackQuery):
             return
         await conn.execute('DELETE FROM categories WHERE id = $1', cat_id)
         await callback.message.edit_text(f"✅ Категория ID {cat_id} удалена.")
+
 
 @router.callback_query(F.data.startswith("merge:"))
 async def process_merge_categories(callback: CallbackQuery):
@@ -245,6 +249,7 @@ async def process_merge_categories(callback: CallbackQuery):
             await conn.execute('DELETE FROM categories WHERE id = $1', from_id)
         await callback.message.edit_text(f"✅ Товары перенесены, категория {from_id} удалена.")
 
+
 @router.callback_query(F.data.startswith("reset_assortment:"))
 async def process_reset_assortment(callback: CallbackQuery):
     try:
@@ -266,6 +271,7 @@ async def process_reset_assortment(callback: CallbackQuery):
             await conn.execute("DELETE FROM categories")
         await callback.message.edit_text("✅ Ассортимент полностью очищен.")
 
+
 @router.callback_query(F.data.startswith("delete_client:"))
 async def process_delete_client(callback: CallbackQuery):
     try:
@@ -285,6 +291,7 @@ async def process_delete_client(callback: CallbackQuery):
             await conn.execute('DELETE FROM clients WHERE id = $1', client_id)
         await callback.message.edit_text(f"✅ Клиент ID {client_id} и все его покупки удалены.")
 
+
 @router.callback_query(F.data.startswith("delete_purchase:"))
 async def process_delete_purchase(callback: CallbackQuery):
     try:
@@ -301,6 +308,7 @@ async def process_delete_purchase(callback: CallbackQuery):
     async with pool.acquire() as conn:
         await conn.execute('DELETE FROM purchases WHERE id = $1', purchase_id)
         await callback.message.edit_text(f"✅ Покупка ID {purchase_id} удалена.")
+
 
 # ---------- Обработчики сброса статистики ----------
 @router.callback_query(F.data.startswith("reset_stats:"))
@@ -320,19 +328,15 @@ async def process_reset_stats(callback: CallbackQuery):
             ])
             await callback.message.edit_text("Вы уверены, что хотите обнулить статистику и финансовые суммы за сегодня?", reply_markup=keyboard)
         elif action == "yes":
-            # Сбрасываем статистику продаж, предзаказов, броней
+            # Сбрасываем статистику продаж, предзаказов, броней (без удаления финансов)
             await StatsRepository.reset_today_stats()
-            # Сбрасываем платежи за сегодня
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = CURRENT_DATE')
             # Обновляем отображение статистики
             s = await StatsRepository.get_today_stats()
             text = (
                 f"📊 Статистика за {s['date']}:\n"
+                f"• Продаж: {s['sales_count']}\n"
                 f"• Предзаказов: {s['preorders_count']}\n"
-                f"• Броней: {s['bookings_count']}\n"
-                f"• Продаж: {s['sales_count']}"
+                f"• Броней: {s['bookings_count']}"
             )
             await callback.message.edit_text(text)
             last_stats_message[chat_id] = callback.message.message_id
@@ -340,9 +344,9 @@ async def process_reset_stats(callback: CallbackQuery):
             s = await StatsRepository.get_today_stats()
             text = (
                 f"📊 Статистика за {s['date']}:\n"
+                f"• Продаж: {s['sales_count']}\n"
                 f"• Предзаказов: {s['preorders_count']}\n"
-                f"• Броней: {s['bookings_count']}\n"
-                f"• Продаж: {s['sales_count']}"
+                f"• Броней: {s['bookings_count']}"
             )
             await callback.message.edit_text(text)
             last_stats_message[chat_id] = callback.message.message_id
@@ -352,6 +356,7 @@ async def process_reset_stats(callback: CallbackQuery):
     except Exception as e:
         logger.exception(f"Ошибка в process_reset_stats: {e}")
         await callback.message.answer("❌ Произошла ошибка")
+
 
 @router.callback_query(F.data.startswith("confirm_clear:"))
 async def process_confirm_clear(callback: CallbackQuery, bot):
@@ -376,6 +381,7 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
         if "message is not modified" not in str(e):
             raise
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
+
 
 # -------------------------------------------------------------
 # ОСНОВНОЙ ОБРАБОТЧИК МЕНЮ
