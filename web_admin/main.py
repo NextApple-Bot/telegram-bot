@@ -1,14 +1,13 @@
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-import os
 
 from bot import config
 from .auth import is_authenticated
-from .routes import dashboard, clients, purchases, assortment, stats, auth
+from .routes import auth, dashboard, clients, purchases, assortment, stats
 
-app = FastAPI(title="Telegram Bot Admin Panel", prefix="/admin")
+app = FastAPI(title="Telegram Bot Admin Panel")
 
 # Подключаем middleware для сессий
 app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
@@ -31,7 +30,6 @@ async def auth_middleware(request: Request, call_next):
     if request.url.path.startswith("/admin/auth/login") or request.url.path.startswith("/admin/static"):
         return await call_next(request)
     if not is_authenticated(request):
-        # Если не аутентифицирован, редирект на страницу входа
         return RedirectResponse(url="/admin/auth/login")
     return await call_next(request)
 
