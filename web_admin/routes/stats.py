@@ -11,12 +11,10 @@ templates = Jinja2Templates(directory="web_admin/templates")
 
 @router.get("/", response_class=HTMLResponse)
 async def stats_page(request: Request, days: int = Query(7)):
-    # Статистика за последние days дней
     end_date = date.today()
     start_date = end_date - timedelta(days=days-1)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Продажи по дням
         sales_rows = await conn.fetch('''
             SELECT DATE(sold_at) as day, COUNT(*) as count, SUM(cash+terminal+qr+transfer+invoice+installment) as revenue
             FROM sales
@@ -24,7 +22,6 @@ async def stats_page(request: Request, days: int = Query(7)):
             GROUP BY day
             ORDER BY day
         ''', start_date)
-        # Предзаказы по дням
         pre_rows = await conn.fetch('''
             SELECT DATE(created_at) as day, COUNT(*) as count, SUM(cash+terminal+qr+transfer+invoice+installment) as revenue
             FROM preorders
@@ -32,7 +29,6 @@ async def stats_page(request: Request, days: int = Query(7)):
             GROUP BY day
             ORDER BY day
         ''', start_date)
-        # Брони по дням
         book_rows = await conn.fetch('''
             SELECT DATE(booked_at) as day, COUNT(*) as count, SUM(total_amount) as revenue
             FROM bookings
@@ -40,7 +36,6 @@ async def stats_page(request: Request, days: int = Query(7)):
             GROUP BY day
             ORDER BY day
         ''', start_date)
-    # Формируем данные для графика (можно передать в шаблон)
     dates = [(start_date + timedelta(days=i)).isoformat() for i in range(days)]
     sales_data = {row['day'].isoformat(): {'count': row['count'], 'revenue': float(row['revenue'])} for row in sales_rows}
     pre_data = {row['day'].isoformat(): {'count': row['count'], 'revenue': float(row['revenue'])} for row in pre_rows}
