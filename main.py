@@ -96,8 +96,8 @@ app = Starlette(
     on_shutdown=[on_shutdown],
 )
 
-# Монтируем веб-админку только если заданы необходимые переменные
-if config.ADMIN_PASSWORD and config.SECRET_KEY:
+# Монтируем веб-админку только если конфиг загружен и заданы необходимые переменные
+if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
     try:
         from web_admin.main import app as admin_app
         app.mount("/admin", admin_app)
@@ -105,7 +105,10 @@ if config.ADMIN_PASSWORD and config.SECRET_KEY:
     except Exception as e:
         logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
 else:
-    logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
+    if not config:
+        logger.warning("⚠️ Конфиг не загружен, админка не монтируется")
+    else:
+        logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
