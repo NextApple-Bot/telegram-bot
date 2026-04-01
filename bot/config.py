@@ -44,12 +44,10 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 # Если пароль задан и не является хешем bcrypt, хешируем его
 if ADMIN_PASSWORD and not ADMIN_PASSWORD.startswith("$2b$"):
-    # Обрезаем пароль до 72 байт (ограничение bcrypt)
-    if len(ADMIN_PASSWORD.encode('utf-8')) > 72:
-        # Обрезаем по байтам, сохраняя целые символы
-        while len(ADMIN_PASSWORD.encode('utf-8')) > 72:
-            ADMIN_PASSWORD = ADMIN_PASSWORD[:-1]
-        print(f"⚠️ Пароль был обрезан до 72 байт: {ADMIN_PASSWORD}")
+    # Обрезаем до 72 символов (ограничение bcrypt)
+    if len(ADMIN_PASSWORD) > 72:
+        ADMIN_PASSWORD = ADMIN_PASSWORD[:72]
+        print(f"⚠️ Пароль был обрезан до 72 символов: {ADMIN_PASSWORD}")
     from passlib.context import CryptContext
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     ADMIN_PASSWORD = pwd_context.hash(ADMIN_PASSWORD)
