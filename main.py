@@ -64,9 +64,11 @@ async def on_shutdown():
     if bot:
         try:
             await bot.delete_webhook()
-            logger.info("✅ Вебхук удалён")
+            # Закрываем внутреннюю сессию aiohttp
+            await bot.session.close()
+            logger.info("✅ Вебхук удалён, сессия бота закрыта")
         except Exception as e:
-            logger.error(f"Ошибка при удалении вебхука: {e}")
+            logger.error(f"Ошибка при завершении работы бота: {e}")
 
 async def webhook(request: Request) -> Response:
     if not bot or not dp:
