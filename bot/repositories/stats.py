@@ -3,6 +3,7 @@ from bot.db import get_pool, retry_on_db_error
 from typing import Dict
 
 class StatsRepository:
+    """Репозиторий для работы со статистикой (продажи, предзаказы, брони)."""
 
     @staticmethod
     @retry_on_db_error()
@@ -19,6 +20,7 @@ class StatsRepository:
         message_id: int = None,
         conn=None
     ):
+        """Добавляет запись о продаже с уникальным message_id."""
         if conn is None:
             pool = await get_pool()
             async with pool.acquire() as conn:
@@ -28,35 +30,6 @@ class StatsRepository:
                     ON CONFLICT (message_id) DO NOTHING
                 ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
         else:
-            await conn.execute('''
-                INSERT INTO sales (item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                ON CONFLICT (message_id) DO NOTHING
-            ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
-
-    # Аналогично для add_preorder, add_booking (если они используются в транзакциях, добавить параметр conn)
-    # Но в текущей логике они не вызываются в транзакциях, можно оставить без изменений.
-    # Для add_preorder и add_booking пока не добавляем conn, если не нужно.
-
-    # Остальные методы без изменений...
-
-    @staticmethod
-    @retry_on_db_error()
-    async def add_sale(
-        item_id: int = None,
-        count: int = 1,
-        cash: float = 0,
-        terminal: float = 0,
-        qr: float = 0,
-        transfer: float = 0,
-        invoice: float = 0,
-        installment: float = 0,
-        is_accessory: bool = False,
-        message_id: int = None
-    ):
-        """Добавляет запись о продаже с уникальным message_id."""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
             await conn.execute('''
                 INSERT INTO sales (item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -152,7 +125,7 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def reset_today_stats():
-        """Удаляет всю статистику за сегодня и финансовые платежи за сегодня."""
+        """Удаляет статистику продаж, предзаказов, броней за сегодня (финансы не трогает)."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -160,5 +133,3 @@ class StatsRepository:
                 await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
                 await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
                 await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
-                # Удаляем также финансовые записи за сегодня
-                await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = $1', today)
