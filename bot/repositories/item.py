@@ -146,7 +146,6 @@ class ItemRepository:
                 VALUES ($1, $2, $3, $4, $5)
             ''', item_id, text, serial, category_id, reason)
 
-    # Остальные методы без изменений, кроме добавления параметра conn
     @staticmethod
     @retry_on_db_error()
     async def get_last_deleted_item() -> Optional[Dict]:
@@ -182,7 +181,6 @@ class ItemRepository:
                 UPDATE items SET text = $1, is_booked = TRUE WHERE id = $2
             ''', book_text, item_id)
 
-    # Методы для массовой замены (используются в assortment.py)
     @staticmethod
     @retry_on_db_error()
     async def get_all_categories_with_items():
