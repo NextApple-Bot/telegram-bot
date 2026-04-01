@@ -38,3 +38,6 @@ PORT = int(os.getenv("PORT", 8000))
 
 # План продаж (необязательный)
 PLAN_AMOUNT = int(os.getenv("PLAN_AMOUNT", "600000"))
+
+ADMIN_PASSWORD = get_env_var("ADMIN_PASSWORD", required=True)
+SECRET_KEY = get_env_var("SECRET_KEY", required=True)
