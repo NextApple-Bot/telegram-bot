@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
+
 async def determine_category_for_item(item_text: str, categories: list) -> str:
     """
     Определяет имя категории для товара на основе текущего списка категорий.
@@ -64,6 +65,7 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
             words = item_text.split()
             new_header = ' '.join(words[:2]).strip() + ':'
         return normalize_name(new_header)
+
 
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
@@ -175,6 +177,7 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     ])
     await message.reply(response, reply_markup=keyboard)
 
+
 @router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
 async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
     try:
@@ -195,23 +198,20 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
                     cat_id = await ItemRepository.get_or_create_category(cat_name)
                     cat_ids[cat_name] = cat_id
 
-                all_rows = []
+                # Вставляем каждый товар с ON CONFLICT
                 for cat_name, items in cat_to_items.items():
                     cat_id = cat_ids[cat_name]
                     for text, serial in items:
                         is_booked = 'Бронь от' in text
-                        all_rows.append((text, serial, cat_id, is_booked))
-
-                if all_rows:
-                    values_placeholder = []
-                    params = []
-                    idx = 1
-                    for text, serial, cat_id, is_booked in all_rows:
-                        values_placeholder.append(f"(${idx}, ${idx+1}, ${idx+2}, ${idx+3})")
-                        params.extend([text, serial, cat_id, is_booked])
-                        idx += 4
-                    query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
-                    await conn.execute(query, *params)
+                        try:
+                            await conn.execute('''
+                                INSERT INTO items (text, serial, category_id, is_booked)
+                                VALUES ($1, $2, $3, $4)
+                                ON CONFLICT (serial) WHERE serial IS NOT NULL DO NOTHING
+                            ''', text, serial, cat_id, is_booked)
+                        except Exception as e:
+                            logger.exception(f"Ошибка при вставке товара: {text}, {serial}")
+                            # можно продолжать
 
         AssortmentService.invalidate_cache()
         total_new = sum(len(items) for items in cat_to_items.values())
@@ -223,10 +223,12 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
 
+
 @router.message(ArrivalConfirmState.waiting_for_confirm, F.text.lower() == "отмена")
 async def cancel_arrival_confirm_by_text(message: Message, state: FSMContext):
     await state.clear()
     await message.reply("❌ Добавление отменено.")
+
 
 @router.message(ArrivalConfirmState.waiting_for_confirm)
 async def unexpected_message_in_arrival_confirm(message: Message, state: FSMContext):
