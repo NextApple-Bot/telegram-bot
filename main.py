@@ -40,7 +40,6 @@ try:
 except Exception as e:
     logger.error(f"❌ Ошибка при инициализации бота: {e}")
     logger.error(traceback.format_exc())
-    # не выходим, чтобы сервер хотя бы health check отдавал
 
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
@@ -86,6 +85,7 @@ async def webhook(request: Request) -> Response:
 async def health(_: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
+# Создаём Starlette приложение
 app = Starlette(
     routes=[
         Route("/webhook", webhook, methods=["POST"]),
@@ -94,6 +94,14 @@ app = Starlette(
     on_startup=[on_startup],
     on_shutdown=[on_shutdown],
 )
+
+# Монтируем веб-админку
+try:
+    from web_admin.main import app as admin_app
+    app.mount("/admin", admin_app)
+    logger.info("✅ Веб-админка смонтирована на /admin")
+except Exception as e:
+    logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
