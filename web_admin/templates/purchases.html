@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Покупки{% endblock %}
+{% block content %}
+<h1>Покупки</h1>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Клиент</th>
+            <th>Дата</th>
+            <th>Сумма</th>
+            <th>Тип</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for purchase in purchases %}
+        <tr>
+            <td>{{ purchase.id }}</td>
+            <td><a href="/admin/clients/{{ purchase.client_id }}">{{ purchase.client_name or '—' }}</a></td>
+            <td>{{ purchase.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{{ purchase.total_amount|round(0) }} ₽</td>
+            <td>{{ purchase.purchase_type }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
