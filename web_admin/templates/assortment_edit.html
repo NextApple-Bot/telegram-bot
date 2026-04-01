@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Редактировать категорию{% endblock %}
+{% block content %}
+<h1>Редактировать категорию: {{ category.name }}</h1>
+<form method="post">
+    <div class="mb-3">
+        <label for="name" class="form-label">Название категории</label>
+        <input type="text" class="form-control" id="name" name="name" value="{{ category.name }}" required>
+    </div>
+    <div class="mb-3">
+        <label for="items_text" class="form-label">Товары (каждый с новой строки)</label>
+        <textarea class="form-control" id="items_text" name="items_text" rows="20">{% for item in items %}{{ item.text }}
+{% endfor %}</textarea>
+        <div class="form-text">Каждая строка – один товар. Серийные номера должны быть в скобках (ABC123).</div>
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/admin/assortment" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}
