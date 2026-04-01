@@ -10,7 +10,6 @@ templates = Jinja2Templates(directory="web_admin/templates")
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
-    # Если уже аутентифицирован, редирект на дашборд
     if is_authenticated(request):
         return RedirectResponse(url="/admin/dashboard")
     return templates.TemplateResponse("login.html", {"request": request})
