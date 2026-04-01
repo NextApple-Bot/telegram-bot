@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Дашборд{% endblock %}
+{% block content %}
+<h1>Дашборд</h1>
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card text-white bg-primary mb-3">
+            <div class="card-header">Продажи сегодня</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.sales_count }}</h5>
+                <p class="card-text">количество продаж</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-success mb-3">
+            <div class="card-header">Предзаказы сегодня</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.preorders_count }}</h5>
+                <p class="card-text">количество предзаказов</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-warning mb-3">
+            <div class="card-header">Брони сегодня</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.bookings_count }}</h5>
+                <p class="card-text">количество броней</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">Финансы за сегодня</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr><th>Наличные</th><td>{{ payments.cash|round(0) }} ₽</td></tr>
+                    <tr><th>Терминал</th><td>{{ payments.terminal|round(0) }} ₽</td></tr>
+                    <tr><th>QR-код</th><td>{{ payments.qr|round(0) }} ₽</td></tr>
+                    <tr><th>Перевод</th><td>{{ payments.transfer|round(0) }} ₽</td></tr>
+                    <tr><th>Оплата по счету</th><td>{{ payments.invoice|round(0) }} ₽</td></tr>
+                    <tr><th>Рассрочка</th><td>{{ payments.installment|round(0) }} ₽</td></tr>
+                    <tr class="table-active"><th>Итого</th><td><strong>{{ total_revenue|round(0) }} ₽</strong></td></tr>
+                    <tr><th>План</th><td>{{ plan_amount|round(0) }} ₽</td></tr>
+                    <tr><th>Выполнение</th><td>{{ (total_revenue / plan_amount * 100)|round(1) }}%</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
