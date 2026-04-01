@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Клиенты{% endblock %}
+{% block content %}
+<h1>Клиенты</h1>
+<form method="get" class="mb-3">
+    <div class="input-group">
+        <input type="text" class="form-control" name="search" placeholder="Поиск по имени, телефону, telegram" value="{{ search or '' }}">
+        <button class="btn btn-primary" type="submit">Найти</button>
+        {% if search %}
+        <a href="/admin/clients" class="btn btn-secondary">Сброс</a>
+        {% endif %}
+    </div>
+</form>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>ФИО</th>
+            <th>Телефон</th>
+            <th>Telegram</th>
+            <th>Дата регистрации</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for client in clients %}
+        <tr>
+            <td>{{ client.id }}</td>
+            <td><a href="/admin/clients/{{ client.id }}">{{ client.full_name or '—' }}</a></td>
+            <td>{{ client.phone or '—' }}</td>
+            <td>{{ client.telegram_username or '—' }}</td>
+            <td>{{ client.created_at.strftime('%Y-%m-%d %H:%M') if client.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
