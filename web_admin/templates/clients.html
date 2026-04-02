@@ -49,6 +49,11 @@
     </tbody>
 </table>
 
+<h1>Клиенты</h1>
+<div class="mb-3">
+    <a href="/admin/clients/export/csv{% if search %}?search={{ search }}{% endif %}" class="btn btn-success">📥 Скачать CSV</a>
+</div>
+<!-- остальное без изменений -->
 <!-- Пагинация -->
 {% if total_pages > 1 %}
 <nav>
