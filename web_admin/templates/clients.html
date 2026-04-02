@@ -2,21 +2,19 @@
 {% block title %}Клиенты{% endblock %}
 {% block content %}
 <h1>Клиенты</h1>
-<form method="get" class="mb-3">
-    <div class="input-group">
-        <input type="text" class="form-control" name="search" placeholder="Поиск по имени, телефону, telegram" value="{{ search or '' }}">
-        <button class="btn btn-primary" type="submit">Найти</button>
-        {% if search %}
-        <a href="/admin/clients" class="btn btn-secondary">Сброс</a>
-        {% endif %}
+
+<form method="get" class="row g-3 mb-3">
+    <div class="col-md-3">
+        <input type="text" class="form-control" name="search" placeholder="Поиск (имя/телефон/telegram)" value="{{ search or '' }}">
     </div>
-    <div class="mt-2">
-        <label class="form-label">Записей на странице:</label>
-        <select name="per_page" class="form-select w-auto d-inline-block ms-2" onchange="this.form.submit()">
-            <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
-            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
-            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
-        </select>
+    <div class="col-md-2">
+        <input type="date" class="form-control" name="date_from" value="{{ date_from or '' }}" placeholder="Дата от">
+    </div>
+    <div class="col-md-2">
+        <input type="date" class="form-control" name="date_to" value="{{ date_to or '' }}" placeholder="Дата до">
+    </div>
+    <div class="col-md-1">
+        <button type="submit" class="btn btn-primary w-100">Фильтр</button>
     </div>
 </form>
 
@@ -28,13 +26,7 @@
 
 <table class="table table-striped">
     <thead>
-        <tr>
-            <th>ID</th>
-            <th>ФИО</th>
-            <th>Телефон</th>
-            <th>Telegram</th>
-            <th>Дата регистрации</th>
-        </tr>
+        <tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Telegram</th><th>Дата регистрации</th></tr>
     </thead>
     <tbody>
         {% for client in clients %}
@@ -49,23 +41,18 @@
     </tbody>
 </table>
 
-<h1>Клиенты</h1>
-<div class="mb-3">
-    <a href="/admin/clients/export/csv{% if search %}?search={{ search }}{% endif %}" class="btn btn-success">📥 Скачать CSV</a>
-</div>
-<!-- остальное без изменений -->
 <!-- Пагинация -->
 {% if total_pages > 1 %}
 <nav>
     <ul class="pagination">
         {% if page > 1 %}
-        <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">Первая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">Предыдущая</a></li>
+        <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Первая</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Предыдущая</a></li>
         {% endif %}
         <li class="page-item active"><span class="page-link">Страница {{ page }} из {{ total_pages }}</span></li>
         {% if page < total_pages %}
-        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">Следующая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">Последняя</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Следующая</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Последняя</a></li>
         {% endif %}
     </ul>
 </nav>
