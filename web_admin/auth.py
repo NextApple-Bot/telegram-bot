@@ -1,22 +1,27 @@
+# Файл: web_admin/auth.py
 from starlette.requests import Request
-
+from passlib.context import CryptContext
 from bot import config
 
+# Контекст для bcrypt
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 def verify_password(plain_password: str) -> bool:
-    """Проверяет пароль (простое сравнение с config.ADMIN_PASSWORD)."""
-    return plain_password == config.ADMIN_PASSWORD
+    """Проверяет пароль: сначала прямой, потом хэш."""
+    if config.ADMIN_PASSWORD and plain_password == config.ADMIN_PASSWORD:
+        return True
+    if config.ADMIN_PASSWORD_HASH:
+        return pwd_context.verify(plain_password, config.ADMIN_PASSWORD_HASH)
+    return False
 
 def is_authenticated(request: Request) -> bool:
-    """Проверяет, есть ли пользователь в сессии."""
     return request.session.get("authenticated", False)
 
 def login(request: Request, password: str) -> bool:
-    """Выполняет вход, если пароль верен."""
     if verify_password(password):
         request.session["authenticated"] = True
         return True
     return False
 
 def logout(request: Request) -> None:
-    """Завершает сессию."""
     request.session.clear()
