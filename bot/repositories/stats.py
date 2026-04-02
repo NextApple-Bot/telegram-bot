@@ -1,3 +1,4 @@
+# Файл: bot/repositories/stats.py
 from datetime import date
 from bot.db import get_pool, retry_on_db_error
 from typing import Dict
@@ -125,11 +126,14 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def reset_today_stats():
-        """Удаляет статистику продаж, предзаказов, броней за сегодня (финансы не трогает)."""
+        """Удаляет статистику продаж, предзаказов, броней и финансов за сегодня."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
+                # Удаляем статистику продаж, предзаказов, броней
                 await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
                 await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
                 await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
+                # Также удаляем финансовые записи за сегодня
+                await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = $1', today)
