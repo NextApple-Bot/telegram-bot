@@ -5,23 +5,31 @@
 <form method="get" class="mb-3">
     <div class="input-group">
         <input type="text" class="form-control" name="search" placeholder="Поиск по имени, телефону, telegram" value="{{ search or '' }}">
+        <input type="hidden" name="per_page" value="{{ per_page }}">
         <button class="btn btn-primary" type="submit">Найти</button>
         {% if search %}
         <a href="/admin/clients" class="btn btn-secondary">Сброс</a>
         {% endif %}
     </div>
-    <input type="hidden" name="page" value="1">
-    <input type="hidden" name="per_page" value="{{ per_page }}">
 </form>
+
+<div class="mb-2">
+    <form method="get" class="d-inline">
+        <label for="per_page">Показывать на странице:</label>
+        <select name="per_page" id="per_page" class="form-select form-select-sm d-inline w-auto" onchange="this.form.submit()">
+            <option value="20" {% if per_page==20 %}selected{% endif %}>20</option>
+            <option value="50" {% if per_page==50 %}selected{% endif %}>50</option>
+            <option value="100" {% if per_page==100 %}selected{% endif %}>100</option>
+        </select>
+        {% if search %}
+        <input type="hidden" name="search" value="{{ search }}">
+        {% endif %}
+    </form>
+</div>
+
 <table class="table table-striped">
     <thead>
-        <tr>
-            <th>ID</th>
-            <th>ФИО</th>
-            <th>Телефон</th>
-            <th>Telegram</th>
-            <th>Дата регистрации</th>
-        </tr>
+        <tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Telegram</th><th>Дата регистрации</th></tr>
     </thead>
     <tbody>
         {% for client in clients %}
@@ -35,17 +43,21 @@
         {% endfor %}
     </tbody>
 </table>
+
 <nav>
     <ul class="pagination">
         {% if page > 1 %}
-        <li class="page-item"><a class="page-link" href="?search={{ search }}&page={{ page-1 }}&per_page={{ per_page }}">Previous</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">Предыдущая</a></li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">Предыдущая</span></li>
         {% endif %}
-        {% for p in range(1, total_pages+1) %}
-        <li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="?search={{ search }}&page={{ p }}&per_page={{ per_page }}">{{ p }}</a></li>
-        {% endfor %}
+        <li class="page-item active"><span class="page-link">Страница {{ page }} из {{ total_pages }}</span></li>
         {% if page < total_pages %}
-        <li class="page-item"><a class="page-link" href="?search={{ search }}&page={{ page+1 }}&per_page={{ per_page }}">Next</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}">Следующая</a></li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">Следующая</span></li>
         {% endif %}
     </ul>
 </nav>
+<p>Всего записей: {{ total }}</p>
 {% endblock %}
