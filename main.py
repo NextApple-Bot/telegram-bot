@@ -1,150 +1,75 @@
-# Файл: main.py
-import sys
-import logging
+# Файл: bot/db.py
 import os
-import traceback
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
-from starlette.middleware.sessions import SessionMiddleware
-import uvicorn
-from dotenv import load_dotenv
+import asyncpg
+import logging
+import asyncio
+from functools import wraps
 
-# Настройка базового логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from bot import config
+
 logger = logging.getLogger(__name__)
 
-# ========== ФИЛЬТР ДЛЯ ИГНОРИРОВАНИЯ /health ==========
-class HealthCheckFilter(logging.Filter):
-    def filter(self, record):
-        # Пропускаем только записи, которые содержат '/health'
-        if hasattr(record, 'message') and '/health' in record.getMessage():
-            return False
-        return True
-
-# Применяем фильтр к логгеру uvicorn.access (именно он пишет эти строки)
-logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
-# =====================================================
-
-load_dotenv()
-
-# Глобальные переменные
-bot = None
-dp = None
-config = None
-
-# Импортируем модули бота
-try:
-    from aiogram import Bot, Dispatcher
-    from aiogram.fsm.storage.memory import MemoryStorage
-    from aiogram.types import Update
-    from bot.handlers import router
-    from bot.db import close_pool
-    from bot import config as bot_config
-
-    config = bot_config
-    logger.info("✅ Конфигурация загружена")
-
-    bot = Bot(token=config.TOKEN)
-    logger.info("✅ Экземпляр Bot создан")
-
-    dp = Dispatcher(storage=MemoryStorage())
-    logger.info("✅ Диспетчер создан")
-
-    dp.include_router(router)
-    logger.info("✅ Роутер подключён")
-
-except Exception as e:
-    logger.error(f"❌ Ошибка при инициализации бота: {e}")
-    logger.error(traceback.format_exc())
+_pool = None
+_init_lock = asyncio.Lock()
 
 
-async def on_startup():
-    logger.info("🚀 on_startup: запуск...")
-    if bot and dp:
-        logger.info("✅ Бот и диспетчер готовы")
-        if config and hasattr(config, 'RENDER_URL') and config.RENDER_URL:
-            webhook_url = f"{config.RENDER_URL}/webhook"
-            try:
-                await bot.delete_webhook(drop_pending_updates=True)
-                await bot.set_webhook(url=webhook_url, allowed_updates=dp.resolve_used_update_types())
-                logger.info(f"✅ Вебхук установлен на {webhook_url}")
-            except Exception as e:
-                logger.error(f"❌ Не удалось установить вебхук: {e}")
-        else:
-            logger.warning("⚠️ RENDER_URL не задан, вебхук не будет установлен")
-    else:
-        logger.warning("⚠️ Бот не инициализирован, пропускаем установку вебхука")
+def retry_on_db_error(retries=3, delay=1, backoff=2):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(retries):
+                try:
+                    return await func(*args, **kwargs)
+                except (asyncpg.exceptions.ConnectionFailureError,
+                        asyncpg.exceptions.InterfaceError,
+                        asyncpg.exceptions.PostgresConnectionError) as e:
+                    last_exception = e
+                    if attempt < retries - 1:
+                        wait = delay * (backoff ** attempt)
+                        logger.warning(f"Ошибка БД (попытка {attempt+1}/{retries}): {e}. Повтор через {wait}с")
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.error(f"Все попытки исчерпаны: {e}")
+                        raise
+                except Exception as e:
+                    raise
+            raise last_exception
+        return wrapper
+    return decorator
 
 
-async def on_shutdown():
-    logger.info("🛑 Завершение работы, закрываем пул соединений...")
+async def get_pool():
+    """Возвращает пул соединений, создавая его при необходимости.
+    Теперь корректно пересоздаёт пул после close_pool().
+    """
+    global _pool
+    if _pool is None:
+        async with _init_lock:
+            if _pool is None:  # двойная проверка
+                _pool = await asyncpg.create_pool(
+                    config.DATABASE_URL,
+                    min_size=5,
+                    max_size=20,
+                    command_timeout=60,
+                    max_inactive_connection_lifetime=300
+                )
+                logger.info("✅ Пул соединений создан")
+    return _pool
+
+
+async def close_pool():
+    """Закрывает пул соединений и сбрасывает глобальную переменную."""
+    global _pool
+    if _pool:
+        async with _init_lock:
+            if _pool:
+                await _pool.close()
+                _pool = None
+                logger.info("✅ Пул соединений закрыт и сброшен")
+
+
+async def reset_pool():
+    """Принудительно сбрасывает и пересоздаёт пул (для экстренных случаев)."""
     await close_pool()
-    if bot:
-        try:
-            await bot.delete_webhook()
-            await bot.session.close()
-            logger.info("✅ Вебхук удалён, сессия бота закрыта")
-        except Exception as e:
-            logger.error(f"Ошибка при завершении работы бота: {e}")
-
-
-async def webhook(request: Request) -> Response:
-    if not bot or not dp:
-        logger.error("❌ Бот не инициализирован, запрос отклонён")
-        return Response(status_code=503)
-    try:
-        update_data = await request.json()
-        logger.info(f"📨 Получено обновление: update_id={update_data.get('update_id')}")
-        update = Update(**update_data)
-        await dp.feed_update(bot, update)
-        return Response(status_code=200)
-    except Exception as e:
-        logger.exception(f"❌ Ошибка при обработке вебхука: {e}")
-        return Response(status_code=500)
-
-
-async def health(_: Request) -> PlainTextResponse:
-    return PlainTextResponse("OK")
-
-
-# Создаём Starlette приложение
-app = Starlette(
-    routes=[
-        Route("/webhook", webhook, methods=["POST"]),
-        Route("/health", health, methods=["GET"]),
-    ],
-    on_startup=[on_startup],
-    on_shutdown=[on_shutdown],
-)
-
-# Добавляем SessionMiddleware для поддержки сессий в админке
-if config and config.SECRET_KEY:
-    app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
-    logger.info("✅ SessionMiddleware добавлена")
-else:
-    logger.warning("⚠️ SECRET_KEY не задан, сессии не будут работать")
-
-# Монтируем веб-админку, если заданы пароль и секретный ключ
-if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
-    try:
-        from web_admin.main import app as admin_app
-        app.mount("/admin", admin_app)
-        logger.info("✅ Веб-админка смонтирована на /admin")
-    except Exception as e:
-        logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
-else:
-    if not config:
-        logger.warning("⚠️ Конфиг не загружен, админка не монтируется")
-    else:
-        logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
-
-
-if __name__ == "__main__":
-    PORT = int(os.getenv("PORT", 8000))
-    logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    return await get_pool()
