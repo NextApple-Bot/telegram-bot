@@ -5,7 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from bot import config
 from .auth import is_authenticated
-from .routes import auth, dashboard, clients, purchases, assortment, stats
+from .routes import dashboard, clients, purchases, assortment, stats, auth
 
 app = FastAPI(title="Telegram Bot Admin Panel")
 
@@ -26,7 +26,6 @@ app.include_router(stats.router, prefix="/stats", tags=["stats"])
 # Защита: проверка аутентификации для всех маршрутов, кроме /auth/login
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    # Исключаем пути, не требующие авторизации
     if request.url.path.startswith("/admin/auth/login") or request.url.path.startswith("/admin/static"):
         return await call_next(request)
     if not is_authenticated(request):
