@@ -63,8 +63,8 @@ async def list_purchases(
             pass
 
     if payment_type and payment_type != "all":
-        base_query += " AND p.payment_details->>$" + str(len(params)+1) + " > '0'"
-        count_query += " AND p.payment_details->>$" + str(len(count_params)+1) + " > '0'"
+        base_query += " AND (p.payment_details->>$" + str(len(params)+1) + " IS NOT NULL AND p.payment_details->>$" + str(len(params)+1) + " > '0')"
+        count_query += " AND (p.payment_details->>$" + str(len(count_params)+1) + " IS NOT NULL AND p.payment_details->>$" + str(len(count_params)+1) + " > '0')"
         params.append(payment_type)
         count_params.append(payment_type)
 
@@ -142,7 +142,7 @@ async def export_purchases_csv(
             pass
 
     if payment_type and payment_type != "all":
-        query += " AND p.payment_details->>$" + str(len(params)+1) + " > '0'"
+        query += " AND (p.payment_details->>$" + str(len(params)+1) + " IS NOT NULL AND p.payment_details->>$" + str(len(params)+1) + " > '0')"
         params.append(payment_type)
 
     if purchase_type and purchase_type != "all":
