@@ -6,6 +6,7 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
+from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 from dotenv import load_dotenv
 
@@ -96,7 +97,14 @@ app = Starlette(
     on_shutdown=[on_shutdown],
 )
 
-# Монтируем веб-админку только если конфиг загружен и заданы необходимые переменные
+# Добавляем SessionMiddleware для поддержки сессий в админке
+if config and config.SECRET_KEY:
+    app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
+    logger.info("✅ SessionMiddleware добавлена к основному приложению")
+else:
+    logger.warning("⚠️ SECRET_KEY не задан, сессии не будут работать")
+
+# Монтируем веб-админку только если заданы необходимые переменные
 if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
     try:
         from web_admin.main import app as admin_app
