@@ -1,148 +1,421 @@
-# Файл: main.py
-import sys
-import logging
+# Файл: bot/db.py
 import os
-import traceback
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
-from starlette.middleware.sessions import SessionMiddleware
-import uvicorn
-from dotenv import load_dotenv
+import asyncpg
+import json
+import logging
+import asyncio
+from datetime import date, datetime
+from functools import wraps
 
-# Настройка базового логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+import config as bot_config
+
 logger = logging.getLogger(__name__)
 
-# Фильтр для /health
-class HealthCheckFilter(logging.Filter):
-    def filter(self, record):
-        if hasattr(record, 'message') and '/health' in record.getMessage():
-            return False
-        return True
-
-logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
-load_dotenv()
-
-# Глобальные переменные
-bot = None
-dp = None
-config = None
-
-# Импортируем модули бота
-try:
-    from aiogram import Bot, Dispatcher
-    from aiogram.fsm.storage.memory import MemoryStorage
-    from aiogram.types import Update
-    from bot.handlers import router
-    from bot.db import close_pool, get_pool   # get_pool добавлен
-    from bot import config as bot_config
-
-    config = bot_config
-    logger.info("✅ Конфигурация загружена")
-
-    bot = Bot(token=config.TOKEN)
-    logger.info("✅ Экземпляр Bot создан")
-
-    dp = Dispatcher(storage=MemoryStorage())
-    logger.info("✅ Диспетчер создан")
-
-    dp.include_router(router)
-    logger.info("✅ Роутер подключён")
-
-except Exception as e:
-    logger.error(f"❌ Ошибка при инициализации бота: {e}")
-    logger.error(traceback.format_exc())
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("❌ DATABASE_URL не задан в переменных окружения!")
 
 
-async def on_startup():
-    logger.info("🚀 on_startup: запуск...")
-    
-    # Принудительно создаём пул соединений
-    try:
-        await get_pool()
-        logger.info("✅ Пул соединений БД инициализирован")
-    except Exception as e:
-        logger.error(f"❌ Ошибка инициализации пула БД: {e}")
-    
-    if bot and dp:
-        logger.info("✅ Бот и диспетчер готовы")
-        if config and hasattr(config, 'RENDER_URL') and config.RENDER_URL:
-            webhook_url = f"{config.RENDER_URL}/webhook"
+# ---------- Декоратор для повторных попыток ----------
+def retry_on_db_error(retries=3, delay=1, backoff=2):
+    """
+    Декоратор для асинхронных функций, выполняющих запросы к БД.
+    При ошибках соединения повторяет вызов до retries раз.
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(retries):
+                try:
+                    return await func(*args, **kwargs)
+                except (asyncpg.exceptions.ConnectionFailureError,
+                        asyncpg.exceptions.InterfaceError,
+                        asyncpg.exceptions.PostgresConnectionError) as e:
+                    last_exception = e
+                    if attempt < retries - 1:
+                        wait = delay * (backoff ** attempt)
+                        logger.warning(f"Ошибка БД (попытка {attempt+1}/{retries}): {e}. Повтор через {wait}с")
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.error(f"Все попытки исчерпаны: {e}")
+                        raise
+                except Exception as e:
+                    # Другие ошибки не повторяем
+                    raise
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+# ---------- Пул соединений с повторными попытками ----------
+_pool = None
+
+async def get_pool():
+    """Возвращает пул соединений (создаёт при первом вызове с повторными попытками)."""
+    global _pool
+    if _pool is None:
+        last_exception = None
+        for attempt in range(5):  # до 5 попыток
             try:
-                await bot.delete_webhook(drop_pending_updates=True)
-                await bot.set_webhook(url=webhook_url, allowed_updates=dp.resolve_used_update_types())
-                logger.info(f"✅ Вебхук установлен на {webhook_url}")
+                _pool = await asyncpg.create_pool(
+                    DATABASE_URL,
+                    min_size=2,          # уменьшено для экономии памяти на платном тарифе
+                    max_size=10,
+                    command_timeout=60,
+                    max_inactive_connection_lifetime=300
+                )
+                logger.info("✅ Пул соединений создан")
+                break
             except Exception as e:
-                logger.error(f"❌ Не удалось установить вебхук: {e}")
+                last_exception = e
+                wait = 2 ** attempt
+                logger.warning(f"Не удалось создать пул (попытка {attempt+1}/5): {e}. Повтор через {wait}с")
+                await asyncio.sleep(wait)
         else:
-            logger.warning("⚠️ RENDER_URL не задан, вебхук не будет установлен")
-    else:
-        logger.warning("⚠️ Бот не инициализирован, пропускаем установку вебхука")
+            logger.error("Все попытки создания пула провалились")
+            raise last_exception
+    return _pool
 
 
-async def on_shutdown():
-    logger.info("🛑 Завершение работы, закрываем пул соединений...")
-    await close_pool()
-    if bot:
+async def close_pool():
+    """Закрывает пул соединений."""
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
+        logger.info("✅ Пул соединений закрыт")
+
+
+async def init_db():
+    """Создаёт таблицы и индексы, если их нет (синхронизирует с миграциями)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Таблица категорий
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE
+            )
+        ''')
+        # Таблица товаров
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS items (
+                id SERIAL PRIMARY KEY,
+                text TEXT NOT NULL,
+                serial TEXT,
+                category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+                is_booked BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Таблица продаж
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS sales (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+                count INTEGER DEFAULT 1,
+                cash REAL DEFAULT 0,
+                terminal REAL DEFAULT 0,
+                qr REAL DEFAULT 0,
+                transfer REAL DEFAULT 0,
+                invoice REAL DEFAULT 0,
+                installment REAL DEFAULT 0,
+                is_accessory BOOLEAN DEFAULT FALSE,
+                message_id BIGINT UNIQUE,
+                sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Таблица предзаказов
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS preorders (
+                id SERIAL PRIMARY KEY,
+                cash REAL DEFAULT 0,
+                terminal REAL DEFAULT 0,
+                qr REAL DEFAULT 0,
+                transfer REAL DEFAULT 0,
+                invoice REAL DEFAULT 0,
+                installment REAL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Таблица броней
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS bookings (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+                total_amount REAL DEFAULT 0,
+                booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Таблица клиентов
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS clients (
+                id SERIAL PRIMARY KEY,
+                full_name TEXT,
+                phone TEXT UNIQUE,
+                phones TEXT,
+                telegram_username TEXT,
+                social_network TEXT,
+                referral_source TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Таблица покупок
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS purchases (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+                items_json TEXT,
+                total_amount REAL,
+                payment_details JSONB,
+                purchase_type TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Таблица удалённых товаров (для Undo)
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_items (
+                id SERIAL PRIMARY KEY,
+                item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+                text TEXT NOT NULL,
+                serial TEXT,
+                category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+                deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                restored BOOLEAN DEFAULT FALSE,
+                reason TEXT
+            )
+        ''')
+        # Таблица обработанных сообщений
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS processed_messages (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                message_id INTEGER NOT NULL,
+                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(chat_id, message_id)
+            )
+        ''')
+        # Таблица ежедневных платежей (финансы)
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS daily_payments (
+                id SERIAL PRIMARY KEY,
+                type TEXT NOT NULL,
+                payment_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CHECK (type IN ('sale', 'preorder')),
+                CHECK (payment_type IN ('cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'))
+            )
+        ''')
+        
+        # Индексы
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_serial ON items(serial)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_created_at ON clients(created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_items_deleted_at ON deleted_items(deleted_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_items_restored ON deleted_items(restored)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_created_at ON daily_payments(created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_processed_messages_processed_at ON processed_messages(processed_at)')
+
+        # Добавление новых колонок, если их нет (для совместимости)
+        await conn.execute('''
+            ALTER TABLE preorders 
+            ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0
+        ''')
+        await conn.execute('''
+            ALTER TABLE sales 
+            ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS message_id BIGINT UNIQUE
+        ''')
+        await conn.execute('''
+            ALTER TABLE purchases 
+            ALTER COLUMN payment_details TYPE JSONB USING payment_details::jsonb
+        ''')
+
+    logger.info("✅ Инициализация БД завершена (таблицы и индексы созданы)")
+
+
+# ---------- Функции-обёртки для совместимости с существующим кодом ----------
+# Они будут постепенно заменяться на методы репозиториев, но пока оставим
+
+@retry_on_db_error()
+async def get_or_create_category(name: str) -> int:
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.get_or_create_category(name)
+
+
+@retry_on_db_error()
+async def add_item(text: str, serial: str = None, category_name: str = None, category_id: int = None):
+    from bot.repositories.item import ItemRepository
+    await ItemRepository.add_item(text, serial, category_id, category_name)
+
+
+@retry_on_db_error()
+async def get_item_id_by_serial(serial: str) -> int | None:
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.get_item_id_by_serial(serial)
+
+
+@retry_on_db_error()
+async def get_item_by_serial(serial: str) -> dict | None:
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.get_item_by_serial(serial)
+
+
+@retry_on_db_error()
+async def get_item_by_text(text: str) -> dict | None:
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.get_item_by_text(text)
+
+
+@retry_on_db_error()
+async def remove_item_by_serial(serial: str) -> int:
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.remove_item_by_serial(serial)
+
+
+@retry_on_db_error()
+async def get_all_categories_with_items():
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.get_all_categories_with_items()
+
+
+@retry_on_db_error()
+async def get_all_items_serials():
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.get_all_items_serials()
+
+
+@retry_on_db_error()
+async def update_category_items(category_name: str, new_items: list):
+    from bot.repositories.item import ItemRepository
+    cat_id = await ItemRepository.get_or_create_category(category_name)
+    for item_text in new_items:
+        from bot.utils.validators import extract_serials
+        serials = extract_serials(item_text)
+        serial = serials[0] if serials else None
+        await ItemRepository.add_item(item_text, serial, category_id=cat_id)
+
+
+@retry_on_db_error()
+async def clear_all_inventory():
+    from bot.services.assortment import AssortmentService
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute('DELETE FROM categories')
+    AssortmentService.invalidate_cache()
+
+
+@retry_on_db_error()
+async def add_sale(item_id: int = None, count: int = 1,
+                   cash: float = 0, terminal: float = 0, qr: float = 0,
+                   transfer: float = 0, invoice: float = 0, installment: float = 0,
+                   is_accessory: bool = False):
+    from bot.repositories.stats import StatsRepository
+    await StatsRepository.add_sale(item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory)
+
+
+@retry_on_db_error()
+async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
+    from bot.repositories.stats import StatsRepository
+    await StatsRepository.add_preorder(cash, terminal, qr, transfer, invoice, installment)
+
+
+@retry_on_db_error()
+async def add_booking(item_id: int, total_amount: float):
+    from bot.repositories.stats import StatsRepository
+    await StatsRepository.add_booking(item_id, total_amount)
+
+
+@retry_on_db_error()
+async def get_today_stats():
+    from bot.repositories.stats import StatsRepository
+    return await StatsRepository.get_today_stats()
+
+
+@retry_on_db_error()
+async def get_or_create_client(phone: str = None, phones: list = None, full_name: str = None,
+                               telegram_username: str = None, social_network: str = None,
+                               referral_source: str = None) -> int:
+    from bot.repositories.client import ClientRepository
+    return await ClientRepository.get_or_create_client(phone, phones, full_name, telegram_username, social_network, referral_source)
+
+
+@retry_on_db_error()
+async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
+    from bot.repositories.client import ClientRepository
+    await ClientRepository.add_purchase(client_id, items, total_amount, payment_details, purchase_type)
+
+
+@retry_on_db_error()
+async def get_client_purchases(client_id: int):
+    from bot.repositories.client import ClientRepository
+    return await ClientRepository.get_client_purchases(client_id)
+
+
+@retry_on_db_error()
+async def search_clients(query: str):
+    from bot.repositories.client import ClientRepository
+    return await ClientRepository.search_clients(query)
+
+
+@retry_on_db_error()
+async def get_available_months():
+    from bot.repositories.client import ClientRepository
+    return await ClientRepository.get_available_months()
+
+
+@retry_on_db_error()
+async def get_clients_data_for_month(month_str: str):
+    from bot.repositories.client import ClientRepository
+    return await ClientRepository.get_clients_data_for_month(month_str)
+
+
+@retry_on_db_error()
+async def add_deleted_item(item_id: int, text: str, serial: str, category_id: int, reason: str = 'manual'):
+    from bot.repositories.item import ItemRepository
+    await ItemRepository.add_deleted_item(item_id, text, serial, category_id, reason)
+
+
+@retry_on_db_error()
+async def get_last_deleted_item() -> dict | None:
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.get_last_deleted_item()
+
+
+@retry_on_db_error()
+async def restore_deleted_item(deleted_id: int) -> bool:
+    from bot.repositories.item import ItemRepository
+    return await ItemRepository.restore_deleted_item(deleted_id)
+
+
+# Автоматическая очистка старых записей (вызывается в main.py при старте)
+async def cleanup_old_records():
+    """Фоновая задача: удаляет старые записи из processed_messages и daily_payments."""
+    while True:
         try:
-            await bot.delete_webhook()
-            await bot.session.close()
-            logger.info("✅ Вебхук удалён, сессия бота закрыта")
+            await asyncio.sleep(86400)  # раз в сутки
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                # Удаляем обработанные сообщения старше 30 дней
+                res1 = await conn.execute('''
+                    DELETE FROM processed_messages 
+                    WHERE processed_at < NOW() - INTERVAL '30 days'
+                ''')
+                # Удаляем платежи старше 90 дней
+                res2 = await conn.execute('''
+                    DELETE FROM daily_payments 
+                    WHERE created_at < NOW() - INTERVAL '90 days'
+                ''')
+                logger.info(f"Очистка БД: удалено processed_messages={res1.split()[1] if res1.startswith('DELETE') else 0}, "
+                            f"daily_payments={res2.split()[1] if res2.startswith('DELETE') else 0}")
         except Exception as e:
-            logger.error(f"Ошибка при завершении работы бота: {e}")
-
-
-async def webhook(request: Request) -> Response:
-    if not bot or not dp:
-        logger.error("❌ Бот не инициализирован, запрос отклонён")
-        return Response(status_code=503)
-    try:
-        update_data = await request.json()
-        logger.info(f"📨 Получено обновление: update_id={update_data.get('update_id')}")
-        update = Update(**update_data)
-        await dp.feed_update(bot, update)
-        return Response(status_code=200)
-    except Exception as e:
-        logger.exception(f"❌ Ошибка при обработке вебхука: {e}")
-        return Response(status_code=500)
-
-
-async def health(_: Request) -> PlainTextResponse:
-    return PlainTextResponse("OK")
-
-
-app = Starlette(
-    routes=[
-        Route("/webhook", webhook, methods=["POST"]),
-        Route("/health", health, methods=["GET"]),
-    ],
-    on_startup=[on_startup],
-    on_shutdown=[on_shutdown],
-)
-
-if config and config.SECRET_KEY:
-    app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
-    logger.info("✅ SessionMiddleware добавлена")
-else:
-    logger.warning("⚠️ SECRET_KEY не задан, сессии не будут работать")
-
-# Монтируем веб-админку
-if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
-    try:
-        from web_admin.main import app as admin_app
-        app.mount("/admin", admin_app)
-        logger.info("✅ Веб-админка смонтирована на /admin")
-    except Exception as e:
-        logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
-else:
-    logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
-
-if __name__ == "__main__":
-    PORT = int(os.getenv("PORT", 8000))
-    logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+            logger.exception(f"Ошибка при фоновой очистке БД: {e}")
