@@ -1,3 +1,4 @@
+# Файл: bot/handlers/topics/preorder.py
 import re
 import logging
 from aiogram import F, Router
@@ -87,7 +88,7 @@ async def handle_preorder(message: Message):
             else:
                 logger.info("Нет платежей в предзаказе, реакция не ставится")
 
-        # Обрабатываем каждый блок брони (брони не влияют на статистику предзаказов и платежи)
+        # Обрабатываем каждый блок брони
         for idx in booking_indices:
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
