@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Request, Query, Form
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Request, Query, Form, HTTPException
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
+import csv
+import io
+import json
 
 from bot.db import get_pool
 
@@ -23,7 +26,6 @@ async def list_purchases(
     pool = await get_pool()
     offset = (page - 1) * per_page
 
-    # Базовый запрос с JOIN для получения имени клиента
     base_query = """
         SELECT p.*, c.full_name as client_name
         FROM purchases p
@@ -34,14 +36,12 @@ async def list_purchases(
     params = []
     count_params = []
 
-    # Фильтр по поиску клиента (имя или телефон)
     if client_search:
         base_query += " AND (c.full_name ILIKE $" + str(len(params)+1) + " OR c.phone ILIKE $" + str(len(params)+1) + ")"
         count_query += " AND (c.full_name ILIKE $" + str(len(count_params)+1) + " OR c.phone ILIKE $" + str(len(count_params)+1) + ")"
         params.append(f"%{client_search}%")
         count_params.append(f"%{client_search}%")
 
-    # Фильтр по дате начала
     if date_from:
         try:
             start_date = datetime.strptime(date_from, "%Y-%m-%d")
@@ -52,7 +52,6 @@ async def list_purchases(
         except ValueError:
             pass
 
-    # Фильтр по дате окончания
     if date_to:
         try:
             end_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
@@ -63,35 +62,28 @@ async def list_purchases(
         except ValueError:
             pass
 
-    # Фильтр по типу оплаты (проверяем payment_details JSON)
     if payment_type and payment_type != "all":
         base_query += " AND p.payment_details->>$" + str(len(params)+1) + " > '0'"
         count_query += " AND p.payment_details->>$" + str(len(count_params)+1) + " > '0'"
         params.append(payment_type)
         count_params.append(payment_type)
 
-    # Фильтр по типу покупки
     if purchase_type and purchase_type != "all":
         base_query += " AND p.purchase_type = $" + str(len(params)+1)
         count_query += " AND p.purchase_type = $" + str(len(count_params)+1)
         params.append(purchase_type)
         count_params.append(purchase_type)
 
-    # Сортировка и пагинация
     base_query += " ORDER BY p.created_at DESC LIMIT $" + str(len(params)+1) + " OFFSET $" + str(len(params)+2)
     params.append(per_page)
     params.append(offset)
 
     async with pool.acquire() as conn:
-        # Получаем общее количество записей
         total = await conn.fetchval(count_query, *count_params)
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-
-        # Получаем записи
         rows = await conn.fetch(base_query, *params)
         purchases = [dict(row) for row in rows]
 
-    # Для фильтра по типу оплаты нужно знать, какие типы доступны (можно вынести статически)
     payment_types = ["cash", "terminal", "qr", "transfer", "invoice", "installment"]
     purchase_types = ["sale", "preorder", "booking"]
 
@@ -110,3 +102,73 @@ async def list_purchases(
         "payment_types": payment_types,
         "purchase_types": purchase_types,
     })
+
+@router.get("/export/csv")
+async def export_purchases_csv(
+    request: Request,
+    client_search: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    payment_type: Optional[str] = Query(None),
+    purchase_type: Optional[str] = Query(None),
+):
+    pool = await get_pool()
+    query = """
+        SELECT p.*, c.full_name as client_name, c.phone as client_phone
+        FROM purchases p
+        LEFT JOIN clients c ON p.client_id = c.id
+        WHERE 1=1
+    """
+    params = []
+
+    if client_search:
+        query += " AND (c.full_name ILIKE $" + str(len(params)+1) + " OR c.phone ILIKE $" + str(len(params)+1) + ")"
+        params.append(f"%{client_search}%")
+
+    if date_from:
+        try:
+            start_date = datetime.strptime(date_from, "%Y-%m-%d")
+            query += " AND p.created_at >= $" + str(len(params)+1)
+            params.append(start_date)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            end_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            query += " AND p.created_at < $" + str(len(params)+1)
+            params.append(end_date)
+        except ValueError:
+            pass
+
+    if payment_type and payment_type != "all":
+        query += " AND p.payment_details->>$" + str(len(params)+1) + " > '0'"
+        params.append(payment_type)
+
+    if purchase_type and purchase_type != "all":
+        query += " AND p.purchase_type = $" + str(len(params)+1)
+        params.append(purchase_type)
+
+    query += " ORDER BY p.created_at DESC"
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['ID покупки', 'Клиент', 'Телефон клиента', 'Дата', 'Сумма', 'Тип', 'Товары (JSON)', 'Детали оплаты (JSON)'])
+    for row in rows:
+        writer.writerow([
+            row['id'],
+            row['client_name'] or '',
+            row['client_phone'] or '',
+            row['created_at'].isoformat() if row['created_at'] else '',
+            float(row['total_amount']) if row['total_amount'] else 0,
+            row['purchase_type'] or '',
+            row['items_json'] or '',
+            row['payment_details'] or ''
+        ])
+
+    response = StreamingResponse(iter([output.getvalue().encode('utf-8-sig')]), media_type="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=purchases_export.csv"
+    return response
