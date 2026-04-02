@@ -3,7 +3,12 @@
 {% block content %}
 <h1>Покупки</h1>
 
-<!-- Форма фильтрации -->
+<div class="row mb-3">
+    <div class="col">
+        <a href="/admin/purchases/export/csv{% if client_search %}?client_search={{ client_search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if payment_type and payment_type != 'all' %}&payment_type={{ payment_type }}{% endif %}{% if purchase_type and purchase_type != 'all' %}&purchase_type={{ purchase_type }}{% endif %}" class="btn btn-success">📥 Экспорт в CSV</a>
+    </div>
+</div>
+
 <form method="get" class="row g-3 mb-3">
     <div class="col-md-3">
         <input type="text" class="form-control" name="client_search" placeholder="Клиент (имя/телефон)" value="{{ client_search or '' }}">
@@ -43,14 +48,7 @@
 
 <table class="table table-striped">
     <thead>
-        <tr>
-            <th>ID</th>
-            <th>Клиент</th>
-            <th>Дата</th>
-            <th>Сумма</th>
-            <th>Тип</th>
-            <th>Оплата (детали)</th>
-        </tr>
+        <tr><th>ID</th><th>Клиент</th><th>Дата</th><th>Сумма</th><th>Тип</th><th>Оплата (детали)</th></tr>
     </thead>
     <tbody>
         {% for purchase in purchases %}
