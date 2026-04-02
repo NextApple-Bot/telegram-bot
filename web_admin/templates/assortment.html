@@ -10,7 +10,7 @@
     <div class="accordion-item">
         <h2 class="accordion-header" id="heading{{ loop.index }}">
             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}">
-                {{ cat.header }} ({{ cat.items|length }} товаров)
+                {{ cat.header }} ({{ cat.items|length if cat.items is not none else 0 }} товаров)
             </button>
         </h2>
         <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#categoriesAccordion">
