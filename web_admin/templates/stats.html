@@ -9,11 +9,9 @@
     <div class="row">
         <div class="col-auto">
             <select name="days" class="form-select">
-                <option value="7" {% if days==7 %}selected{% endif %}>7 дней</option>
-                <option value="14" {% if days==14 %}selected{% endif %}>14 дней</option>
-                <option value="30" {% if days==30 %}selected{% endif %}>30 дней</option>
-                <option value="60" {% if days==60 %}selected{% endif %}>60 дней</option>
-                <option value="90" {% if days==90 %}selected{% endif %}>90 дней</option>
+                <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
             </select>
         </div>
         <div class="col-auto">
@@ -24,59 +22,43 @@
 
 <div class="row">
     <div class="col-md-12">
-        <div class="card mb-4">
-            <div class="card-header">Количество операций</div>
-            <div class="card-body">
-                <canvas id="countsChart" width="800" height="400"></canvas>
-            </div>
-        </div>
+        <canvas id="statsChart" width="400" height="200"></canvas>
     </div>
+</div>
+
+<div class="row mt-4">
     <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">Выручка (₽)</div>
-            <div class="card-body">
-                <canvas id="revenueChart" width="800" height="400"></canvas>
-            </div>
-        </div>
+        <h3>Итоги за период</h3>
+        <table class="table table-bordered">
+            <thead>
+                <tr><th>Тип</th><th>Количество</th><th>Выручка</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Продажи</td><td>{{ total_sales_count }}</td><td>{{ total_sales_revenue|round(0) }} ₽</td></tr>
+                <tr><td>Предзаказы</td><td>{{ total_pre_count }}</td><td>{{ total_pre_revenue|round(0) }} ₽</td></tr>
+                <tr><td>Брони</td><td>{{ total_book_count }}</td><td>{{ total_book_revenue|round(0) }} ₽</td></tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
 <script>
+    const ctx = document.getElementById('statsChart').getContext('2d');
     const dates = {{ dates|tojson }};
     const salesCounts = {{ sales_counts|tojson }};
     const preCounts = {{ pre_counts|tojson }};
     const bookCounts = {{ book_counts|tojson }};
-
-    const salesRevenue = {{ sales_revenue|tojson }};
-    const preRevenue = {{ pre_revenue|tojson }};
-    const bookRevenue = {{ book_revenue|tojson }};
-
-    // График количества
-    new Chart(document.getElementById('countsChart'), {
+    new Chart(ctx, {
         type: 'line',
         data: {
             labels: dates,
             datasets: [
-                { label: 'Продажи', data: salesCounts, borderColor: 'blue', backgroundColor: 'rgba(0,0,255,0.1)', fill: true },
-                { label: 'Предзаказы', data: preCounts, borderColor: 'green', backgroundColor: 'rgba(0,255,0,0.1)', fill: true },
-                { label: 'Брони', data: bookCounts, borderColor: 'orange', backgroundColor: 'rgba(255,165,0,0.1)', fill: true }
+                { label: 'Продажи', data: salesCounts, borderColor: 'blue', fill: false },
+                { label: 'Предзаказы', data: preCounts, borderColor: 'green', fill: false },
+                { label: 'Брони', data: bookCounts, borderColor: 'orange', fill: false }
             ]
         },
-        options: { responsive: true, maintainAspectRatio: true }
-    });
-
-    // График выручки
-    new Chart(document.getElementById('revenueChart'), {
-        type: 'line',
-        data: {
-            labels: dates,
-            datasets: [
-                { label: 'Продажи (₽)', data: salesRevenue, borderColor: 'blue', backgroundColor: 'rgba(0,0,255,0.1)', fill: true },
-                { label: 'Предзаказы (₽)', data: preRevenue, borderColor: 'green', backgroundColor: 'rgba(0,255,0,0.1)', fill: true },
-                { label: 'Брони (₽)', data: bookRevenue, borderColor: 'orange', backgroundColor: 'rgba(255,165,0,0.1)', fill: true }
-            ]
-        },
-        options: { responsive: true, maintainAspectRatio: true }
+        options: { responsive: true }
     });
 </script>
 {% endblock %}
