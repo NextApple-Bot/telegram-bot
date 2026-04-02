@@ -21,12 +21,17 @@ logger = logging.getLogger(__name__)
 # Фильтр для игнорирования логов доступа к /health
 class HealthCheckFilter(logging.Filter):
     def filter(self, record):
-        if hasattr(record, 'message') and '/health' in record.getMessage():
+        # Проверяем разные способы хранения сообщения в записи лога
+        msg = record.getMessage() if hasattr(record, 'getMessage') else str(record.msg)
+        if '/health' in msg:
             return False
         return True
 
 # Применяем фильтр к логгеру uvicorn.access
-logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+uvicorn_access_logger = logging.getLogger("uvicorn.access")
+uvicorn_access_logger.addFilter(HealthCheckFilter())
+# Также отключаем вывод access логов на консоль для этого логгера (опционально)
+uvicorn_access_logger.propagate = False
 
 load_dotenv()
 
@@ -65,7 +70,6 @@ async def on_startup():
     logger.info("🚀 on_startup: запуск...")
     if bot and dp:
         logger.info("✅ Бот и диспетчер готовы")
-        # Проверяем, задан ли внешний URL для вебхука
         if config and hasattr(config, 'RENDER_URL') and config.RENDER_URL:
             webhook_url = f"{config.RENDER_URL}/webhook"
             try:
@@ -146,4 +150,8 @@ else:
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
     logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    # Устанавливаем уровень логов для uvicorn.access на WARNING, чтобы скрыть все access логи
+    # Это более грубый метод, но надёжный:
+    uvicorn_log_config = uvicorn.config.LOGGING_CONFIG
+    uvicorn_log_config["loggers"]["uvicorn.access"]["level"] = "WARNING"
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", log_config=uvicorn_log_config)
