@@ -1,7 +1,8 @@
+# Файл: bot/repositories/item.py
 import logging
 import asyncpg
 from typing import Optional, List, Dict
-from bot.db import get_pool, get_connection, retry_on_db_error
+from bot.db import get_pool, retry_on_db_error
 from bot.utils.validators import extract_serials
 
 logger = logging.getLogger(__name__)
