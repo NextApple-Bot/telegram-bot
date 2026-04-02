@@ -3,6 +3,12 @@
 {% block content %}
 <h1>Клиенты</h1>
 
+<div class="row mb-3">
+    <div class="col">
+        <a href="/admin/clients/export/csv{% if search %}?search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}" class="btn btn-success">📥 Экспорт в CSV</a>
+    </div>
+</div>
+
 <form method="get" class="row g-3 mb-3">
     <div class="col-md-3">
         <input type="text" class="form-control" name="search" placeholder="Поиск (имя/телефон/telegram)" value="{{ search or '' }}">
