@@ -1,3 +1,4 @@
+# Файл: main.py
 import sys
 import logging
 import os
@@ -16,6 +17,16 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Фильтр для игнорирования логов доступа к /health
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record):
+        if hasattr(record, 'message') and '/health' in record.getMessage():
+            return False
+        return True
+
+# Применяем фильтр к логгеру uvicorn.access
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 load_dotenv()
 
@@ -116,7 +127,7 @@ else:
     if not config:
         logger.warning("⚠️ Конфиг не загружен, админка не монтируется")
     else:
-        logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
+        logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY")
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
