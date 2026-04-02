@@ -42,12 +42,12 @@ async def stats_page(request: Request, days: int = Query(7, ge=1, le=90)):
             ORDER BY day
         ''', start_date)
 
-    # Словари для быстрого доступа по дате
-    sales_dict = {row['day'].isoformat(): {'count': row['count'], 'revenue': float(row['revenue'])} for row in sales_rows}
-    pre_dict = {row['day'].isoformat(): {'count': row['count'], 'revenue': float(row['revenue'])} for row in pre_rows}
-    book_dict = {row['day'].isoformat(): {'count': row['count'], 'revenue': float(row['revenue'])} for row in book_rows}
+    # Словари с преобразованием в float
+    sales_dict = {row['day'].isoformat(): {'count': int(row['count']), 'revenue': float(row['revenue'])} for row in sales_rows}
+    pre_dict = {row['day'].isoformat(): {'count': int(row['count']), 'revenue': float(row['revenue'])} for row in pre_rows}
+    book_dict = {row['day'].isoformat(): {'count': int(row['count']), 'revenue': float(row['revenue'])} for row in book_rows}
 
-    # Генерируем список дат
+    # Генерация дат
     dates = [(start_date + timedelta(days=i)).isoformat() for i in range(days)]
 
     # Массивы для графиков
@@ -55,13 +55,13 @@ async def stats_page(request: Request, days: int = Query(7, ge=1, le=90)):
     pre_counts = [pre_dict.get(d, {}).get('count', 0) for d in dates]
     book_counts = [book_dict.get(d, {}).get('count', 0) for d in dates]
 
-    # Итоговые суммы
+    # Итоговые суммы (безопасно)
     total_sales_count = sum(sales_counts)
     total_pre_count = sum(pre_counts)
     total_book_count = sum(book_counts)
-    total_sales_revenue = sum(v['revenue'] for v in sales_dict.values())
-    total_pre_revenue = sum(v['revenue'] for v in pre_dict.values())
-    total_book_revenue = sum(v['revenue'] for v in book_dict.values())
+    total_sales_revenue = sum(v.get('revenue', 0.0) for v in sales_dict.values())
+    total_pre_revenue = sum(v.get('revenue', 0.0) for v in pre_dict.values())
+    total_book_revenue = sum(v.get('revenue', 0.0) for v in book_dict.values())
 
     return templates.TemplateResponse("stats.html", {
         "request": request,
