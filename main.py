@@ -2,7 +2,6 @@
 import sys
 import logging
 import os
-import signal
 import asyncio
 import traceback
 from starlette.applications import Starlette
@@ -34,7 +33,6 @@ load_dotenv()
 bot = None
 dp = None
 config = None
-shutdown_event = asyncio.Event()
 
 # Импортируем модули бота
 try:
@@ -78,7 +76,7 @@ async def on_startup():
     try:
         await get_pool()
         logger.info("✅ Пул соединений БД инициализирован")
-        # Запускаем фоновую очистку старых записей
+        # Запускаем фоновую очистку старых записей (без ожидания)
         asyncio.create_task(cleanup_old_records())
         logger.info("✅ Фоновая задача очистки БД запущена")
     except Exception as e:
@@ -142,12 +140,6 @@ async def health(_: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
 
-def handle_sigterm(*args):
-    """Обработчик SIGTERM для graceful shutdown."""
-    logger.info("Получен сигнал SIGTERM, завершаем работу...")
-    shutdown_event.set()
-
-
 app = Starlette(
     routes=[
         Route("/webhook", webhook, methods=["POST"]),
@@ -174,28 +166,22 @@ if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
 else:
     logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
 
-if __name__ == "__main__":
+
+async def main():
+    """Асинхронная точка входа для запуска uvicorn с graceful shutdown."""
     PORT = int(os.getenv("PORT", 8000))
-    # Регистрируем обработчик сигналов
-    signal.signal(signal.SIGTERM, handle_sigterm)
-    signal.signal(signal.SIGINT, handle_sigterm)
-    
-    logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    # Запускаем uvicorn с обработкой сигналов
     config_uvicorn = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config_uvicorn)
     
-    # Запускаем сервер в отдельной задаче
-    loop = asyncio.get_event_loop()
-    server_task = loop.create_task(server.serve())
+    # Добавляем обработчики сигналов для корректного завершения
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(server.shutdown()))
     
-    # Ждём сигнал завершения
-    try:
-        await shutdown_event.wait()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # Останавливаем uvicorn сервер
-        server.should_exit = True
-        await server_task
-        logger.info("Сервер остановлен")
+    logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
+    await server.serve()
+
+
+if __name__ == "__main__":
+    import signal
+    asyncio.run(main())
