@@ -36,6 +36,7 @@ async def edit_category_submit(
     name: str = Form(...),
     items_text: str = Form(...)
 ):
+    # Полная замена (оставляем для массового редактирования)
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -71,3 +72,54 @@ async def delete_category(request: Request, category_id: int):
         await conn.execute('DELETE FROM categories WHERE id = $1', category_id)
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
+
+# ========== НОВЫЕ ЭНДПОИНТЫ ДЛЯ РАБОТЫ С ОТДЕЛЬНЫМИ ТОВАРАМИ ==========
+
+@router.post("/item/add/{category_id}")
+async def add_item(request: Request, category_id: int, text: str = Form(...)):
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Item text cannot be empty")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        serials = extract_serials(text)
+        serial = serials[0].upper() if serials else None
+        is_booked = 'Бронь от' in text
+        await conn.execute('''
+            INSERT INTO items (text, serial, category_id, is_booked)
+            VALUES ($1, $2, $3, $4)
+        ''', text.strip(), serial, category_id, is_booked)
+    AssortmentService.invalidate_cache()
+    return RedirectResponse(url=f"/admin/assortment/edit/{category_id}", status_code=303)
+
+@router.post("/item/delete/{item_id}")
+async def delete_item(request: Request, item_id: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Получаем category_id для редиректа
+        item = await conn.fetchrow('SELECT category_id FROM items WHERE id = $1', item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        cat_id = item['category_id']
+        await conn.execute('DELETE FROM items WHERE id = $1', item_id)
+    AssortmentService.invalidate_cache()
+    return RedirectResponse(url=f"/admin/assortment/edit/{cat_id}", status_code=303)
+
+@router.post("/item/update/{item_id}")
+async def update_item(request: Request, item_id: int, text: str = Form(...)):
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Item text cannot be empty")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Получаем category_id для редиректа
+        item = await conn.fetchrow('SELECT category_id FROM items WHERE id = $1', item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        cat_id = item['category_id']
+        serials = extract_serials(text)
+        serial = serials[0].upper() if serials else None
+        is_booked = 'Бронь от' in text
+        await conn.execute('''
+            UPDATE items SET text = $1, serial = $2, is_booked = $3 WHERE id = $4
+        ''', text.strip(), serial, is_booked, item_id)
+    AssortmentService.invalidate_cache()
+    return RedirectResponse(url=f"/admin/assortment/edit/{cat_id}", status_code=303)
