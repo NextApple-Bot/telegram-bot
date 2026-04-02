@@ -1,9 +1,10 @@
+# Файл: bot/services/sale.py
 import logging
 from bot.repositories import ItemRepository, ClientRepository, StatsRepository
 from bot.models import ClientData
 from bot.utils.validators import extract_serials
 from bot.utils.parser import parse_client_data, extract_payment_amounts
-from bot.db import get_connection
+from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,8 @@ class SaleService:
         payments = extract_payment_amounts(content, ignore_prepay=True)
         serials = list(set(extract_serials(content)))
 
-        # Получаем соединение для транзакции
-        conn = await get_connection()
-        try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
             async with conn.transaction():
                 sold_items = []
                 for serial in serials:
@@ -68,35 +68,33 @@ class SaleService:
                     conn=conn
                 )
 
-                # Сохраняем клиента (вне транзакции, чтобы не держать блокировку долго)
-            try:
-                data_dict = parse_client_data(content)
-                client_data = ClientData(**data_dict)
-                if client_data.phones or client_data.full_name:
-                    client_id = await ClientRepository.get_or_create_client(
-                        phone=client_data.main_phone,
-                        phones=client_data.phones,
-                        full_name=client_data.full_name,
-                        telegram_username=client_data.telegram_username,
-                        social_network=client_data.social_network,
-                        referral_source=client_data.referral_source
-                    )
-                    await ClientRepository.add_purchase(
-                        client_id=client_id,
-                        items=client_data.items,
-                        total_amount=client_data.total,
-                        payment_details=client_data.payments,
-                        purchase_type='sale'
-                    )
-            except Exception as e:
-                logger.exception(f"Ошибка при сохранении клиента: {e}")
+        # Сохраняем клиента (вне транзакции, чтобы не держать блокировку долго)
+        try:
+            data_dict = parse_client_data(content)
+            client_data = ClientData(**data_dict)
+            if client_data.phones or client_data.full_name:
+                client_id = await ClientRepository.get_or_create_client(
+                    phone=client_data.main_phone,
+                    phones=client_data.phones,
+                    full_name=client_data.full_name,
+                    telegram_username=client_data.telegram_username,
+                    social_network=client_data.social_network,
+                    referral_source=client_data.referral_source
+                )
+                await ClientRepository.add_purchase(
+                    client_id=client_id,
+                    items=client_data.items,
+                    total_amount=client_data.total,
+                    payment_details=client_data.payments,
+                    purchase_type='sale'
+                )
+        except Exception as e:
+            logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-            await SaleService.mark_message_processed(chat_id, message_id)
+        await SaleService.mark_message_processed(chat_id, message_id)
 
-            return {
-                "sold_items": sold_items,
-                "not_found": [s for s in serials if s not in [x[1] for x in sold_items]],
-                "payments": payments
-            }
-        finally:
-            await conn.close()  # Возвращаем соединение в пул
+        return {
+            "sold_items": sold_items,
+            "not_found": [s for s in serials if s not in [x[1] for x in sold_items]],
+            "payments": payments
+        }
