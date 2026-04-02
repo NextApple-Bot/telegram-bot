@@ -1,3 +1,4 @@
+{# Файл: web_admin/templates/assortment_edit.html #}
 {% extends "base.html" %}
 {% block title %}Редактировать категорию{% endblock %}
 {% block content %}
@@ -37,6 +38,22 @@
     <button type="submit" class="btn btn-primary">Сохранить все изменения</button>
     <a href="/admin/assortment" class="btn btn-secondary">Отмена</a>
 </form>
+
+<!-- Быстрое добавление товара -->
+<div class="card mt-4">
+    <div class="card-header">➕ Быстрое добавление товара</div>
+    <div class="card-body">
+        <form method="post" action="/admin/assortment/add_item/{{ category.id }}" class="row g-2">
+            <div class="col-md-10">
+                <input type="text" class="form-control" name="item_text" placeholder="Например: iPhone 15 Pro 256GB (ABC123)" required>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-success w-100">Добавить</button>
+            </div>
+        </form>
+        <div class="form-text mt-2">Если в тексте есть серийный номер в скобках, он будет автоматически извлечён.</div>
+    </div>
+</div>
 
 <script>
     // Обработка удаления строки
