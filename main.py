@@ -2,6 +2,8 @@
 import sys
 import logging
 import os
+import signal
+import asyncio
 import traceback
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -32,6 +34,7 @@ load_dotenv()
 bot = None
 dp = None
 config = None
+shutdown_event = asyncio.Event()
 
 # Импортируем модули бота
 try:
@@ -39,7 +42,7 @@ try:
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.types import Update
     from bot.handlers import router
-    from bot.db import close_pool, get_pool   # get_pool добавлен
+    from bot.db import close_pool, get_pool, cleanup_old_records
     from bot import config as bot_config
 
     config = bot_config
@@ -59,6 +62,15 @@ except Exception as e:
     logger.error(traceback.format_exc())
 
 
+# Генерация секрета для вебхука (если не задан в .env)
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+if not WEBHOOK_SECRET:
+    import secrets
+    WEBHOOK_SECRET = secrets.token_urlsafe(32)
+    logger.warning(f"⚠️ WEBHOOK_SECRET не задан, сгенерирован временный: {WEBHOOK_SECRET}")
+    logger.warning("Рекомендуется добавить WEBHOOK_SECRET в .env для постоянства")
+
+
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
     
@@ -66,6 +78,9 @@ async def on_startup():
     try:
         await get_pool()
         logger.info("✅ Пул соединений БД инициализирован")
+        # Запускаем фоновую очистку старых записей
+        asyncio.create_task(cleanup_old_records())
+        logger.info("✅ Фоновая задача очистки БД запущена")
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации пула БД: {e}")
     
@@ -75,8 +90,13 @@ async def on_startup():
             webhook_url = f"{config.RENDER_URL}/webhook"
             try:
                 await bot.delete_webhook(drop_pending_updates=True)
-                await bot.set_webhook(url=webhook_url, allowed_updates=dp.resolve_used_update_types())
-                logger.info(f"✅ Вебхук установлен на {webhook_url}")
+                # Устанавливаем вебхук с секретным токеном
+                await bot.set_webhook(
+                    url=webhook_url,
+                    secret_token=WEBHOOK_SECRET,
+                    allowed_updates=dp.resolve_used_update_types()
+                )
+                logger.info(f"✅ Вебхук установлен на {webhook_url} с секретным токеном")
             except Exception as e:
                 logger.error(f"❌ Не удалось установить вебхук: {e}")
         else:
@@ -98,6 +118,12 @@ async def on_shutdown():
 
 
 async def webhook(request: Request) -> Response:
+    # Проверка секретного токена
+    received_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if not received_token or received_token != WEBHOOK_SECRET:
+        logger.warning(f"Неверный или отсутствующий секретный токен вебхука")
+        return Response(status_code=403)
+    
     if not bot or not dp:
         logger.error("❌ Бот не инициализирован, запрос отклонён")
         return Response(status_code=503)
@@ -114,6 +140,12 @@ async def webhook(request: Request) -> Response:
 
 async def health(_: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
+
+
+def handle_sigterm(*args):
+    """Обработчик SIGTERM для graceful shutdown."""
+    logger.info("Получен сигнал SIGTERM, завершаем работу...")
+    shutdown_event.set()
 
 
 app = Starlette(
@@ -144,5 +176,26 @@ else:
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
+    # Регистрируем обработчик сигналов
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    signal.signal(signal.SIGINT, handle_sigterm)
+    
     logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    # Запускаем uvicorn с обработкой сигналов
+    config_uvicorn = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
+    server = uvicorn.Server(config_uvicorn)
+    
+    # Запускаем сервер в отдельной задаче
+    loop = asyncio.get_event_loop()
+    server_task = loop.create_task(server.serve())
+    
+    # Ждём сигнал завершения
+    try:
+        await shutdown_event.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Останавливаем uvicorn сервер
+        server.should_exit = True
+        await server_task
+        logger.info("Сервер остановлен")
