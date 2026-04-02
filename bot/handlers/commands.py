@@ -6,7 +6,7 @@ import logging
 from aiogram import Router
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
-import asyncpg  # <--- добавлен импорт
+import asyncpg
 
 from bot import config
 from bot.db import get_pool
@@ -460,7 +460,7 @@ async def cmd_chatid(message: Message):
         response += "Thread ID: отсутствует (сообщение не в топике)"
     await message.reply(response, parse_mode="Markdown")
 
-# ---------- НОВАЯ КОМАНДА ДЛЯ ИСПРАВЛЕНИЯ ТАБЛИЦЫ SALES ----------
+# ---------- Команда для исправления таблицы sales ----------
 @router.message(Command("fix_sales_unique"))
 async def cmd_fix_sales_unique(message: Message):
     """Добавляет уникальное ограничение на message_id в таблице sales (только для админов)."""
@@ -498,3 +498,40 @@ async def cmd_fix_sales_unique(message: Message):
     msg += f"• Удалено дубликатов: {deleted_dups}\n"
     msg += f"• Уникальное ограничение: {'добавлено' if constraint_added else 'уже существовало'}"
     await message.answer(msg)
+
+
+# ---------- Команда для переустановки вебхука ----------
+@router.message(Command("set_webhook"))
+async def cmd_set_webhook(message: Message):
+    """Переустанавливает вебхук (только для админов)."""
+    if message.from_user.id not in config.ADMIN_IDS:
+        await message.answer("⛔ Доступ запрещён")
+        return
+
+    if not config.RENDER_URL:
+        await message.answer("❌ RENDER_URL не задан в переменных окружения.")
+        return
+
+    webhook_url = f"{config.RENDER_URL}/webhook"
+    webhook_secret = os.getenv("WEBHOOK_SECRET")
+    if not webhook_secret:
+        import secrets
+        webhook_secret = secrets.token_urlsafe(32)
+        await message.answer(f"⚠️ WEBHOOK_SECRET не задан, использован временный:\n`{webhook_secret}`\nРекомендуется добавить его в .env", parse_mode='Markdown')
+
+    try:
+        from aiogram import Bot
+        from bot import config as bot_config
+        temp_bot = Bot(token=bot_config.TOKEN)
+        
+        await temp_bot.delete_webhook(drop_pending_updates=True)
+        await temp_bot.set_webhook(
+            url=webhook_url,
+            secret_token=webhook_secret,
+            allowed_updates=["message", "callback_query"]
+        )
+        await temp_bot.session.close()
+        
+        await message.answer(f"✅ Вебхук успешно установлен на:\n{webhook_url}\nСекретный токен: `{webhook_secret}`", parse_mode='Markdown')
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при установке вебхука:\n{str(e)}")
