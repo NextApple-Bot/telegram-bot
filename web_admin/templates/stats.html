@@ -34,9 +34,9 @@
                 <tr><th>Тип</th><th>Количество</th><th>Выручка</th></tr>
             </thead>
             <tbody>
-                <tr><td>Продажи</td><td>{{ total_sales_count }}</td><td>{{ total_sales_revenue|round(0) }} ₽</td></tr>
-                <tr><td>Предзаказы</td><td>{{ total_pre_count }}</td><td>{{ total_pre_revenue|round(0) }} ₽</td></tr>
-                <tr><td>Брони</td><td>{{ total_book_count }}</td><td>{{ total_book_revenue|round(0) }} ₽</td></tr>
+                <tr><td>Продажи</td><td>{{ total_sales_count }}</td><td>{{ "{:,.0f}".format(total_sales_revenue) }} ₽</td></tr>
+                <tr><td>Предзаказы</td><td>{{ total_pre_count }}</td><td>{{ "{:,.0f}".format(total_pre_revenue) }} ₽</td></tr>
+                <tr><td>Брони</td><td>{{ total_book_count }}</td><td>{{ "{:,.0f}".format(total_book_revenue) }} ₽</td></tr>
             </tbody>
         </table>
     </div>
