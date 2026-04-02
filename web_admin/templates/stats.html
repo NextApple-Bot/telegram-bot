@@ -12,6 +12,7 @@
                 <option value="7" {% if days==7 %}selected{% endif %}>7 дней</option>
                 <option value="14" {% if days==14 %}selected{% endif %}>14 дней</option>
                 <option value="30" {% if days==30 %}selected{% endif %}>30 дней</option>
+                <option value="60" {% if days==60 %}selected{% endif %}>60 дней</option>
                 <option value="90" {% if days==90 %}selected{% endif %}>90 дней</option>
             </select>
         </div>
@@ -21,21 +22,34 @@
     </div>
 </form>
 
-<h3>Количество продаж, предзаказов и броней</h3>
-<canvas id="countsChart" width="400" height="200"></canvas>
-
-<h3 class="mt-4">Выручка</h3>
-<canvas id="revenueChart" width="400" height="200"></canvas>
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">Количество операций</div>
+            <div class="card-body">
+                <canvas id="countsChart" width="800" height="400"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">Выручка (₽)</div>
+            <div class="card-body">
+                <canvas id="revenueChart" width="800" height="400"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
-    const dates = {{ dates|safe }};
-    const salesCounts = {{ sales_counts|safe }};
-    const preCounts = {{ pre_counts|safe }};
-    const bookCounts = {{ book_counts|safe }};
+    const dates = {{ dates|tojson }};
+    const salesCounts = {{ sales_counts|tojson }};
+    const preCounts = {{ pre_counts|tojson }};
+    const bookCounts = {{ book_counts|tojson }};
 
-    const salesRevenue = {{ sales_revenue|safe }};
-    const preRevenue = {{ pre_revenue|safe }};
-    const bookRevenue = {{ book_revenue|safe }};
+    const salesRevenue = {{ sales_revenue|tojson }};
+    const preRevenue = {{ pre_revenue|tojson }};
+    const bookRevenue = {{ book_revenue|tojson }};
 
     // График количества
     new Chart(document.getElementById('countsChart'), {
@@ -43,12 +57,12 @@
         data: {
             labels: dates,
             datasets: [
-                { label: 'Продажи', data: salesCounts, borderColor: 'blue', fill: false },
-                { label: 'Предзаказы', data: preCounts, borderColor: 'green', fill: false },
-                { label: 'Брони', data: bookCounts, borderColor: 'orange', fill: false }
+                { label: 'Продажи', data: salesCounts, borderColor: 'blue', backgroundColor: 'rgba(0,0,255,0.1)', fill: true },
+                { label: 'Предзаказы', data: preCounts, borderColor: 'green', backgroundColor: 'rgba(0,255,0,0.1)', fill: true },
+                { label: 'Брони', data: bookCounts, borderColor: 'orange', backgroundColor: 'rgba(255,165,0,0.1)', fill: true }
             ]
         },
-        options: { responsive: true }
+        options: { responsive: true, maintainAspectRatio: true }
     });
 
     // График выручки
@@ -57,12 +71,12 @@
         data: {
             labels: dates,
             datasets: [
-                { label: 'Выручка с продаж', data: salesRevenue, borderColor: 'blue', fill: false },
-                { label: 'Выручка с предзаказов', data: preRevenue, borderColor: 'green', fill: false },
-                { label: 'Выручка с броней', data: bookRevenue, borderColor: 'orange', fill: false }
+                { label: 'Продажи (₽)', data: salesRevenue, borderColor: 'blue', backgroundColor: 'rgba(0,0,255,0.1)', fill: true },
+                { label: 'Предзаказы (₽)', data: preRevenue, borderColor: 'green', backgroundColor: 'rgba(0,255,0,0.1)', fill: true },
+                { label: 'Брони (₽)', data: bookRevenue, borderColor: 'orange', backgroundColor: 'rgba(255,165,0,0.1)', fill: true }
             ]
         },
-        options: { responsive: true }
+        options: { responsive: true, maintainAspectRatio: true }
     });
 </script>
 {% endblock %}
