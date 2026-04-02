@@ -1,3 +1,4 @@
+# Файл: bot/db.py
 import os
 import asyncpg
 import logging
@@ -52,12 +53,6 @@ async def get_pool():
                 )
                 logger.info("✅ Пул соединений создан")
     return _pool
-
-
-async def get_connection():
-    """Возвращает соединение из пула для использования в транзакциях."""
-    pool = await get_pool()
-    return await pool.acquire()
 
 
 async def close_pool():
