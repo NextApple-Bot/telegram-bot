@@ -11,27 +11,24 @@ from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 from dotenv import load_dotenv
 
-# Настройка логирования
+# Настройка базового логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Фильтр для игнорирования логов доступа к /health
+# ========== ФИЛЬТР ДЛЯ ИГНОРИРОВАНИЯ /health ==========
 class HealthCheckFilter(logging.Filter):
     def filter(self, record):
-        # Проверяем разные способы хранения сообщения в записи лога
-        msg = record.getMessage() if hasattr(record, 'getMessage') else str(record.msg)
-        if '/health' in msg:
+        # Пропускаем только записи, которые содержат '/health'
+        if hasattr(record, 'message') and '/health' in record.getMessage():
             return False
         return True
 
-# Применяем фильтр к логгеру uvicorn.access
-uvicorn_access_logger = logging.getLogger("uvicorn.access")
-uvicorn_access_logger.addFilter(HealthCheckFilter())
-# Также отключаем вывод access логов на консоль для этого логгера (опционально)
-uvicorn_access_logger.propagate = False
+# Применяем фильтр к логгеру uvicorn.access (именно он пишет эти строки)
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+# =====================================================
 
 load_dotenv()
 
@@ -150,8 +147,4 @@ else:
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
     logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    # Устанавливаем уровень логов для uvicorn.access на WARNING, чтобы скрыть все access логи
-    # Это более грубый метод, но надёжный:
-    uvicorn_log_config = uvicorn.config.LOGGING_CONFIG
-    uvicorn_log_config["loggers"]["uvicorn.access"]["level"] = "WARNING"
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", log_config=uvicorn_log_config)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
