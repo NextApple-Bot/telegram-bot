@@ -1,3 +1,4 @@
+# Файл: bot/handlers/topics/sales.py
 import re
 import logging
 from aiogram import F, Router
@@ -5,6 +6,7 @@ from aiogram.types import Message, ReactionTypeEmoji
 
 from bot import config
 from bot.services.sale import SaleService
+from bot.services.payment import PaymentService
 from bot.repositories import StatsRepository, ClientRepository
 from bot.utils.parser import extract_payment_amounts, parse_client_data
 from bot.db import get_pool
@@ -16,9 +18,6 @@ TRADE_IN_PATTERNS = [
     r'trade\s*in',
     r'трейд\s*ин',
     r'trade\-in',
-    r'trade–in',
-    r'trade—in',
-    r'trade‑in',
 ]
 
 
@@ -27,7 +26,6 @@ def remove_trade_in_lines(text: str) -> str:
     filtered = []
     for line in lines:
         if any(re.search(p, line, re.IGNORECASE) for p in TRADE_IN_PATTERNS):
-            logger.info(f"🔧 Игнорируем строку с Trade In: {line[:50]}")
             continue
         filtered.append(line)
     return '\n'.join(filtered)
@@ -37,7 +35,6 @@ async def is_message_processed(chat_id: int, message_id: int) -> bool:
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow('SELECT 1 FROM processed_messages WHERE chat_id = $1 AND message_id = $2', chat_id, message_id)
-        logger.info(f"🔍 is_message_processed: chat_id={chat_id}, message_id={message_id}, exists={row is not None}")
         return row is not None
 
 
@@ -57,17 +54,15 @@ async def handle_sales_message(message: Message):
     if not content:
         return
 
-    logger.info(f"📩 Начало обработки сообщения {message.message_id}")
-
     if await is_message_processed(message.chat.id, message.message_id):
-        logger.info(f"✅ Сообщение {message.message_id} уже обработано, пропускаем.")
+        logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
     content = remove_trade_in_lines(content)
-
     payments = extract_payment_amounts(content, ignore_prepay=True)
     result = await SaleService.process_sale(content, message.chat.id, message.message_id)
 
+    # Сохранение клиента
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
@@ -83,8 +78,6 @@ async def handle_sales_message(message: Message):
         logger.exception(f"Ошибка при сохранении клиента: {e}")
 
     count = len(result["sold_items"])
-    logger.info(f"🔍 Продажа: найдено товаров с серийниками: {count}, sold_items={result['sold_items']}")
-
     if count > 0:
         await StatsRepository.add_sale(
             count=count,
@@ -97,20 +90,12 @@ async def handle_sales_message(message: Message):
             is_accessory=False,
             message_id=message.message_id
         )
-        logger.info(f"✅ Продажа добавлена в статистику: товаров {count}, суммы: cash={payments['cash']}, term={payments['terminal']}, qr={payments['qr']}")
+        logger.info(f"✅ Продажа добавлена в статистику: товаров {count}")
     else:
         logger.info("❌ Нет товаров с серийными номерами, статистика продаж НЕ сохранена")
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            for pay_type, amount in payments.items():
-                if amount > 0:
-                    await conn.execute(
-                        'INSERT INTO daily_payments (type, payment_type, amount) VALUES ($1, $2, $3)',
-                        'sale', pay_type, amount
-                    )
-                    logger.info(f"💸 Платёж сохранён: sale {pay_type} = {amount}")
+    # Сохраняем платежи через единый сервис
+    await PaymentService.add_payments_batch(payments, source_type='sale')
 
     if result["sold_items"]:
         await message.react([ReactionTypeEmoji(emoji='🔥')])
@@ -122,4 +107,3 @@ async def handle_sales_message(message: Message):
         await message.reply(text)
 
     await mark_message_processed(message.chat.id, message.message_id)
-    logger.info(f"🏁 Обработка сообщения {message.message_id} завершена")
