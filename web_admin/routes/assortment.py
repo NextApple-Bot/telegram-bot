@@ -1,3 +1,4 @@
+# Файл: web_admin/routes/assortment.py
 from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -17,12 +18,18 @@ async def list_assortment(request: Request):
     for cat in categories:
         if not isinstance(cat.get('items'), list):
             cat['items'] = []
-    # Добавляем id категории
+    # Добавляем id категории и id товаров
     pool = await get_pool()
     async with pool.acquire() as conn:
         for cat in categories:
             row = await conn.fetchrow('SELECT id FROM categories WHERE name = $1', cat['header'])
             cat['id'] = row['id'] if row else None
+            # Получаем товары с их ID для этой категории
+            if cat['id']:
+                items_rows = await conn.fetch('SELECT id, text FROM items WHERE category_id = $1 ORDER BY id', cat['id'])
+                cat['items_with_ids'] = [dict(row) for row in items_rows]
+            else:
+                cat['items_with_ids'] = []
     return templates.TemplateResponse("assortment.html", {"request": request, "categories": categories})
 
 @router.get("/edit/{category_id}")
@@ -81,4 +88,43 @@ async def delete_category(request: Request, category_id: int):
             raise HTTPException(status_code=400, detail="Category not empty")
         await conn.execute('DELETE FROM categories WHERE id = $1', category_id)
     AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+# ========== НОВЫЕ ЭНДПОИНТЫ ДЛЯ РУЧНОГО ДОБАВЛЕНИЯ/УДАЛЕНИЯ ТОВАРОВ ==========
+
+@router.post("/add_item/{category_id}")
+async def add_item_to_category(request: Request, category_id: int, item_text: str = Form(...)):
+    """Добавляет один товар в указанную категорию."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        serials = extract_serials(item_text)
+        serial = serials[0].upper() if serials else None
+        is_booked = 'Бронь от' in item_text
+        await conn.execute('''
+            INSERT INTO items (text, serial, category_id, is_booked)
+            VALUES ($1, $2, $3, $4)
+        ''', item_text, serial, category_id, is_booked)
+    AssortmentService.invalidate_cache()
+    return RedirectResponse(url=f"/admin/assortment/edit/{category_id}", status_code=303)
+
+@router.post("/delete_item/{item_id}")
+async def delete_item(request: Request, item_id: int):
+    """Удаляет товар по ID с сохранением в deleted_items."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow('SELECT text, serial, category_id FROM items WHERE id = $1', item_id)
+            if row:
+                # Сохраняем в deleted_items
+                await conn.execute('''
+                    INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                    VALUES ($1, $2, $3, $4, 'admin_manual')
+                ''', item_id, row['text'], row['serial'], row['category_id'])
+                # Удаляем товар
+                await conn.execute('DELETE FROM items WHERE id = $1', item_id)
+    AssortmentService.invalidate_cache()
+    # Возвращаемся на предыдущую страницу (список категорий или редактирование)
+    referer = request.headers.get("referer")
+    if referer:
+        return RedirectResponse(url=referer, status_code=303)
     return RedirectResponse(url="/admin/assortment", status_code=303)
