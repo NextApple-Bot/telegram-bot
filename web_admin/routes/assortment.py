@@ -13,6 +13,16 @@ templates = Jinja2Templates(directory="web_admin/templates")
 @router.get("/", response_class=HTMLResponse)
 async def list_assortment(request: Request):
     categories = await AssortmentService.load_inventory()
+    # Принудительно преобразуем items в список, если это не список
+    for cat in categories:
+        if not isinstance(cat.get('items'), list):
+            cat['items'] = []
+    # Добавляем id категории
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        for cat in categories:
+            row = await conn.fetchrow('SELECT id FROM categories WHERE name = $1', cat['header'])
+            cat['id'] = row['id'] if row else None
     return templates.TemplateResponse("assortment.html", {"request": request, "categories": categories})
 
 @router.get("/edit/{category_id}")
@@ -36,15 +46,11 @@ async def edit_category_submit(
     name: str = Form(...),
     items_text: list[str] = Form(...)
 ):
-    # items_text — список значений из всех input[name="items_text"]
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Обновляем название категории
             await conn.execute('UPDATE categories SET name = $1 WHERE id = $2', name, category_id)
-            # Удаляем все старые товары
             await conn.execute('DELETE FROM items WHERE category_id = $1', category_id)
-            # Добавляем новые товары из списка (только непустые строки)
             for line in items_text:
                 if line and line.strip():
                     line = line.strip()
@@ -58,4 +64,21 @@ async def edit_category_submit(
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
-# Остальные методы (add_category, delete_category) остаются без изменений
+@router.post("/add_category")
+async def add_category(request: Request, name: str = Form(...)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute('INSERT INTO categories (name) VALUES ($1)', name)
+    AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+@router.post("/delete_category/{category_id}")
+async def delete_category(request: Request, category_id: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', category_id)
+        if count > 0:
+            raise HTTPException(status_code=400, detail="Category not empty")
+        await conn.execute('DELETE FROM categories WHERE id = $1', category_id)
+    AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
