@@ -6,6 +6,7 @@ from datetime import datetime
 from aiogram import F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
+from cachetools import TTLCache  # <--- добавлено для безопасного кэширования
 
 from bot import config
 from bot.services.assortment import AssortmentService
@@ -16,11 +17,11 @@ from bot.utils.markdown import escape_markdown_v1
 from .base import router, logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
 from .topics.common import export_assortment_to_topic
 
-# Словари для хранения ID последних сообщений
-last_stats_message = {}
-last_inventory_message = {}
-last_remains_message = {}
-last_clients_month_message = {}
+# Кэши с TTL 1 час и максимальным размером 1000 записей (вместо бесконечных словарей)
+last_stats_message = TTLCache(maxsize=1000, ttl=3600)
+last_inventory_message = TTLCache(maxsize=1000, ttl=3600)
+last_remains_message = TTLCache(maxsize=1000, ttl=3600)
+last_clients_month_message = TTLCache(maxsize=1000, ttl=3600)
 
 
 async def safe_delete(message):
@@ -435,12 +436,6 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         overall_total = sum(payments.values())
 
         s = await StatsRepository.get_today_stats()
-
-        # ========== ДОБАВЛЕННОЕ ЛОГИРОВАНИЕ ==========
-        async with pool.acquire() as conn:
-            sales_records = await conn.fetchval('SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = CURRENT_DATE')
-            logger.info(f"📊 Запись в stats: sales_count из таблицы sales = {sales_records}, а в репозитории = {s['sales_count']}")
-        # ===========================================
 
         text = f"📊 Статистика за {s['date']}:\n"
         text += f"• Продаж: {s['sales_count']}\n"
