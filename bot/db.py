@@ -1,13 +1,9 @@
 # Файл: bot/db.py
 import os
 import asyncpg
-import json
 import logging
 import asyncio
-from datetime import date, datetime
 from functools import wraps
-
-import config as bot_config
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +56,7 @@ async def get_pool():
             try:
                 _pool = await asyncpg.create_pool(
                     DATABASE_URL,
-                    min_size=2,          # уменьшено для экономии памяти на платном тарифе
+                    min_size=2,
                     max_size=10,
                     command_timeout=60,
                     max_inactive_connection_lifetime=300
@@ -243,161 +239,6 @@ async def init_db():
     logger.info("✅ Инициализация БД завершена (таблицы и индексы созданы)")
 
 
-# ---------- Функции-обёртки для совместимости с существующим кодом ----------
-# Они будут постепенно заменяться на методы репозиториев, но пока оставим
-
-@retry_on_db_error()
-async def get_or_create_category(name: str) -> int:
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.get_or_create_category(name)
-
-
-@retry_on_db_error()
-async def add_item(text: str, serial: str = None, category_name: str = None, category_id: int = None):
-    from bot.repositories.item import ItemRepository
-    await ItemRepository.add_item(text, serial, category_id, category_name)
-
-
-@retry_on_db_error()
-async def get_item_id_by_serial(serial: str) -> int | None:
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.get_item_id_by_serial(serial)
-
-
-@retry_on_db_error()
-async def get_item_by_serial(serial: str) -> dict | None:
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.get_item_by_serial(serial)
-
-
-@retry_on_db_error()
-async def get_item_by_text(text: str) -> dict | None:
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.get_item_by_text(text)
-
-
-@retry_on_db_error()
-async def remove_item_by_serial(serial: str) -> int:
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.remove_item_by_serial(serial)
-
-
-@retry_on_db_error()
-async def get_all_categories_with_items():
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.get_all_categories_with_items()
-
-
-@retry_on_db_error()
-async def get_all_items_serials():
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.get_all_items_serials()
-
-
-@retry_on_db_error()
-async def update_category_items(category_name: str, new_items: list):
-    from bot.repositories.item import ItemRepository
-    cat_id = await ItemRepository.get_or_create_category(category_name)
-    for item_text in new_items:
-        from bot.utils.validators import extract_serials
-        serials = extract_serials(item_text)
-        serial = serials[0] if serials else None
-        await ItemRepository.add_item(item_text, serial, category_id=cat_id)
-
-
-@retry_on_db_error()
-async def clear_all_inventory():
-    from bot.services.assortment import AssortmentService
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute('DELETE FROM categories')
-    AssortmentService.invalidate_cache()
-
-
-@retry_on_db_error()
-async def add_sale(item_id: int = None, count: int = 1,
-                   cash: float = 0, terminal: float = 0, qr: float = 0,
-                   transfer: float = 0, invoice: float = 0, installment: float = 0,
-                   is_accessory: bool = False):
-    from bot.repositories.stats import StatsRepository
-    await StatsRepository.add_sale(item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory)
-
-
-@retry_on_db_error()
-async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
-    from bot.repositories.stats import StatsRepository
-    await StatsRepository.add_preorder(cash, terminal, qr, transfer, invoice, installment)
-
-
-@retry_on_db_error()
-async def add_booking(item_id: int, total_amount: float):
-    from bot.repositories.stats import StatsRepository
-    await StatsRepository.add_booking(item_id, total_amount)
-
-
-@retry_on_db_error()
-async def get_today_stats():
-    from bot.repositories.stats import StatsRepository
-    return await StatsRepository.get_today_stats()
-
-
-@retry_on_db_error()
-async def get_or_create_client(phone: str = None, phones: list = None, full_name: str = None,
-                               telegram_username: str = None, social_network: str = None,
-                               referral_source: str = None) -> int:
-    from bot.repositories.client import ClientRepository
-    return await ClientRepository.get_or_create_client(phone, phones, full_name, telegram_username, social_network, referral_source)
-
-
-@retry_on_db_error()
-async def add_purchase(client_id: int, items: list, total_amount: float, payment_details: dict, purchase_type: str = 'sale'):
-    from bot.repositories.client import ClientRepository
-    await ClientRepository.add_purchase(client_id, items, total_amount, payment_details, purchase_type)
-
-
-@retry_on_db_error()
-async def get_client_purchases(client_id: int):
-    from bot.repositories.client import ClientRepository
-    return await ClientRepository.get_client_purchases(client_id)
-
-
-@retry_on_db_error()
-async def search_clients(query: str):
-    from bot.repositories.client import ClientRepository
-    return await ClientRepository.search_clients(query)
-
-
-@retry_on_db_error()
-async def get_available_months():
-    from bot.repositories.client import ClientRepository
-    return await ClientRepository.get_available_months()
-
-
-@retry_on_db_error()
-async def get_clients_data_for_month(month_str: str):
-    from bot.repositories.client import ClientRepository
-    return await ClientRepository.get_clients_data_for_month(month_str)
-
-
-@retry_on_db_error()
-async def add_deleted_item(item_id: int, text: str, serial: str, category_id: int, reason: str = 'manual'):
-    from bot.repositories.item import ItemRepository
-    await ItemRepository.add_deleted_item(item_id, text, serial, category_id, reason)
-
-
-@retry_on_db_error()
-async def get_last_deleted_item() -> dict | None:
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.get_last_deleted_item()
-
-
-@retry_on_db_error()
-async def restore_deleted_item(deleted_id: int) -> bool:
-    from bot.repositories.item import ItemRepository
-    return await ItemRepository.restore_deleted_item(deleted_id)
-
-
-# Автоматическая очистка старых записей (вызывается в main.py при старте)
 async def cleanup_old_records():
     """Фоновая задача: удаляет старые записи из processed_messages и daily_payments."""
     while True:
