@@ -20,17 +20,21 @@ async def cmd_migrate_db(message: Message):
         await message.answer("⛔ Доступ запрещён")
         return
 
-    # Уведомляем о начале
     status_msg = await message.answer("🔄 Запуск миграции базы данных...")
 
     try:
-        # Путь к файлу alembic.ini (он лежит в корне проекта)
-        alembic_cfg = Config("alembic.ini")
+        # Определяем абсолютный путь к alembic.ini (он в корне проекта)
+        # Поднимаемся на 3 уровня: bot/handlers -> bot -> корень проекта
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        alembic_ini_path = os.path.join(base_dir, "alembic.ini")
 
-        # Устанавливаем URL базы данных из переменной окружения
+        if not os.path.exists(alembic_ini_path):
+            await status_msg.edit_text(f"❌ Файл alembic.ini не найден по пути: {alembic_ini_path}")
+            logger.error(f"alembic.ini not found at {alembic_ini_path}")
+            return
+
+        alembic_cfg = Config(alembic_ini_path)
         alembic_cfg.set_main_option("sqlalchemy.url", config.DATABASE_URL)
-
-        # Выполняем миграцию до head
         command.upgrade(alembic_cfg, "head")
 
         await status_msg.edit_text("✅ Миграция успешно выполнена!")
