@@ -22,10 +22,6 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
 async def determine_category_for_item(item_text: str, categories: list) -> str:
-    """
-    Определяет имя категории для товара на основе текущего списка категорий.
-    Возвращает имя категории (с двоеточием в конце).
-    """
     stripped = item_text.strip()
     if stripped.startswith("Б/У -") or stripped.startswith("Б/У "):
         return "Б/У:"
@@ -103,10 +99,8 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             return
         lines = [line.strip() for line in content.splitlines() if line.strip()]
 
-    # Удаляем строки, состоящие только из дефисов
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
 
-    # Оставляем только строки, содержащие серийный номер
     filtered_lines = []
     skipped_no_serial = []
     for line in lines:
@@ -121,7 +115,6 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         await message.reply("❌ Нет ни одной строки с серийным номером. Добавление отменено.")
         return
 
-    # Загружаем существующие товары
     existing_items = await ItemRepository.get_all_items_serials()
     existing_texts = {item['text'] for item in existing_items}
     existing_serials = {item['serial'].strip().upper() for item in existing_items if item['serial']}
@@ -191,20 +184,18 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
 
     if action == "yes" and cat_to_items:
         pool = await get_pool()
-        # Вставляем товары по одному, без общей транзакции (каждый INSERT в своей транзакции)
         total_inserted = 0
         errors = []
         for cat_name, items in cat_to_items.items():
-            # Получаем или создаём категорию (этот запрос вне транзакции, безопасен)
             cat_id = await ItemRepository.get_or_create_category(cat_name)
             for text, serial in items:
                 is_booked = 'Бронь от' in text
                 try:
                     async with pool.acquire() as conn:
+                        # Убираем ON CONFLICT — дубликаты уже отсечены в коде
                         await conn.execute('''
                             INSERT INTO items (text, serial, category_id, is_booked)
                             VALUES ($1, $2, $3, $4)
-                            ON CONFLICT (serial) WHERE serial IS NOT NULL DO NOTHING
                         ''', text, serial, cat_id, is_booked)
                     total_inserted += 1
                 except Exception as e:
@@ -215,7 +206,7 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
         AssortmentService.invalidate_cache()
         await callback.message.edit_text(f"✅ Добавлено {total_inserted} новых товаров. Ошибок: {len(errors)}")
         if errors:
-            await callback.message.answer("\n".join(errors[:5]))  # покажем первые 5 ошибок
+            await callback.message.answer("\n".join(errors[:5]))
     elif action == "no":
         await callback.message.edit_text("❌ Добавление отменено.")
     else:
