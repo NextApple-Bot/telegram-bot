@@ -70,11 +70,9 @@ async def on_startup():
             webhook_url = f"{config.RENDER_URL}/webhook"
             try:
                 await bot.delete_webhook(drop_pending_updates=True)
-                # Убираем secret_token, чтобы избежать 403
                 await bot.set_webhook(
                     url=webhook_url,
                     allowed_updates=dp.resolve_used_update_types()
-                    # secret_token=config.WEBHOOK_SECRET   # закомментировано
                 )
                 logger.info(f"✅ Вебхук установлен на {webhook_url}")
             except Exception as e:
@@ -98,7 +96,6 @@ async def on_shutdown():
 
 
 async def webhook(request: Request) -> Response:
-    # Проверка секретного токена отключена, но если хотите включить позже — добавьте
     if not bot or not dp:
         logger.error("❌ Бот не инициализирован, запрос отклонён")
         return Response(status_code=503)
