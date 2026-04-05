@@ -1,31 +1,26 @@
+# Файл: bot/utils/validators.py
 import re
 from typing import List
 
 def extract_serials(text: str) -> List[str]:
     """
     Извлекает серийные номера из текста.
-    Возвращает список уникальных серийных номеров в верхнем регистре.
+    Серийный номер ищется внутри круглых скобок.
+    Возвращает список уникальных серийных номеров (без изменений, в исходном регистре,
+    но для единообразия можно привести к верхнему).
     """
     if not isinstance(text, str):
         return []
     serials = set()
+    # Ищем всё, что внутри круглых скобок (не вложенных)
     matches = re.finditer(r'\(([^)]+)\)', text)
     for match in matches:
-        candidate = match.group(1)
-        if candidate is None:
-            continue
-        candidate = candidate.strip()
+        candidate = match.group(1).strip()
         if not candidate:
             continue
-        # Если есть символ '№' – сразу добавляем
-        if '№' in candidate:
-            serials.add(candidate.upper())
-        # Если состоит только из букв и цифр, длина 5-30 символов
-        elif re.fullmatch(r'[A-Za-z0-9]{5,30}', candidate):
-            serials.add(candidate.upper())
-        # Если только цифры и длина >= 10
-        elif candidate.isdigit() and len(candidate) >= 10:
-            serials.add(candidate)
+        # Минимальная длина серийного номера — 5 символов, максимальная — 50
+        if 5 <= len(candidate) <= 50:
+            serials.add(candidate)   # сохраняем как есть (можно .upper() при желании)
     return list(serials)
 
 def normalize_serial(serial: str) -> str:
