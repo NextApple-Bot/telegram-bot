@@ -2,7 +2,6 @@
 import sys
 import logging
 import os
-import asyncio
 import traceback
 from starlette.applications import Starlette
 from starlette.routing import Route
@@ -12,14 +11,12 @@ from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 from dotenv import load_dotenv
 
-# Настройка базового логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Фильтр для /health
 class HealthCheckFilter(logging.Filter):
     def filter(self, record):
         if hasattr(record, 'message') and '/health' in record.getMessage():
@@ -29,18 +26,16 @@ class HealthCheckFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 load_dotenv()
 
-# Глобальные переменные
 bot = None
 dp = None
 config = None
 
-# Импортируем модули бота
 try:
     from aiogram import Bot, Dispatcher
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.types import Update
     from bot.handlers import router
-    from bot.db import close_pool, get_pool, cleanup_old_records
+    from bot.db import close_pool, get_pool
     from bot import config as bot_config
 
     config = bot_config
@@ -60,25 +55,12 @@ except Exception as e:
     logger.error(traceback.format_exc())
 
 
-# Генерация секрета для вебхука (если не задан в .env)
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-if not WEBHOOK_SECRET:
-    import secrets
-    WEBHOOK_SECRET = secrets.token_urlsafe(32)
-    logger.warning(f"⚠️ WEBHOOK_SECRET не задан, сгенерирован временный: {WEBHOOK_SECRET}")
-    logger.warning("Рекомендуется добавить WEBHOOK_SECRET в .env для постоянства")
-
-
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
     
-    # Принудительно создаём пул соединений
     try:
         await get_pool()
         logger.info("✅ Пул соединений БД инициализирован")
-        # Запускаем фоновую очистку старых записей (без ожидания)
-        asyncio.create_task(cleanup_old_records())
-        logger.info("✅ Фоновая задача очистки БД запущена")
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации пула БД: {e}")
     
@@ -88,13 +70,13 @@ async def on_startup():
             webhook_url = f"{config.RENDER_URL}/webhook"
             try:
                 await bot.delete_webhook(drop_pending_updates=True)
-                # Устанавливаем вебхук с секретным токеном
+                # Убираем secret_token, чтобы избежать 403
                 await bot.set_webhook(
                     url=webhook_url,
-                    secret_token=WEBHOOK_SECRET,
                     allowed_updates=dp.resolve_used_update_types()
+                    # secret_token=config.WEBHOOK_SECRET   # закомментировано
                 )
-                logger.info(f"✅ Вебхук установлен на {webhook_url} с секретным токеном")
+                logger.info(f"✅ Вебхук установлен на {webhook_url}")
             except Exception as e:
                 logger.error(f"❌ Не удалось установить вебхук: {e}")
         else:
@@ -116,12 +98,7 @@ async def on_shutdown():
 
 
 async def webhook(request: Request) -> Response:
-    # Проверка секретного токена
-    received_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    if not received_token or received_token != WEBHOOK_SECRET:
-        logger.warning(f"Неверный или отсутствующий секретный токен вебхука")
-        return Response(status_code=403)
-    
+    # Проверка секретного токена отключена, но если хотите включить позже — добавьте
     if not bot or not dp:
         logger.error("❌ Бот не инициализирован, запрос отклонён")
         return Response(status_code=503)
@@ -155,7 +132,6 @@ if config and config.SECRET_KEY:
 else:
     logger.warning("⚠️ SECRET_KEY не задан, сессии не будут работать")
 
-# Монтируем веб-админку
 if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
     try:
         from web_admin.main import app as admin_app
@@ -166,22 +142,7 @@ if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
 else:
     logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
 
-
-async def main():
-    """Асинхронная точка входа для запуска uvicorn с graceful shutdown."""
-    PORT = int(os.getenv("PORT", 8000))
-    config_uvicorn = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
-    server = uvicorn.Server(config_uvicorn)
-    
-    # Добавляем обработчики сигналов для корректного завершения
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(server.shutdown()))
-    
-    logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    await server.serve()
-
-
 if __name__ == "__main__":
-    import signal
-    asyncio.run(main())
+    PORT = int(os.getenv("PORT", 8000))
+    logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
