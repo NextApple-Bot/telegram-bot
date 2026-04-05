@@ -2,11 +2,9 @@ services:
   - type: web
     name: telegram-bot
     runtime: python
-    repo: https://github.com/ВАШ_АККАУНТ/ВАШ_РЕПОЗИТОРИЙ  # опционально, можно не указывать
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
-      # Обязательные переменные (значения нужно ввести один раз вручную через панель или CLI)
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_ID
@@ -24,15 +22,9 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: ADMIN_PASSWORD
-        sync: false   # или ADMIN_PASSWORD_HASH, если используете хэш
-      
-      # Автоматически генерируемые секреты
+        sync: false
       - key: SECRET_KEY
         generateValue: true
-      - key: WEBHOOK_SECRET
-        generateValue: true
-      
-      # Необязательные переменные (можно указать значения по умолчанию)
       - key: PLAN_AMOUNT
         value: 600000
       - key: PORT
