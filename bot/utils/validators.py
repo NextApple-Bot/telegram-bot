@@ -11,16 +11,12 @@ def extract_serials(text: str) -> List[str]:
         candidate = match.group(1).strip()
         if not candidate:
             continue
-        # Если есть символ '№' – сразу добавляем
         if '№' in candidate:
             serials.add(candidate.upper())
-        # Буквы и цифры, длина 5-30
         elif re.fullmatch(r'[A-Za-z0-9]{5,30}', candidate):
             serials.add(candidate.upper())
-        # Только цифры, длина >= 10
         elif candidate.isdigit() and len(candidate) >= 10:
             serials.add(candidate)
-        # Буквы, цифры и дефисы, длина 5-30
         elif '-' in candidate and re.fullmatch(r'[A-Za-z0-9\-]{5,30}', candidate):
             serials.add(candidate.upper())
     return list(serials)
