@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class AssortmentService:
     _cache = {"data": None, "timestamp": 0, "loading": False}
-    CACHE_TTL = 300  # увеличен с 10 до 300 секунд (5 минут)
+    CACHE_TTL = 10
     _cache_lock = asyncio.Lock()
 
     @classmethod
@@ -19,78 +19,64 @@ class AssortmentService:
 
     @classmethod
     async def load_inventory(cls):
-        """Загружает ассортимент с кэшированием, блокируя одновременную загрузку."""
+        """Загружает ассортимент с кэшированием."""
         import time
         now = time.time()
         
-        # Быстрая проверка без блокировки
         if cls._cache["data"] and (now - cls._cache["timestamp"]) < cls.CACHE_TTL:
             return cls._cache["data"]
         
         async with cls._cache_lock:
-            # Повторная проверка после получения блокировки
             if cls._cache["data"] and (now - cls._cache["timestamp"]) < cls.CACHE_TTL:
                 return cls._cache["data"]
             
-            # Загрузка данных
-            logger.debug("Загрузка ассортимента из БД")
             categories = await ItemRepository.get_all_categories_with_items()
             cls._cache["data"] = categories
             cls._cache["timestamp"] = now
             return categories
 
     @classmethod
-    async def remove_by_serial(cls, serial: str, reason: str = 'sale', conn=None):
+    async def save_inventory(cls, categories):
         """
-        Удаляет товар по серийному номеру с сохранением в deleted_items.
-        
-        Args:
-            serial: Серийный номер товара
-            reason: Причина удаления ('sale', 'manual', 'admin_manual')
-            conn: Опциональное соединение с БД (для использования в транзакциях)
+        Сохраняет ассортимент (заменяет текущий). Ожидает список категорий в формате:
+        [{"header": "Категория:", "items": ["товар1", "товар2"]}, ...]
         """
-        if not serial:
-            logger.warning("Попытка удалить товар с пустым серийным номером")
-            return False
-        
-        # Получаем информацию о товаре
+        await ItemRepository.bulk_replace_assortment(categories)
+        cls.invalidate_cache()
+        logger.info(f"Ассортимент сохранён: {len(categories)} категорий")
+
+    @classmethod
+    async def remove_by_serial(cls, serial: str, reason: str = 'manual', conn=None) -> int:
+        """Удаляет товар по серийному номеру с сохранением в deleted_items."""
+        item = await ItemRepository.get_item_by_serial(serial, conn=conn)
+        if not item:
+            return 0
+
         if conn is None:
-            item_info = await ItemRepository.get_item_by_serial(serial)
-        else:
-            item_info = await ItemRepository.get_item_by_serial(serial, conn=conn)
-        
-        if not item_info:
-            logger.warning(f"Товар с серийным номером {serial} не найден при удалении")
-            return False
-        
-        item_id = item_info['id']
-        item_text = item_info['text']
-        category_id = item_info['category_id']
-        
-        # Сохраняем в deleted_items
-        if conn is None:
-            await ItemRepository.add_deleted_item(
-                item_id=item_id,
-                text=item_text,
-                serial=serial,
-                category_id=category_id,
-                reason=reason
-            )
-            # Удаляем из items
-            deleted = await ItemRepository.remove_item_by_serial(serial)
+            from bot.db import get_pool
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    await ItemRepository.add_deleted_item(
+                        item_id=item['id'],
+                        text=item['text'],
+                        serial=serial,
+                        category_id=item['category_id'],
+                        reason=reason,
+                        conn=conn
+                    )
+                    removed_count = await ItemRepository.remove_item_by_serial(serial, conn=conn)
         else:
             await ItemRepository.add_deleted_item(
-                item_id=item_id,
-                text=item_text,
+                item_id=item['id'],
+                text=item['text'],
                 serial=serial,
-                category_id=category_id,
+                category_id=item['category_id'],
                 reason=reason,
                 conn=conn
             )
-            deleted = await ItemRepository.remove_item_by_serial(serial, conn=conn)
-        
-        # Инвалидируем кэш
-        cls.invalidate_cache()
-        
-        logger.info(f"Товар удалён: {item_text} (серийник: {serial}), причина: {reason}")
-        return deleted > 0
+            removed_count = await ItemRepository.remove_item_by_serial(serial, conn=conn)
+
+        if removed_count > 0:
+            cls.invalidate_cache()
+        return removed_count
