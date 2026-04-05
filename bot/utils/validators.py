@@ -2,6 +2,7 @@
 import re
 from typing import List
 
+
 def extract_serials(text: str) -> List[str]:
     """
     Извлекает серийные номера из текста.
@@ -31,6 +32,7 @@ def extract_serials(text: str) -> List[str]:
         elif '-' in candidate and re.fullmatch(r'[A-Za-z0-9\-]{5,30}', candidate):
             serials.add(candidate.upper())
     return list(serials)
+
 
 def normalize_serial(serial: str) -> str:
     """Приводит серийный номер к стандартному виду (без пробелов, в верхнем регистре)."""
