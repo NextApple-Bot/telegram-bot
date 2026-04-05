@@ -106,7 +106,7 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     # Удаляем строки, состоящие только из дефисов
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
 
-    # ========== НОВАЯ ЛОГИКА: добавляем только строки, содержащие серийный номер ==========
+    # Оставляем только строки, содержащие серийный номер
     filtered_lines = []
     skipped_no_serial = []
     for line in lines:
@@ -191,31 +191,31 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
 
     if action == "yes" and cat_to_items:
         pool = await get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                cat_ids = {}
-                for cat_name in cat_to_items.keys():
-                    cat_id = await ItemRepository.get_or_create_category(cat_name)
-                    cat_ids[cat_name] = cat_id
-
-                # Вставляем каждый товар с ON CONFLICT
-                for cat_name, items in cat_to_items.items():
-                    cat_id = cat_ids[cat_name]
-                    for text, serial in items:
-                        is_booked = 'Бронь от' in text
-                        try:
-                            await conn.execute('''
-                                INSERT INTO items (text, serial, category_id, is_booked)
-                                VALUES ($1, $2, $3, $4)
-                                ON CONFLICT (serial) WHERE serial IS NOT NULL DO NOTHING
-                            ''', text, serial, cat_id, is_booked)
-                        except Exception as e:
-                            logger.exception(f"Ошибка при вставке товара: {text}, {serial}")
-                            # можно продолжать
+        # Вставляем товары по одному, без общей транзакции (каждый INSERT в своей транзакции)
+        total_inserted = 0
+        errors = []
+        for cat_name, items in cat_to_items.items():
+            # Получаем или создаём категорию (этот запрос вне транзакции, безопасен)
+            cat_id = await ItemRepository.get_or_create_category(cat_name)
+            for text, serial in items:
+                is_booked = 'Бронь от' in text
+                try:
+                    async with pool.acquire() as conn:
+                        await conn.execute('''
+                            INSERT INTO items (text, serial, category_id, is_booked)
+                            VALUES ($1, $2, $3, $4)
+                            ON CONFLICT (serial) WHERE serial IS NOT NULL DO NOTHING
+                        ''', text, serial, cat_id, is_booked)
+                    total_inserted += 1
+                except Exception as e:
+                    error_msg = f"Ошибка при вставке товара {text}: {e}"
+                    logger.exception(error_msg)
+                    errors.append(error_msg)
 
         AssortmentService.invalidate_cache()
-        total_new = sum(len(items) for items in cat_to_items.values())
-        await callback.message.edit_text(f"✅ Добавлено {total_new} новых товаров.")
+        await callback.message.edit_text(f"✅ Добавлено {total_inserted} новых товаров. Ошибок: {len(errors)}")
+        if errors:
+            await callback.message.answer("\n".join(errors[:5]))  # покажем первые 5 ошибок
     elif action == "no":
         await callback.message.edit_text("❌ Добавление отменено.")
     else:
