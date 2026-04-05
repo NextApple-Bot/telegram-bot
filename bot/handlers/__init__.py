@@ -5,9 +5,8 @@ from . import callbacks
 from .topics import assortment_router, arrival_router, preorder_router, sales_router
 from . import admin_migration
 
-# Подключаем все роутеры
 router.include_router(commands.router)
-router.include_router(callbacks.router)          # ← ЭТА СТРОКА БЫЛА ОТСУТСТВУЕТ
+router.include_router(callbacks.router)
 router.include_router(assortment_router)
 router.include_router(arrival_router)
 router.include_router(preorder_router)
