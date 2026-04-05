@@ -4,7 +4,7 @@ import csv
 import tempfile
 import os
 from datetime import datetime
-from aiogram import F
+from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
 from cachetools import TTLCache
@@ -18,7 +18,9 @@ from bot.utils.markdown import escape_markdown_v1
 from .base import logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
 from .topics.common import export_assortment_to_topic
 
-# Кэши с TTL 1 час и максимальным размером 1000 записей
+router = Router()  # <-- СОБСТВЕННЫЙ РОУТЕР
+
+# Кэши с TTL
 last_stats_message = TTLCache(maxsize=1000, ttl=3600)
 last_inventory_message = TTLCache(maxsize=1000, ttl=3600)
 last_remains_message = TTLCache(maxsize=1000, ttl=3600)
@@ -34,19 +36,17 @@ async def safe_delete(message):
 
 @router.callback_query(F.data == "menu:remains")
 async def process_remains(callback: CallbackQuery):
-    """Обработчик кнопки «Остатки»"""
     try:
         await callback.answer("⏳ Формирую отчёт по остаткам...")
     except Exception as e:
         logger.warning(f"Не удалось ответить на callback: {e}")
 
     chat_id = callback.message.chat.id
-
     if chat_id in last_remains_message:
         try:
             await callback.bot.delete_message(chat_id, last_remains_message[chat_id])
-        except Exception as e:
-            logger.warning(f"Не удалось удалить старое сообщение остатков: {e}")
+        except Exception:
+            pass
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -82,13 +82,11 @@ async def process_remains(callback: CallbackQuery):
         tmp_path = tmp.name
 
     await safe_delete(callback.message)
-
     sent = await callback.message.answer_document(
         FSInputFile(tmp_path, filename=f"remains_{today}.csv"),
         caption=f"📦 Остатки на {today}"
     )
     last_remains_message[chat_id] = sent.message_id
-
     os.unlink(tmp_path)
 
     keyboard = get_main_menu_keyboard()
@@ -99,8 +97,8 @@ async def process_remains(callback: CallbackQuery):
 async def process_month_selection(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
+    except Exception:
+        pass
 
     month = callback.data.split(":")[1]
     chat_id = callback.message.chat.id
@@ -108,14 +106,13 @@ async def process_month_selection(callback: CallbackQuery):
     if chat_id in last_clients_month_message:
         try:
             await callback.bot.delete_message(chat_id, last_clients_month_message[chat_id])
-        except Exception as e:
-            logger.warning(f"Не удалось удалить старое сообщение отчёта: {e}")
+        except Exception:
+            pass
 
     await callback.message.edit_text(f"⏳ Формирую отчёт за {month}...")
 
     try:
         rows = await ClientRepository.get_clients_data_for_month(month)
-
         if not rows:
             await safe_delete(callback.message)
             await callback.message.answer("📭 Нет данных за этот месяц.")
@@ -127,46 +124,31 @@ async def process_month_selection(callback: CallbackQuery):
             writer = csv.writer(tmp)
             writer.writerow([
                 'ID клиента', 'ФИО', 'Телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник',
-                'Дата регистрации клиента',
-                'ID покупки', 'Дата покупки', 'Товары', 'Сумма', 'Способ оплаты (JSON)', 'Тип покупки'
+                'Дата регистрации клиента', 'ID покупки', 'Дата покупки', 'Товары', 'Сумма',
+                'Способ оплаты (JSON)', 'Тип покупки'
             ])
-
             for row in rows:
                 items_text = ''
                 if row['items_json']:
                     try:
                         items = json.loads(row['items_json'])
                         items_text = '; '.join([f"{it.get('item_text', '')[:50]} ({it.get('price', '')}₽)" for it in items])
-                    except:
+                    except Exception:
                         items_text = row['items_json']
-
                 writer.writerow([
-                    row['client_id'],
-                    row['full_name'],
-                    row['phone'],
-                    row['phones'],
-                    row['telegram_username'],
-                    row['social_network'],
-                    row['referral_source'],
-                    row['client_created_at'],
-                    row['purchase_id'],
-                    row['purchase_created_at'],
-                    items_text,
-                    row['total_amount'],
-                    row['payment_details'],
-                    row['purchase_type']
+                    row['client_id'], row['full_name'], row['phone'], row['phones'],
+                    row['telegram_username'], row['social_network'], row['referral_source'],
+                    row['client_created_at'], row['purchase_id'], row['purchase_created_at'],
+                    items_text, row['total_amount'], row['payment_details'], row['purchase_type']
                 ])
-
             tmp_path = tmp.name
 
         await safe_delete(callback.message)
-
         sent = await callback.message.answer_document(
             FSInputFile(tmp_path, filename=f"clients_{month}.csv"),
             caption=f"📁 Данные клиентов за {month}"
         )
         last_clients_month_message[chat_id] = sent.message_id
-
         os.unlink(tmp_path)
 
         keyboard = get_main_menu_keyboard()
@@ -184,17 +166,14 @@ async def process_month_selection(callback: CallbackQuery):
 async def process_clean_empty(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
-
     action = callback.data.split(":")[1]
     if action != "confirm":
         return
-
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute('''
@@ -209,19 +188,17 @@ async def process_clean_empty(callback: CallbackQuery):
 async def process_delete_category(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
-
     cat_id = int(callback.data.split(":")[1])
     pool = await get_pool()
     async with pool.acquire() as conn:
         count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', cat_id)
         if count > 0:
-            await callback.message.edit_text(f"❌ В категории появились товары, удаление отменено.")
+            await callback.message.edit_text("❌ В категории есть товары, удаление отменено.")
             return
         await conn.execute('DELETE FROM categories WHERE id = $1', cat_id)
         await callback.message.edit_text(f"✅ Категория ID {cat_id} удалена.")
@@ -231,17 +208,13 @@ async def process_delete_category(callback: CallbackQuery):
 async def process_merge_categories(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
-
     _, from_id, to_id = callback.data.split(':')
-    from_id = int(from_id)
-    to_id = int(to_id)
-
+    from_id, to_id = int(from_id), int(to_id)
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -254,17 +227,14 @@ async def process_merge_categories(callback: CallbackQuery):
 async def process_reset_assortment(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
-
     action = callback.data.split(":")[1]
     if action != "confirm":
         return
-
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -276,33 +246,29 @@ async def process_reset_assortment(callback: CallbackQuery):
 async def process_delete_client(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
-
     client_id = int(callback.data.split(":")[1])
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute('DELETE FROM purchases WHERE client_id = $1', client_id)
             await conn.execute('DELETE FROM clients WHERE id = $1', client_id)
-        await callback.message.edit_text(f"✅ Клиент ID {client_id} и все его покупки удалены.")
+        await callback.message.edit_text(f"✅ Клиент ID {client_id} удалён.")
 
 
 @router.callback_query(F.data.startswith("delete_purchase:"))
 async def process_delete_purchase(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     if callback.from_user.id not in config.ADMIN_IDS:
         await callback.answer("⛔ Доступ запрещён", show_alert=True)
         return
-
     purchase_id = int(callback.data.split(":")[1])
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -314,9 +280,8 @@ async def process_delete_purchase(callback: CallbackQuery):
 async def process_reset_stats(callback: CallbackQuery):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     action = callback.data.split(":")[1]
     chat_id = callback.message.chat.id
     try:
@@ -325,26 +290,16 @@ async def process_reset_stats(callback: CallbackQuery):
                 [InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_stats:yes"),
                  InlineKeyboardButton(text="❌ Нет", callback_data="reset_stats:no")]
             ])
-            await callback.message.edit_text("Вы уверены, что хотите обнулить статистику и финансовые суммы за сегодня?", reply_markup=keyboard)
+            await callback.message.edit_text("Вы уверены? Статистика и финансы за сегодня будут обнулены.", reply_markup=keyboard)
         elif action == "yes":
             await StatsRepository.reset_today_stats()
             s = await StatsRepository.get_today_stats()
-            text = (
-                f"📊 Статистика за {s['date']}:\n"
-                f"• Продаж: {s['sales_count']}\n"
-                f"• Предзаказов: {s['preorders_count']}\n"
-                f"• Броней: {s['bookings_count']}"
-            )
+            text = f"📊 Статистика за {s['date']}:\n• Продаж: {s['sales_count']}\n• Предзаказов: {s['preorders_count']}\n• Броней: {s['bookings_count']}"
             await callback.message.edit_text(text)
             last_stats_message[chat_id] = callback.message.message_id
         elif action == "no":
             s = await StatsRepository.get_today_stats()
-            text = (
-                f"📊 Статистика за {s['date']}:\n"
-                f"• Продаж: {s['sales_count']}\n"
-                f"• Предзаказов: {s['preorders_count']}\n"
-                f"• Броней: {s['bookings_count']}"
-            )
+            text = f"📊 Статистика за {s['date']}:\n• Продаж: {s['sales_count']}\n• Предзаказов: {s['preorders_count']}\n• Броней: {s['bookings_count']}"
             await callback.message.edit_text(text)
             last_stats_message[chat_id] = callback.message.message_id
     except TelegramBadRequest as e:
@@ -359,19 +314,17 @@ async def process_reset_stats(callback: CallbackQuery):
 async def process_confirm_clear(callback: CallbackQuery, bot):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
-
+    except Exception:
+        pass
     action = callback.data.split(":")[1]
     chat_id = callback.message.chat.id
-
     try:
         if action == "yes":
             await AssortmentService.save_inventory([])
             await StatsRepository.reset_today_stats()
             if chat_id in last_stats_message:
                 del last_stats_message[chat_id]
-            await callback.message.edit_text("✅ Ассортимент полностью очищен. Статистика сброшена.")
+            await callback.message.edit_text("✅ Ассортимент очищен. Статистика сброшена.")
         else:
             await callback.message.edit_text("❌ Очистка отменена.")
     except TelegramBadRequest as e:
@@ -384,8 +337,8 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
 async def process_menu_callback(callback: CallbackQuery, bot, state):
     try:
         await callback.answer()
-    except Exception as e:
-        logger.warning(f"Не удалось ответить на callback: {e}")
+    except Exception:
+        pass
 
     action = callback.data.split(":")[1]
     user_id = callback.from_user.id
@@ -407,11 +360,9 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                 await bot.delete_message(chat_id, last_stats_message[chat_id])
             except Exception:
                 pass
-
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) < CURRENT_DATE')
-
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT payment_type, SUM(amount) as total
@@ -419,27 +370,25 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                 WHERE DATE(created_at) = CURRENT_DATE
                 GROUP BY payment_type
             ''')
-
         payments = {row['payment_type']: float(row['total']) for row in rows}
         for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
             payments.setdefault(pt, 0.0)
         overall_total = sum(payments.values())
-
         s = await StatsRepository.get_today_stats()
-
-        text = f"📊 Статистика за {s['date']}:\n"
-        text += f"• Продаж: {s['sales_count']}\n"
-        text += f"• Предзаказов: {s['preorders_count']}\n"
-        text += f"• Броней: {s['bookings_count']}\n\n"
-        text += f"План - {config.PLAN_AMOUNT}.\n"
-        text += f"1) Общая - {overall_total:.0f}" + ("  (План не выполнен)" if overall_total < config.PLAN_AMOUNT else "") + "\n"
-        text += f"2) Наличные - {payments['cash']:.0f}\n"
-        text += f"3) QR-код - {payments['qr']:.0f}\n"
-        text += f"4) Рассрочка - {payments['installment']:.0f}\n"
-        text += f"5) Оплата по счету - {payments['invoice']:.0f}\n"
-        text += f"6) Терминал - {payments['terminal']:.0f}\n"
-        text += f"7) Перевод - {payments['transfer']:.0f}"
-
+        text = (
+            f"📊 Статистика за {s['date']}:\n"
+            f"• Продаж: {s['sales_count']}\n"
+            f"• Предзаказов: {s['preorders_count']}\n"
+            f"• Броней: {s['bookings_count']}\n\n"
+            f"План - {config.PLAN_AMOUNT}\n"
+            f"1) Общая - {overall_total:.0f}\n"
+            f"2) Наличные - {payments['cash']:.0f}\n"
+            f"3) QR-код - {payments['qr']:.0f}\n"
+            f"4) Рассрочка - {payments['installment']:.0f}\n"
+            f"5) Оплата по счету - {payments['invoice']:.0f}\n"
+            f"6) Терминал - {payments['terminal']:.0f}\n"
+            f"7) Перевод - {payments['transfer']:.0f}"
+        )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Сбросить статистику", callback_data="reset_stats:confirm")]
         ])
@@ -481,7 +430,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
         ])
         try:
             await callback.message.edit_text(
-                "⚠️ Вы уверены, что хотите полностью очистить ассортимент? Это действие необратимо.",
+                "⚠️ Вы уверены? Очистка ассортимента необратима.",
                 reply_markup=keyboard
             )
         except TelegramBadRequest as e:
