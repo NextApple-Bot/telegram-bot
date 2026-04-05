@@ -1,3 +1,4 @@
+# Файл: bot/handlers/callbacks.py
 import json
 import csv
 import tempfile
@@ -6,7 +7,7 @@ from datetime import datetime
 from aiogram import F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
-from cachetools import TTLCache  # <--- добавлено для безопасного кэширования
+from cachetools import TTLCache
 
 from bot import config
 from bot.services.assortment import AssortmentService
@@ -14,10 +15,10 @@ from bot.repositories import StatsRepository, ClientRepository, ItemRepository
 from bot.db import get_pool
 from bot.utils.sort import get_full_model_name, detect_sim_type
 from bot.utils.markdown import escape_markdown_v1
-from .base import router, logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
+from .base import logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
 from .topics.common import export_assortment_to_topic
 
-# Кэши с TTL 1 час и максимальным размером 1000 записей (вместо бесконечных словарей)
+# Кэши с TTL 1 час и максимальным размером 1000 записей
 last_stats_message = TTLCache(maxsize=1000, ttl=3600)
 last_inventory_message = TTLCache(maxsize=1000, ttl=3600)
 last_remains_message = TTLCache(maxsize=1000, ttl=3600)
@@ -96,7 +97,6 @@ async def process_remains(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("month:"))
 async def process_month_selection(callback: CallbackQuery):
-    """Обработчик выбора месяца для отчёта по клиентам"""
     try:
         await callback.answer()
     except Exception as e:
@@ -180,7 +180,6 @@ async def process_month_selection(callback: CallbackQuery):
         await callback.message.answer("Выберите действие:", reply_markup=keyboard)
 
 
-# ---------- Обработчики для подтверждения удаления (категории, ассортимент и т.д.) ----------
 @router.callback_query(F.data.startswith("clean_empty:"))
 async def process_clean_empty(callback: CallbackQuery):
     try:
@@ -311,7 +310,6 @@ async def process_delete_purchase(callback: CallbackQuery):
         await callback.message.edit_text(f"✅ Покупка ID {purchase_id} удалена.")
 
 
-# ---------- Обработчики сброса статистики ----------
 @router.callback_query(F.data.startswith("reset_stats:"))
 async def process_reset_stats(callback: CallbackQuery):
     try:
@@ -329,9 +327,7 @@ async def process_reset_stats(callback: CallbackQuery):
             ])
             await callback.message.edit_text("Вы уверены, что хотите обнулить статистику и финансовые суммы за сегодня?", reply_markup=keyboard)
         elif action == "yes":
-            # Сбрасываем статистику продаж, предзаказов, броней (без удаления финансов)
             await StatsRepository.reset_today_stats()
-            # Обновляем отображение статистики
             s = await StatsRepository.get_today_stats()
             text = (
                 f"📊 Статистика за {s['date']}:\n"
@@ -384,9 +380,6 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
     await callback.message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
 
 
-# -------------------------------------------------------------
-# ОСНОВНОЙ ОБРАБОТЧИК МЕНЮ
-# -------------------------------------------------------------
 @router.callback_query(F.data.startswith("menu:"))
 async def process_menu_callback(callback: CallbackQuery, bot, state):
     try:
@@ -416,12 +409,9 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                 pass
 
         pool = await get_pool()
-
-        # Удаляем старые записи (за предыдущие дни)
         async with pool.acquire() as conn:
             await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) < CURRENT_DATE')
 
-        # Получаем суммы за сегодня
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT payment_type, SUM(amount) as total
