@@ -1,3 +1,4 @@
+{# Файл: web_admin/templates/clients.html #}
 {% extends "base.html" %}
 {% block title %}Клиенты{% endblock %}
 {% block content %}
@@ -11,20 +12,27 @@
 
 <form method="get" class="row g-3 mb-3">
     <div class="col-md-3">
-        <input type="text" class="form-control" name="search" placeholder="Поиск (имя/телефон/telegram)" value="{{ search or '' }}">
+        <input type="text" class="form-control" name="search" placeholder="Поиск" value="{{ search or '' }}">
     </div>
     <div class="col-md-2">
-        <input type="date" class="form-control" name="date_from" value="{{ date_from or '' }}" placeholder="Дата от">
+        <input type="date" class="form-control" name="date_from" value="{{ date_from or '' }}">
     </div>
     <div class="col-md-2">
-        <input type="date" class="form-control" name="date_to" value="{{ date_to or '' }}" placeholder="Дата до">
+        <input type="date" class="form-control" name="date_to" value="{{ date_to or '' }}">
+    </div>
+    <div class="col-md-2">
+        <select name="per_page" class="form-select">
+            <option value="50" {% if per_page == 50 %}selected{% endif %}>50 на страницу</option>
+            <option value="100" {% if per_page == 100 %}selected{% endif %}>100 на страницу</option>
+            <option value="200" {% if per_page == 200 %}selected{% endif %}>200 на страницу</option>
+        </select>
     </div>
     <div class="col-md-1">
         <button type="submit" class="btn btn-primary w-100">Фильтр</button>
     </div>
 </form>
 
-<div class="row mb-3">
+<div class="row mb-2">
     <div class="col">
         <span class="badge bg-secondary">Всего клиентов: {{ total }}</span>
     </div>
@@ -32,7 +40,13 @@
 
 <table class="table table-striped">
     <thead>
-        <tr><th>ID</th><th>ФИО</th><th>Телефон</th><th>Telegram</th><th>Дата регистрации</th></tr>
+        <tr>
+            <th><a href="?sort_by=id&sort_order={% if sort_by == 'id' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}">ID {% if sort_by == 'id' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+            <th><a href="?sort_by=full_name&sort_order={% if sort_by == 'full_name' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}">ФИО {% if sort_by == 'full_name' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+            <th><a href="?sort_by=phone&sort_order={% if sort_by == 'phone' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}">Телефон {% if sort_by == 'phone' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+            <th><a href="?sort_by=telegram_username&sort_order={% if sort_by == 'telegram_username' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}">Telegram {% if sort_by == 'telegram_username' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+            <th><a href="?sort_by=created_at&sort_order={% if sort_by == 'created_at' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}">Дата регистрации {% if sort_by == 'created_at' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+        </tr>
     </thead>
     <tbody>
         {% for client in clients %}
@@ -47,18 +61,18 @@
     </tbody>
 </table>
 
-<!-- Пагинация -->
+<!-- Пагинация с сохранением параметров сортировки -->
 {% if total_pages > 1 %}
 <nav>
     <ul class="pagination">
         {% if page > 1 %}
-        <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Первая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Предыдущая</a></li>
+        <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Первая</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Предыдущая</a></li>
         {% endif %}
         <li class="page-item active"><span class="page-link">Страница {{ page }} из {{ total_pages }}</span></li>
         {% if page < total_pages %}
-        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Следующая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}{% if search %}&search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Последняя</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Следующая</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Последняя</a></li>
         {% endif %}
     </ul>
 </nav>
