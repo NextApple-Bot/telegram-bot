@@ -10,13 +10,12 @@ from bot.db import get_pool
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    # Получаем статистику за сегодня
+    # Статистика за сегодня
     stats = await StatsRepository.get_today_stats()
 
-    # Получаем финансовые итоги за сегодня
+    # Финансы за сегодня
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch('''
@@ -30,7 +29,7 @@ async def dashboard(request: Request):
         payments.setdefault(pt, 0.0)
     total_revenue = sum(payments.values())
 
-    # Получаем данные для графика (продажи за последние 7 дней)
+    # Данные для графика (продажи за последние 7 дней)
     end_date = date.today()
     start_date = end_date - timedelta(days=6)
     async with pool.acquire() as conn:
@@ -41,16 +40,16 @@ async def dashboard(request: Request):
             GROUP BY day
             ORDER BY day
         ''', start_date)
-    sales_by_day = {row['day'].isoformat(): row['count'] for row in sales_rows}
+    sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
     dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
-    sales_counts = [sales_by_day.get(d, 0) for d in dates]
+    sales_counts = [sales_dict.get(d, 0) for d in dates]
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "stats": stats,
         "payments": payments,
         "total_revenue": total_revenue,
-        "plan_amount": 600000,  # можно взять из config
-        "dates": dates,
-        "sales_counts": sales_counts,
+        "plan_amount": 600000,  # можно брать из config
+        "chart_dates": dates,
+        "chart_sales": sales_counts,
     })
