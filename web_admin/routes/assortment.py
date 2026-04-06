@@ -12,7 +12,6 @@ from bot.db import get_pool
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-
 @router.get("/", response_class=HTMLResponse)
 async def list_assortment(
     request: Request,
@@ -21,11 +20,13 @@ async def list_assortment(
     search: Optional[str] = Query(None),
     category_id: Optional[int] = Query(None),
 ):
-    """Отображает ассортимент в виде таблицы с пагинацией, поиском и фильтром по категории."""
+    """
+    Отображает таблицу товаров с пагинацией, поиском и фильтром по категориям.
+    """
     pool = await get_pool()
     offset = (page - 1) * per_page
 
-    # Базовый запрос с JOIN для получения имени категории
+    # Базовые части запроса
     base_query = """
         SELECT i.id, i.text, i.serial, i.is_booked, i.created_at,
                c.id as category_id, c.name as category_name
@@ -37,32 +38,38 @@ async def list_assortment(
     params = []
     count_params = []
 
+    # Поиск по тексту товара или серийному номеру
     if search:
-        search_term = f"%{search}%"
-        base_query += " AND (i.text ILIKE $" + str(len(params)+1) + " OR i.serial ILIKE $" + str(len(params)+2) + ")"
-        params.extend([search_term, search_term])
-        count_query += " AND (text ILIKE $" + str(len(count_params)+1) + " OR serial ILIKE $" + str(len(count_params)+2) + ")"
-        count_params.extend([search_term, search_term])
+        search_condition = " AND (i.text ILIKE $" + str(len(params)+1) + " OR i.serial ILIKE $" + str(len(params)+1) + ")"
+        base_query += search_condition
+        count_query += search_condition
+        params.append(f"%{search}%")
+        count_params.append(f"%{search}%")
 
+    # Фильтр по категории
     if category_id:
         base_query += " AND i.category_id = $" + str(len(params)+1)
+        count_query += " AND i.category_id = $" + str(len(count_params)+1)
         params.append(category_id)
-        count_query += " AND category_id = $" + str(len(count_params)+1)
         count_params.append(category_id)
 
+    # Сортировка и пагинация
     base_query += " ORDER BY i.id DESC LIMIT $" + str(len(params)+1) + " OFFSET $" + str(len(params)+2)
     params.append(per_page)
     params.append(offset)
 
     async with pool.acquire() as conn:
+        # Общее количество записей
         total = await conn.fetchval(count_query, *count_params)
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+
+        # Список товаров
         rows = await conn.fetch(base_query, *params)
         items = [dict(row) for row in rows]
 
-    # Получаем список всех категорий для фильтра
-    categories_rows = await conn.fetch("SELECT id, name FROM categories ORDER BY name")
-    categories = [dict(row) for row in categories_rows]
+        # Список категорий для фильтра
+        categories_rows = await conn.fetch("SELECT id, name FROM categories ORDER BY name")
+        categories = [{"id": row["id"], "name": row["name"]} for row in categories_rows]
 
     return templates.TemplateResponse("assortment.html", {
         "request": request,
@@ -79,7 +86,7 @@ async def list_assortment(
 
 @router.get("/edit/{item_id}")
 async def edit_item_form(request: Request, item_id: int):
-    """Форма редактирования отдельного товара."""
+    """Форма редактирования одного товара."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow("""
@@ -91,14 +98,11 @@ async def edit_item_form(request: Request, item_id: int):
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")
         item = dict(row)
-
         categories = await conn.fetch("SELECT id, name FROM categories ORDER BY name")
-        categories = [dict(cat) for cat in categories]
-
     return templates.TemplateResponse("assortment_edit_item.html", {
         "request": request,
         "item": item,
-        "categories": categories,
+        "categories": [dict(cat) for cat in categories],
     })
 
 
@@ -118,7 +122,7 @@ async def edit_item_submit(
             UPDATE items
             SET text = $1, serial = $2, category_id = $3, is_booked = $4
             WHERE id = $5
-        """, text, serial, category_id, is_booked, item_id)
+        """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
@@ -134,7 +138,7 @@ async def delete_item(request: Request, item_id: int):
                 await conn.execute("""
                     INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
                     VALUES ($1, $2, $3, $4, 'admin_manual')
-                """, item_id, row['text'], row['serial'], row['category_id'])
+                """, item_id, row["text"], row["serial"], row["category_id"])
                 await conn.execute("DELETE FROM items WHERE id = $1", item_id)
     AssortmentService.invalidate_cache()
     referer = request.headers.get("referer")
@@ -143,75 +147,30 @@ async def delete_item(request: Request, item_id: int):
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
 
-@router.get("/add")
-async def add_item_form(request: Request):
-    """Форма добавления нового товара."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        categories = await conn.fetch("SELECT id, name FROM categories ORDER BY name")
-        categories = [dict(cat) for cat in categories]
-    return templates.TemplateResponse("assortment_add_item.html", {
-        "request": request,
-        "categories": categories,
-    })
-
-
 @router.post("/add")
-async def add_item_submit(
+async def add_item(
     request: Request,
     text: str = Form(...),
     serial: Optional[str] = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
 ):
-    """Добавляет новый товар."""
+    """Добавляет новый товар вручную."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("""
             INSERT INTO items (text, serial, category_id, is_booked)
             VALUES ($1, $2, $3, $4)
-        """, text, serial, category_id, is_booked)
+        """, text, serial.strip().upper() if serial else None, category_id, is_booked)
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
 
-@router.get("/categories")
-async def list_categories(request: Request):
-    """Управление категориями (отдельная страница)."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT c.id, c.name, COUNT(i.id) as item_count
-            FROM categories c
-            LEFT JOIN items i ON c.id = i.category_id
-            GROUP BY c.id
-            ORDER BY c.name
-        """)
-        categories = [dict(row) for row in rows]
-    return templates.TemplateResponse("assortment_categories.html", {
-        "request": request,
-        "categories": categories,
-    })
-
-
-@router.post("/categories/add")
+@router.post("/add_category")
 async def add_category(request: Request, name: str = Form(...)):
     """Добавляет новую категорию."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("INSERT INTO categories (name) VALUES ($1)", name)
     AssortmentService.invalidate_cache()
-    return RedirectResponse(url="/admin/assortment/categories", status_code=303)
-
-
-@router.post("/categories/delete/{category_id}")
-async def delete_category(request: Request, category_id: int):
-    """Удаляет категорию, только если она пуста."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        count = await conn.fetchval("SELECT COUNT(*) FROM items WHERE category_id = $1", category_id)
-        if count > 0:
-            raise HTTPException(status_code=400, detail="Category is not empty")
-        await conn.execute("DELETE FROM categories WHERE id = $1", category_id)
-    AssortmentService.invalidate_cache()
-    return RedirectResponse(url="/admin/assortment/categories", status_code=303)
+    return RedirectResponse(url="/admin/assortment", status_code=303)
