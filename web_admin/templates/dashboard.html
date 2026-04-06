@@ -1,112 +1,146 @@
-# Файл: web_admin/routes/dashboard.py
-from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from datetime import date, timedelta
-from collections import Counter
-import re
+{# Файл: web_admin/templates/dashboard.html #}
+{% extends "base.html" %}
+{% block title %}Дашборд{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+{% block content %}
+<h1>Дашборд</h1>
 
-from bot.repositories import StatsRepository
-from bot.db import get_pool
+<!-- Карточки статистики -->
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card text-white bg-primary mb-3">
+            <div class="card-header">Продажи сегодня</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.sales_count }}</h5>
+                <p class="card-text">количество продаж</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-success mb-3">
+            <div class="card-header">Предзаказы сегодня</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.preorders_count }}</h5>
+                <p class="card-text">количество предзаказов</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-warning mb-3">
+            <div class="card-header">Брони сегодня</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ stats.bookings_count }}</h5>
+                <p class="card-text">количество броней</p>
+            </div>
+        </div>
+    </div>
+</div>
 
-router = APIRouter()
-templates = Jinja2Templates(directory="web_admin/templates")
+<!-- Финансы -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">Финансы за сегодня</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr><th>Наличные</th><td>{{ payments.cash|round(0) }} ₽</td></tr>
+                    <tr><th>Терминал</th><td>{{ payments.terminal|round(0) }} ₽</td></tr>
+                    <tr><th>QR-код</th><td>{{ payments.qr|round(0) }} ₽</td></tr>
+                    <tr><th>Перевод</th><td>{{ payments.transfer|round(0) }} ₽</td></tr>
+                    <tr><th>Оплата по счету</th><td>{{ payments.invoice|round(0) }} ₽</td></tr>
+                    <tr><th>Рассрочка</th><td>{{ payments.installment|round(0) }} ₽</td></tr>
+                    <tr class="table-active"><th>Итого</th><td><strong>{{ total_revenue|round(0) }} ₽</strong></td></tr>
+                    <tr><th>План</th><td>{{ plan_amount|round(0) }} ₽</td></tr>
+                    <tr><th>Выполнение</th><td>{{ (total_revenue / plan_amount * 100)|round(1) }}%</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 
-# ---- Вспомогательная функция для извлечения базовой модели ----
-def extract_base_model(full_text: str) -> str:
-    """
-    Извлекает базовую модель из текста товара:
-    - Убирает цвет, память, серийные номера, комментарии в скобках.
-    - Пример: "iPhone 16 Pro, Black, 128GB (SIM+eSIM)" -> "iPhone 16 Pro"
-    """
-    # Берём часть до первой запятой или открывающей скобки
-    for sep in [',', '(', '（']:
-        if sep in full_text:
-            full_text = full_text.split(sep)[0]
-            break
-    # Удаляем числа с единицами памяти (128GB, 256GB, 1TB и т.д.)
-    full_text = re.sub(r'\b\d+\s*(GB|TB|ГБ|ТБ)\b', '', full_text, flags=re.IGNORECASE)
-    # Удаляем названия цветов (распространённые)
-    colors = ['Black', 'White', 'Blue', 'Green', 'Yellow', 'Red', 'Purple', 'Pink', 'Gold', 'Silver', 'Space Gray', 'Midnight', 'Starlight', 'Cream', 'Brown', 'Rose Gold', 'Jet Black', 'Graphite', 'Sierra Blue', 'Alpine Green', 'Deep Purple', 'Titanium', 'Desert', 'Natural', 'Sky Blue', 'Mist Blue', 'Lavender', 'Sage', 'Cosmic Orange', 'Cloud White', 'Light Gold']
-    for color in colors:
-        full_text = re.sub(rf'\b{re.escape(color)}\b', '', full_text, flags=re.IGNORECASE)
-    # Убираем лишние пробелы
-    full_text = re.sub(r'\s+', ' ', full_text).strip()
-    # Если осталось пусто – вернуть исходный кусок
-    if not full_text:
-        return full_text
-    return full_text
+<!-- Графики -->
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Динамика продаж (последние 7 дней)</div>
+            <div class="card-body">
+                <canvas id="salesChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                Топ-5 моделей по продажам
+                <div class="float-end">
+                    <select id="periodSelect" class="form-select form-select-sm" style="width: auto;">
+                        <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                        <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                        <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="topModelsChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
 
+<script>
+    // Линейный график
+    new Chart(document.getElementById('salesChart'), {
+        type: 'line',
+        data: {
+            labels: {{ chart_dates|tojson }},
+            datasets: [{ label: 'Количество продаж', data: {{ chart_sales|tojson }}, borderColor: 'blue', backgroundColor: 'rgba(0,0,255,0.1)', fill: true, tension: 0.2 }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, stepSize: 1, precision: 0 } } }
+    });
 
-@router.get("/", response_class=HTMLResponse)
-async def dashboard(
-    request: Request,
-    days: int = Query(7, ge=7, le=90)  # для графика топ-моделей
-):
-    # ---- Статистика за сегодня (без изменений) ----
-    stats = await StatsRepository.get_today_stats()
+    // Круговая диаграмма
+    let pieChart = null;
+    const pieCtx = document.getElementById('topModelsChart').getContext('2d');
 
-    pool = await get_pool()
+    function updateTopModels(days) {
+        fetch(`/admin/dashboard/top_models_data?days=${days}`)
+            .then(res => res.json())
+            .then(data => {
+                if (pieChart) pieChart.destroy();
+                if (data.labels.length === 0) {
+                    pieCtx.clearRect(0, 0, 400, 200);
+                    pieCtx.fillStyle = '#ccc';
+                    pieCtx.fillRect(0, 0, 400, 200);
+                    pieCtx.fillStyle = '#000';
+                    pieCtx.font = '16px Arial';
+                    pieCtx.fillText('Нет данных за период', 120, 100);
+                    return;
+                }
+                pieChart = new Chart(pieCtx, {
+                    type: 'pie',
+                    data: { labels: data.labels, datasets: [{ data: data.counts, backgroundColor: ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff'], hoverOffset: 4 }] },
+                    options: { responsive: true, plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } } } }
+                });
+            });
+    }
 
-    # Финансы за сегодня
-    async with pool.acquire() as conn:
-        rows = await conn.fetch('''
-            SELECT payment_type, SUM(amount) as total
-            FROM daily_payments
-            WHERE DATE(created_at) = CURRENT_DATE
-            GROUP BY payment_type
-        ''')
-    payments = {row['payment_type']: float(row['total']) for row in rows}
-    for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
-        payments.setdefault(pt, 0.0)
-    total_revenue = sum(payments.values())
+    document.getElementById('periodSelect').addEventListener('change', (e) => updateTopModels(e.target.value));
 
-    # ---- График продаж (линейный) за 7 дней ----
-    end_date = date.today()
-    start_date = end_date - timedelta(days=6)
-    async with pool.acquire() as conn:
-        sales_rows = await conn.fetch('''
-            SELECT DATE(sold_at) as day, COUNT(*) as count
-            FROM sales
-            WHERE sold_at >= $1
-            GROUP BY day
-            ORDER BY day
-        ''', start_date)
-    sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
-    dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
-    sales_counts = [sales_dict.get(d, 0) for d in dates]
-
-    # ---- Топ-5 моделей (круговая диаграмма) за выбранный период ----
-    period_start = date.today() - timedelta(days=days - 1)
-    async with pool.acquire() as conn:
-        rows = await conn.fetch('''
-            SELECT i.text
-            FROM sales s
-            JOIN items i ON s.item_id = i.id
-            WHERE s.sold_at >= $1 AND i.text IS NOT NULL
-        ''', period_start)
-    
-    # Подсчёт моделей
-    model_counter = Counter()
-    for row in rows:
-        base = extract_base_model(row['text'])
-        if base:
-            model_counter[base] += 1
-    
-    top_5 = model_counter.most_common(5)
-    top_labels = [item[0] for item in top_5]
-    top_counts = [item[1] for item in top_5]
-    # Остальные (если есть) – не показываем, топ-5 уже выбрано
-
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "stats": stats,
-        "payments": payments,
-        "total_revenue": total_revenue,
-        "plan_amount": 600000,
-        "chart_dates": dates,
-        "chart_sales": sales_counts,
-        "top_labels": top_labels,
-        "top_counts": top_counts,
-        "days": days,
-    })
+    // Инициализация (если данные есть)
+    {% if top_labels %}
+    pieChart = new Chart(pieCtx, {
+        type: 'pie',
+        data: { labels: {{ top_labels|tojson }}, datasets: [{ data: {{ top_counts|tojson }}, backgroundColor: ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff'], hoverOffset: 4 }] },
+        options: { responsive: true, plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } } } }
+    });
+    {% else %}
+    pieCtx.fillStyle = '#ccc';
+    pieCtx.fillRect(0, 0, 400, 200);
+    pieCtx.fillStyle = '#000';
+    pieCtx.font = '16px Arial';
+    pieCtx.fillText('Нет данных за период', 120, 100);
+    {% endif %}
+</script>
+{% endblock %}
