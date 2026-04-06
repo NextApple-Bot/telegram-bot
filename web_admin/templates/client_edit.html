@@ -1,0 +1,35 @@
+{# Файл: web_admin/templates/client_edit.html #}
+{% extends "base.html" %}
+{% block title %}Редактировать клиента{% endblock %}
+{% block content %}
+<h1>Редактировать клиента #{{ client.id }}</h1>
+
+<form method="post">
+    <div class="mb-3">
+        <label for="full_name" class="form-label">ФИО</label>
+        <input type="text" class="form-control" id="full_name" name="full_name" value="{{ client.full_name or '' }}">
+    </div>
+    <div class="mb-3">
+        <label for="phone" class="form-label">Основной телефон</label>
+        <input type="text" class="form-control" id="phone" name="phone" value="{{ client.phone or '' }}">
+    </div>
+    <div class="mb-3">
+        <label for="phones" class="form-label">Все телефоны (через запятую)</label>
+        <input type="text" class="form-control" id="phones" name="phones" value="{{ client.phones or '' }}">
+    </div>
+    <div class="mb-3">
+        <label for="telegram_username" class="form-label">Telegram username</label>
+        <input type="text" class="form-control" id="telegram_username" name="telegram_username" value="{{ client.telegram_username or '' }}">
+    </div>
+    <div class="mb-3">
+        <label for="social_network" class="form-label">Соцсети / площадка</label>
+        <input type="text" class="form-control" id="social_network" name="social_network" value="{{ client.social_network or '' }}">
+    </div>
+    <div class="mb-3">
+        <label for="referral_source" class="form-label">Источник</label>
+        <input type="text" class="form-control" id="referral_source" name="referral_source" value="{{ client.referral_source or '' }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/admin/clients/{{ client.id }}" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}
