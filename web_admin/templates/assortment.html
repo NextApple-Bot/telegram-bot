@@ -14,13 +14,14 @@
 <!-- Фильтры и поиск -->
 <form method="get" class="row g-3 mb-3">
     <div class="col-md-4">
-        <input type="text" class="form-control" name="search" placeholder="Поиск (название / серийный номер)" value="{{ search or '' }}">
+        <input type="text" class="form-control" id="searchInput" name="search" placeholder="Поиск (название / серийный номер)" value="{{ search or '' }}" autocomplete="off" list="searchSuggestions">
+        <datalist id="searchSuggestions"></datalist>
     </div>
     <div class="col-md-3">
         <select name="category_id" class="form-select">
             <option value="">Все категории</option>
             {% for cat in categories %}
-            <option value="{{ cat.id }}" {% if category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+            <option value="{{ cat.id }}" {% if category_id|string == cat.id|string %}selected{% endif %}>{{ cat.name }}</option>
             {% endfor %}
         </select>
     </div>
@@ -95,7 +96,7 @@
 </nav>
 {% endif %}
 
-<!-- Модальное окно добавления товара (то же, что и ранее) -->
+<!-- Модальное окно добавления товара -->
 <div class="modal fade" id="addItemModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -158,4 +159,33 @@
         </div>
     </div>
 </div>
+
+<script>
+    // Умный поиск с автодополнением
+    const searchInput = document.getElementById('searchInput');
+    const suggestionsList = document.getElementById('searchSuggestions');
+    let debounceTimer;
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim();
+        if (query.length < 2) {
+            suggestionsList.innerHTML = '';
+            return;
+        }
+        debounceTimer = setTimeout(() => {
+            fetch(`/admin/assortment/search?q=${encodeURIComponent(query)}`)
+                .then(res => res.json())
+                .then(data => {
+                    suggestionsList.innerHTML = '';
+                    data.results.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item.text;
+                        suggestionsList.appendChild(option);
+                    });
+                })
+                .catch(err => console.error('Search error:', err));
+        }, 300);
+    });
+</script>
 {% endblock %}
