@@ -35,10 +35,12 @@ config = None
 try:
     from aiogram import Bot, Dispatcher
     from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.fsm.storage.redis import RedisStorage
     from aiogram.types import Update
     from bot.handlers import router
     from bot.db import close_pool, get_pool
     from bot import config as bot_config
+    import redis.asyncio as redis
 
     config = bot_config
     logger.info("✅ Конфигурация загружена")
@@ -46,7 +48,16 @@ try:
     bot = Bot(token=config.TOKEN)
     logger.info("✅ Экземпляр Bot создан")
 
-    dp = Dispatcher(storage=MemoryStorage())
+    # Выбираем storage: Redis если задан URL, иначе Memory
+    if config.REDIS_URL:
+        redis_client = redis.from_url(config.REDIS_URL, decode_responses=True)
+        storage = RedisStorage(redis=redis_client)
+        logger.info("✅ Используется RedisStorage для FSM")
+    else:
+        storage = MemoryStorage()
+        logger.warning("⚠️ REDIS_URL не задан, используется MemoryStorage (не подходит для нескольких экземпляров)")
+
+    dp = Dispatcher(storage=storage)
     logger.info("✅ Диспетчер создан")
 
     dp.include_router(router)
@@ -98,6 +109,10 @@ async def on_shutdown():
             logger.info("✅ Вебхук удалён, сессия бота закрыта")
         except Exception as e:
             logger.error(f"Ошибка при завершении работы бота: {e}")
+    # Закрываем Redis-клиент, если он был создан
+    if hasattr(dp, 'storage') and hasattr(dp.storage, 'redis'):
+        await dp.storage.redis.close()
+        logger.info("✅ Redis-клиент закрыт")
 
 
 async def webhook(request: Request) -> Response:
