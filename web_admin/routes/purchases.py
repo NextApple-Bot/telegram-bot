@@ -1,3 +1,4 @@
+# Файл: web_admin/routes/purchases.py
 from fastapi import APIRouter, Request, Query, Form, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -62,9 +63,11 @@ async def list_purchases(
         except ValueError:
             pass
 
+    # ИСПРАВЛЕНИЕ: безопасная проверка payment_type через JSONB
     if payment_type and payment_type != "all":
-        base_query += " AND (p.payment_details->>$" + str(len(params)+1) + " IS NOT NULL AND p.payment_details->>$" + str(len(params)+1) + " > '0')"
-        count_query += " AND (p.payment_details->>$" + str(len(count_params)+1) + " IS NOT NULL AND p.payment_details->>$" + str(len(count_params)+1) + " > '0')"
+        # Используем COALESCE для NULL, чтобы не было ошибки
+        base_query += " AND COALESCE(p.payment_details->>$" + str(len(params)+1) + ", '0') != '0'"
+        count_query += " AND COALESCE(p.payment_details->>$" + str(len(count_params)+1) + ", '0') != '0'"
         params.append(payment_type)
         count_params.append(payment_type)
 
@@ -102,6 +105,7 @@ async def list_purchases(
         "payment_types": payment_types,
         "purchase_types": purchase_types,
     })
+
 
 @router.get("/export/csv")
 async def export_purchases_csv(
@@ -142,7 +146,8 @@ async def export_purchases_csv(
             pass
 
     if payment_type and payment_type != "all":
-        query += " AND (p.payment_details->>$" + str(len(params)+1) + " IS NOT NULL AND p.payment_details->>$" + str(len(params)+1) + " > '0')"
+        # Исправлено: COALESCE для защиты от NULL
+        query += " AND COALESCE(p.payment_details->>$" + str(len(params)+1) + ", '0') != '0'"
         params.append(payment_type)
 
     if purchase_type and purchase_type != "all":
