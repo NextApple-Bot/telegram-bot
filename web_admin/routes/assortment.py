@@ -19,7 +19,7 @@ async def list_assortment(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=10, le=200),
     search: Optional[str] = Query(None),
-    category_id: Optional[str] = Query(None),  # ← изменено с int на str
+    category_id: Optional[str] = Query(None),
 ):
     """
     Отображает таблицу товаров с пагинацией, поиском и фильтром по категориям.
@@ -82,9 +82,26 @@ async def list_assortment(
         "per_page": per_page,
         "total": total,
         "search": search,
-        "category_id": category_id,  # передаём строковое значение для сохранения в форме
+        "category_id": category_id,
         "categories": categories,
     })
+
+
+@router.get("/search")
+async def search_items(q: str = Query(..., min_length=2)):
+    """Возвращает JSON со списком товаров, похожих на запрос q (по тексту или серийному номеру)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('''
+            SELECT i.id, i.text, i.serial, c.name as category_name
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            WHERE i.text ILIKE $1 OR i.serial ILIKE $1
+            ORDER BY i.id DESC
+            LIMIT 10
+        ''', f'%{q}%')
+    results = [{"id": r["id"], "text": r["text"], "serial": r["serial"], "category": r["category_name"]} for r in rows]
+    return {"results": results}
 
 
 @router.get("/edit/{item_id}")
