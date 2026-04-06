@@ -1,6 +1,6 @@
 # Файл: web_admin/routes/dashboard.py
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from datetime import date, timedelta
 from collections import Counter
@@ -32,7 +32,6 @@ def extract_base_model(full_text: str) -> str:
         full_text = re.sub(rf'\b{re.escape(color)}\b', '', full_text, flags=re.IGNORECASE)
     # Убираем лишние пробелы
     full_text = re.sub(r'\s+', ' ', full_text).strip()
-    # Если осталось пусто – вернуть исходный кусок
     if not full_text:
         return full_text
     return full_text
@@ -43,7 +42,7 @@ async def dashboard(
     request: Request,
     days: int = Query(7, ge=7, le=90)  # для графика топ-моделей
 ):
-    # ---- Статистика за сегодня (без изменений) ----
+    # ---- Статистика за сегодня ----
     stats = await StatsRepository.get_today_stats()
 
     pool = await get_pool()
@@ -86,7 +85,6 @@ async def dashboard(
             WHERE s.sold_at >= $1 AND i.text IS NOT NULL
         ''', period_start)
     
-    # Подсчёт моделей
     model_counter = Counter()
     for row in rows:
         base = extract_base_model(row['text'])
@@ -96,7 +94,6 @@ async def dashboard(
     top_5 = model_counter.most_common(5)
     top_labels = [item[0] for item in top_5]
     top_counts = [item[1] for item in top_5]
-    # Остальные (если есть) – не показываем, топ-5 уже выбрано
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -110,3 +107,27 @@ async def dashboard(
         "top_counts": top_counts,
         "days": days,
     })
+
+
+# ---- API для динамической загрузки топ-моделей (без перезагрузки страницы) ----
+@router.get("/top_models_data")
+async def top_models_data(days: int = Query(7, ge=7, le=90)):
+    """Возвращает JSON с топ-5 моделями за указанный период."""
+    pool = await get_pool()
+    period_start = date.today() - timedelta(days=days - 1)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('''
+            SELECT i.text
+            FROM sales s
+            JOIN items i ON s.item_id = i.id
+            WHERE s.sold_at >= $1 AND i.text IS NOT NULL
+        ''', period_start)
+    
+    model_counter = Counter()
+    for row in rows:
+        base = extract_base_model(row['text'])
+        if base:
+            model_counter[base] += 1
+    
+    top_5 = model_counter.most_common(5)
+    return JSONResponse(content={"labels": [item[0] for item in top_5], "counts": [item[1] for item in top_5]})
