@@ -12,7 +12,7 @@ from bot.db import get_pool
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-# ---- Вспомогательная функция для извлечения базовой модели ----
+
 def extract_base_model(full_text: str) -> str:
     """
     Извлекает базовую модель из текста товара:
@@ -26,23 +26,25 @@ def extract_base_model(full_text: str) -> str:
             break
     # Удаляем числа с единицами памяти (128GB, 256GB, 1TB и т.д.)
     full_text = re.sub(r'\b\d+\s*(GB|TB|ГБ|ТБ)\b', '', full_text, flags=re.IGNORECASE)
-    # Удаляем названия цветов (распространённые)
-    colors = ['Black', 'White', 'Blue', 'Green', 'Yellow', 'Red', 'Purple', 'Pink', 'Gold', 'Silver', 'Space Gray', 'Midnight', 'Starlight', 'Cream', 'Brown', 'Rose Gold', 'Jet Black', 'Graphite', 'Sierra Blue', 'Alpine Green', 'Deep Purple', 'Titanium', 'Desert', 'Natural', 'Sky Blue', 'Mist Blue', 'Lavender', 'Sage', 'Cosmic Orange', 'Cloud White', 'Light Gold']
+    # Удаляем названия цветов
+    colors = ['Black', 'White', 'Blue', 'Green', 'Yellow', 'Red', 'Purple', 'Pink',
+              'Gold', 'Silver', 'Space Gray', 'Midnight', 'Starlight', 'Cream', 'Brown',
+              'Rose Gold', 'Jet Black', 'Graphite', 'Sierra Blue', 'Alpine Green',
+              'Deep Purple', 'Titanium', 'Desert', 'Natural', 'Sky Blue', 'Mist Blue',
+              'Lavender', 'Sage', 'Cosmic Orange', 'Cloud White', 'Light Gold']
     for color in colors:
         full_text = re.sub(rf'\b{re.escape(color)}\b', '', full_text, flags=re.IGNORECASE)
     # Убираем лишние пробелы
     full_text = re.sub(r'\s+', ' ', full_text).strip()
-    if not full_text:
-        return full_text
     return full_text
 
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
-    days: int = Query(7, ge=7, le=90)  # для графика топ-моделей
+    days: int = Query(7, ge=7, le=90)
 ):
-    # ---- Статистика за сегодня ----
+    # Статистика за сегодня
     stats = await StatsRepository.get_today_stats()
 
     pool = await get_pool()
@@ -60,7 +62,7 @@ async def dashboard(
         payments.setdefault(pt, 0.0)
     total_revenue = sum(payments.values())
 
-    # ---- График продаж (линейный) за 7 дней ----
+    # График продаж (линейный) за 7 дней
     end_date = date.today()
     start_date = end_date - timedelta(days=6)
     async with pool.acquire() as conn:
@@ -75,7 +77,7 @@ async def dashboard(
     dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
     sales_counts = [sales_dict.get(d, 0) for d in dates]
 
-    # ---- Топ-5 моделей (круговая диаграмма) за выбранный период ----
+    # Топ-5 моделей за выбранный период
     period_start = date.today() - timedelta(days=days - 1)
     async with pool.acquire() as conn:
         rows = await conn.fetch('''
@@ -84,13 +86,13 @@ async def dashboard(
             JOIN items i ON s.item_id = i.id
             WHERE s.sold_at >= $1 AND i.text IS NOT NULL
         ''', period_start)
-    
+
     model_counter = Counter()
     for row in rows:
         base = extract_base_model(row['text'])
         if base:
             model_counter[base] += 1
-    
+
     top_5 = model_counter.most_common(5)
     top_labels = [item[0] for item in top_5]
     top_counts = [item[1] for item in top_5]
@@ -122,12 +124,15 @@ async def top_models_data(days: int = Query(7, ge=7, le=90)):
             JOIN items i ON s.item_id = i.id
             WHERE s.sold_at >= $1 AND i.text IS NOT NULL
         ''', period_start)
-    
+
     model_counter = Counter()
     for row in rows:
         base = extract_base_model(row['text'])
         if base:
             model_counter[base] += 1
-    
+
     top_5 = model_counter.most_common(5)
-    return JSONResponse(content={"labels": [item[0] for item in top_5], "counts": [item[1] for item in top_5]})
+    return JSONResponse(content={
+        "labels": [item[0] for item in top_5],
+        "counts": [item[1] for item in top_5]
+    })
