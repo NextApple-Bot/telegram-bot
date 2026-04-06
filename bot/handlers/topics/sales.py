@@ -77,17 +77,28 @@ async def handle_sales_message(message: Message):
     except Exception as e:
         logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-    # Если есть хотя бы один проданный товар (или аксессуар) – сохраняем платежи
-    if result["sold_items"] or result.get("is_accessory", False):
+    # Сохраняем платежи, если это не запрещено (skip_payments = True только при ненайденных серийниках)
+    if not result.get("skip_payments", False):
         await PaymentService.add_payments_batch(payments, source_type='sale')
-        logger.info(f"✅ Продажа добавлена в статистику: товаров {len(result['sold_items'])}, аксессуар={result.get('is_accessory', False)}")
-        await message.react([ReactionTypeEmoji(emoji='🔥')])
-    else:
-        logger.info("❌ Нет товаров для продажи (серийные номера не найдены), статистика не сохранена")
+        logger.info(f"💰 Платежи сохранены: {payments}")
 
-    # Если были ненайденные серийные номера – сообщаем
-    if result.get("not_found"):
+    # Реакция и сообщения об ошибках
+    if result.get("is_accessory"):
+        # Аксессуар – только платежи сохранены, статистики продаж нет
+        await message.react([ReactionTypeEmoji(emoji='💸')])
+        logger.info("Аксессуар: платежи сохранены, статистика продаж не изменена.")
+    elif result.get("sold_items"):
+        # Продажа товаров с серийниками
+        await message.react([ReactionTypeEmoji(emoji='🔥')])
+        logger.info(f"✅ Продажа: {len(result['sold_items'])} товаров, статистика и платежи сохранены.")
+    elif result.get("not_found"):
+        # Серийные номера указаны, но не найдены
+        await message.react([ReactionTypeEmoji(emoji='❌')])
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(result["not_found"])
         await message.reply(text)
+        logger.info("Серийные номера не найдены – ничего не сохранено.")
+    else:
+        # Прочие случаи (например, дубль сообщения)
+        logger.info("Сообщение уже обработано или нет действий.")
 
     await mark_message_processed(message.chat.id, message.message_id)
