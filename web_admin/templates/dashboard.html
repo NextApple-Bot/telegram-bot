@@ -1,7 +1,13 @@
+{# Файл: web_admin/templates/dashboard.html #}
 {% extends "base.html" %}
 {% block title %}Дашборд{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
 {% block content %}
 <h1>Дашборд</h1>
+
+<!-- Карточки статистики -->
 <div class="row mt-4">
     <div class="col-md-4">
         <div class="card text-white bg-primary mb-3">
@@ -32,6 +38,19 @@
     </div>
 </div>
 
+<!-- График продаж за 7 дней -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">Динамика продаж (последние 7 дней)</div>
+            <div class="card-body">
+                <canvas id="salesChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Финансы -->
 <div class="row">
     <div class="col-md-12">
         <div class="card">
@@ -52,4 +71,20 @@
         </div>
     </div>
 </div>
+
+<script>
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    const dates = {{ dates|tojson }};
+    const salesCounts = {{ sales_counts|tojson }};
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                { label: 'Продажи (количество)', data: salesCounts, borderColor: 'blue', fill: false }
+            ]
+        },
+        options: { responsive: true }
+    });
+</script>
 {% endblock %}
