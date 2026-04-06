@@ -33,9 +33,9 @@ class SaleService:
     async def process_sale(content: str, chat_id: int, message_id: int) -> dict:
         """
         Обрабатывает продажу:
-        - Если есть серийные номера – удаляет товары, сохраняет статистику продаж.
-        - Если серийных номеров нет – это аксессуар, сохраняет статистику без удаления товаров.
-        - Если серийные номера указаны, но не найдены – статистика НЕ сохраняется.
+        - Если есть серийные номера и они найдены → удаляем товары, сохраняем статистику продаж и платежи.
+        - Если серийных номеров нет → это аксессуар → сохраняем только платежи (финансы), статистику продаж НЕ сохраняем.
+        - Если серийные номера указаны, но не найдены → ничего не сохраняем.
         """
         if await SaleService.is_message_processed(chat_id, message_id):
             logger.info(f"Сообщение {message_id} уже обработано, пропускаем.")
@@ -43,82 +43,71 @@ class SaleService:
 
         payments = extract_payment_amounts(content, ignore_prepay=True)
         serials = list(set(extract_serials(content)))
-        is_accessory = (len(serials) == 0)  # Если нет серийников – это аксессуар
+        is_accessory = (len(serials) == 0)
 
-        # Если есть серийные номера, проверяем их наличие в БД
-        if serials:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                async with conn.transaction():
-                    sold_items = []
-                    for serial in serials:
-                        item_id = await ItemRepository.get_item_id_by_serial(serial, conn=conn)
-                        if item_id:
-                            sold_items.append((item_id, serial))
+        # Если это аксессуар (нет серийников) – сохраняем только платежи, статистику продаж не трогаем
+        if is_accessory:
+            logger.info(f"Аксессуар: сохранение только платежей {payments}, продажа не регистрируется.")
+            # Сохраняем платежи в daily_payments (это делает вызывающий код, но для ясности вернём флаг)
+            await SaleService.mark_message_processed(chat_id, message_id)
+            return {
+                "sold_items": [],
+                "not_found": [],
+                "payments": payments,
+                "is_accessory": True,
+                "skip_sale_stats": True
+            }
 
-                    # Если ни один серийник не найден – не сохраняем статистику
-                    if not sold_items:
-                        return {
-                            "sold_items": [],
-                            "not_found": serials,
-                            "payments": payments,
-                            "is_accessory": False,
-                            "skipped": False
-                        }
+        # Если есть серийные номера, проверяем их наличие
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                sold_items = []
+                for serial in serials:
+                    item_id = await ItemRepository.get_item_id_by_serial(serial, conn=conn)
+                    if item_id:
+                        sold_items.append((item_id, serial))
 
-                    # Удаляем найденные товары
-                    from .assortment import AssortmentService
-                    for item_id, serial in sold_items:
-                        await AssortmentService.remove_by_serial(serial, reason='sale', conn=conn)
-
-                    # Сохраняем статистику продажи
-                    await StatsRepository.add_sale(
-                        count=len(sold_items),
-                        cash=payments['cash'],
-                        terminal=payments['terminal'],
-                        qr=payments['qr'],
-                        transfer=payments['transfer'],
-                        invoice=payments['invoice'],
-                        installment=payments['installment'],
-                        is_accessory=False,
-                        message_id=message_id,
-                        conn=conn
-                    )
-
-                    not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
+                # Если ни один серийник не найден – не сохраняем ничего
+                if not sold_items:
+                    logger.info(f"Серийные номера не найдены: {serials}. Статистика и платежи не сохранены.")
                     await SaleService.mark_message_processed(chat_id, message_id)
-
                     return {
-                        "sold_items": sold_items,
-                        "not_found": not_found,
+                        "sold_items": [],
+                        "not_found": serials,
                         "payments": payments,
-                        "is_accessory": False
+                        "is_accessory": False,
+                        "skip_sale_stats": True,
+                        "skip_payments": True
                     }
 
-        else:
-            # Нет серийных номеров – продажа аксессуара
-            # Сохраняем статистику, но ничего не удаляем
-            pool = await get_pool()
-            async with pool.acquire() as conn:
+                # Удаляем найденные товары
+                from .assortment import AssortmentService
+                for item_id, serial in sold_items:
+                    await AssortmentService.remove_by_serial(serial, reason='sale', conn=conn)
+
+                # Сохраняем статистику продажи (только для найденных товаров)
                 await StatsRepository.add_sale(
-                    count=0,
+                    count=len(sold_items),
                     cash=payments['cash'],
                     terminal=payments['terminal'],
                     qr=payments['qr'],
                     transfer=payments['transfer'],
                     invoice=payments['invoice'],
                     installment=payments['installment'],
-                    is_accessory=True,
+                    is_accessory=False,
                     message_id=message_id,
                     conn=conn
                 )
-            await SaleService.mark_message_processed(chat_id, message_id)
-            return {
-                "sold_items": [],
-                "not_found": [],
-                "payments": payments,
-                "is_accessory": True
-            }
 
-        # Если дошли сюда – ошибка, но такого быть не должно
-        return {"sold_items": [], "not_found": [], "payments": payments, "is_accessory": False}
+                not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
+                await SaleService.mark_message_processed(chat_id, message_id)
+
+                return {
+                    "sold_items": sold_items,
+                    "not_found": not_found,
+                    "payments": payments,
+                    "is_accessory": False,
+                    "skip_sale_stats": False,
+                    "skip_payments": False
+                }
