@@ -1,3 +1,4 @@
+{# Файл: web_admin/templates/client_detail.html #}
 {% extends "base.html" %}
 {% block title %}Клиент {{ client.id }}{% endblock %}
 {% block content %}
@@ -11,6 +12,11 @@
         <p><strong>Соцсети:</strong> {{ client.social_network or '—' }}</p>
         <p><strong>Источник:</strong> {{ client.referral_source or '—' }}</p>
         <p><strong>Дата регистрации:</strong> {{ client.created_at.strftime('%Y-%m-%d %H:%M') if client.created_at else '—' }}</p>
+        <p><strong>Дата обновления:</strong> {{ client.updated_at.strftime('%Y-%m-%d %H:%M') if client.updated_at else '—' }}</p>
+        <a href="/admin/clients/{{ client.id }}/edit" class="btn btn-primary">✏️ Редактировать</a>
+        <form action="/admin/clients/delete/{{ client.id }}" method="post" style="display:inline;" onsubmit="return confirm('Удалить клиента? Все его покупки также будут удалены.');">
+            <button type="submit" class="btn btn-danger">🗑️ Удалить</button>
+        </form>
     </div>
 </div>
 
