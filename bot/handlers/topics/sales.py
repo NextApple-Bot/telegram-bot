@@ -62,23 +62,26 @@ async def handle_sales_message(message: Message):
     payments = extract_payment_amounts(content, ignore_prepay=True)
     result = await SaleService.process_sale(content, message.chat.id, message.message_id)
 
-    # Сохранение клиента
-    try:
-        data = parse_client_data(content)
-        if data['phones'] or data['full_name']:
-            await ClientRepository.get_or_create_client(
-                phone=data['main_phone'],
-                phones=data['phones'],
-                full_name=data['full_name'],
-                telegram_username=data['telegram_username'],
-                social_network=data['social_network'],
-                referral_source=data['referral_source']
-            )
-    except Exception as e:
-        logger.exception(f"Ошибка при сохранении клиента: {e}")
-
     count = len(result["sold_items"])
+
+    # Если есть хотя бы один проданный товар с серийным номером
     if count > 0:
+        # Сохраняем клиента
+        try:
+            data = parse_client_data(content)
+            if data['phones'] or data['full_name']:
+                await ClientRepository.get_or_create_client(
+                    phone=data['main_phone'],
+                    phones=data['phones'],
+                    full_name=data['full_name'],
+                    telegram_username=data['telegram_username'],
+                    social_network=data['social_network'],
+                    referral_source=data['referral_source']
+                )
+        except Exception as e:
+            logger.exception(f"Ошибка при сохранении клиента: {e}")
+
+        # Сохраняем статистику продаж
         await StatsRepository.add_sale(
             count=count,
             cash=payments['cash'],
@@ -91,17 +94,17 @@ async def handle_sales_message(message: Message):
             message_id=message.message_id
         )
         logger.info(f"✅ Продажа добавлена в статистику: товаров {count}")
-    else:
-        logger.info("❌ Нет товаров с серийными номерами, статистика продаж НЕ сохранена")
 
-    # Сохраняем платежи через единый сервис
-    await PaymentService.add_payments_batch(payments, source_type='sale')
+        # Сохраняем платежи через единый сервис
+        await PaymentService.add_payments_batch(payments, source_type='sale')
 
-    if result["sold_items"]:
         await message.react([ReactionTypeEmoji(emoji='🔥')])
-    else:
-        logger.info("Нет проданных товаров, реакция не ставится")
 
+    else:
+        # Нет ни одного товара с серийным номером – ничего не сохраняем
+        logger.info("❌ Нет товаров с серийными номерами, статистика продаж НЕ сохранена, платежи НЕ сохранены")
+
+    # Если есть ненайденные серийные номера – сообщаем (но ничего не сохраняем)
     if result["not_found"]:
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(result["not_found"])
         await message.reply(text)
