@@ -1,6 +1,7 @@
 # Файл: bot/handlers/admin_migration.py
 import logging
 import os
+from pathlib import Path
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -23,17 +24,27 @@ async def cmd_migrate_db(message: Message):
     status_msg = await message.answer("🔄 Запуск миграции базы данных...")
 
     try:
-        # Определяем абсолютный путь к alembic.ini (он в корне проекта)
-        # Поднимаемся на 3 уровня: bot/handlers -> bot -> корень проекта
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        alembic_ini_path = os.path.join(base_dir, "alembic.ini")
+        # Определяем корень проекта (там, где лежит alembic.ini)
+        # Пытаемся найти alembic.ini относительно текущего файла
+        current_dir = Path(__file__).parent  # bot/handlers
+        project_root = current_dir.parent.parent  # поднимаемся на 2 уровня: bot/handlers -> bot -> корень
+        alembic_ini_path = project_root / "alembic.ini"
 
-        if not os.path.exists(alembic_ini_path):
-            await status_msg.edit_text(f"❌ Файл alembic.ini не найден по пути: {alembic_ini_path}")
-            logger.error(f"alembic.ini not found at {alembic_ini_path}")
+        # Если не нашли, пробуем искать в текущей рабочей директории
+        if not alembic_ini_path.exists():
+            alembic_ini_path = Path("alembic.ini")
+
+        if not alembic_ini_path.exists():
+            await status_msg.edit_text(
+                f"❌ Файл alembic.ini не найден. Искали в:\n"
+                f"- {project_root / 'alembic.ini'}\n"
+                f"- {Path.cwd() / 'alembic.ini'}\n"
+                f"Убедитесь, что файл присутствует в корне репозитория."
+            )
+            logger.error(f"alembic.ini not found in {project_root} or {Path.cwd()}")
             return
 
-        alembic_cfg = Config(alembic_ini_path)
+        alembic_cfg = Config(str(alembic_ini_path))
         alembic_cfg.set_main_option("sqlalchemy.url", config.DATABASE_URL)
         command.upgrade(alembic_cfg, "head")
 
