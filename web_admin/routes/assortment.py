@@ -12,19 +12,25 @@ from bot.db import get_pool
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
+
 @router.get("/", response_class=HTMLResponse)
 async def list_assortment(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=10, le=200),
     search: Optional[str] = Query(None),
-    category_id: Optional[int] = Query(None),
+    category_id: Optional[str] = Query(None),  # ← изменено с int на str
 ):
     """
     Отображает таблицу товаров с пагинацией, поиском и фильтром по категориям.
     """
     pool = await get_pool()
     offset = (page - 1) * per_page
+
+    # Преобразуем category_id в int, если он не пустой и является числом
+    category_id_int = None
+    if category_id and category_id.isdigit():
+        category_id_int = int(category_id)
 
     # Базовые части запроса
     base_query = """
@@ -38,7 +44,7 @@ async def list_assortment(
     params = []
     count_params = []
 
-    # Поиск по тексту товара или серийному номеру
+    # Поиск по тексту или серийному номеру
     if search:
         search_condition = " AND (i.text ILIKE $" + str(len(params)+1) + " OR i.serial ILIKE $" + str(len(params)+1) + ")"
         base_query += search_condition
@@ -47,11 +53,11 @@ async def list_assortment(
         count_params.append(f"%{search}%")
 
     # Фильтр по категории
-    if category_id:
+    if category_id_int is not None:
         base_query += " AND i.category_id = $" + str(len(params)+1)
         count_query += " AND i.category_id = $" + str(len(count_params)+1)
-        params.append(category_id)
-        count_params.append(category_id)
+        params.append(category_id_int)
+        count_params.append(category_id_int)
 
     # Сортировка и пагинация
     base_query += " ORDER BY i.id DESC LIMIT $" + str(len(params)+1) + " OFFSET $" + str(len(params)+2)
@@ -59,15 +65,12 @@ async def list_assortment(
     params.append(offset)
 
     async with pool.acquire() as conn:
-        # Общее количество записей
         total = await conn.fetchval(count_query, *count_params)
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
 
-        # Список товаров
         rows = await conn.fetch(base_query, *params)
         items = [dict(row) for row in rows]
 
-        # Список категорий для фильтра
         categories_rows = await conn.fetch("SELECT id, name FROM categories ORDER BY name")
         categories = [{"id": row["id"], "name": row["name"]} for row in categories_rows]
 
@@ -79,7 +82,7 @@ async def list_assortment(
         "per_page": per_page,
         "total": total,
         "search": search,
-        "category_id": category_id,
+        "category_id": category_id,  # передаём строковое значение для сохранения в форме
         "categories": categories,
     })
 
