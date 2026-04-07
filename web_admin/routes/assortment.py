@@ -26,11 +26,41 @@ ALLOWED_SORT_FIELDS = {
 }
 
 
-async def send_booking_notification(item_text: str, serial: str):
-    """Отправляет уведомление о брони в топик «Предзаказы»."""
+async def send_booking_notification(
+    item_text: str,
+    serial: str,
+    price: float = None,
+    prepayment: float = None,
+    platform: str = None,
+    full_name: str = None,
+    phone: str = None,
+    is_cancel: bool = False
+):
+    """Отправляет уведомление о брони (или отмене) в топик «Предзаказы»."""
     try:
         bot = Bot(token=config.TOKEN)
-        message_text = f"Бронь:\n{item_text} ({serial})"
+        if is_cancel:
+            message_text = f"❌ Отмена Брони:\n\n{item_text} ({serial})"
+        else:
+            # Рассчитываем остаток
+            remainder = 0
+            if price and prepayment:
+                remainder = price - prepayment
+            lines = [f"БРОНЬ:\n\n{item_text} ({serial})"]
+            if price is not None:
+                lines.append(f"Стоимость – {price:,.0f} ₽")
+            if prepayment is not None:
+                lines.append(f"П/О – {prepayment:,.0f} ₽")
+            if price is not None and prepayment is not None:
+                lines.append(f"Остаток – {remainder:,.0f} ₽")
+                lines.append(f"Общая – {price:,.0f} ₽")
+            if full_name:
+                lines.append(f"\nФИО – {full_name}")
+            if phone:
+                lines.append(f"Номер телефона – {phone}")
+            if platform:
+                lines.append(f"Площадка – {platform}")
+            message_text = "\n".join(lines)
         await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
@@ -134,7 +164,10 @@ async def edit_item_form(request: Request, item_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow("""
-            SELECT i.id, i.text, i.serial, i.is_booked, c.id as category_id, c.name as category_name
+            SELECT i.id, i.text, i.serial, i.is_booked, i.created_at,
+                   c.id as category_id, c.name as category_name,
+                   i.booking_price, i.booking_prepayment, i.booking_platform,
+                   i.booking_full_name, i.booking_phone
             FROM items i
             JOIN categories c ON i.category_id = c.id
             WHERE i.id = $1
@@ -158,22 +191,56 @@ async def edit_item_submit(
     serial: Optional[str] = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
+    booking_price: Optional[float] = Form(None),
+    booking_prepayment: Optional[float] = Form(None),
+    booking_platform: Optional[str] = Form(None),
+    booking_full_name: Optional[str] = Form(None),
+    booking_phone: Optional[str] = Form(None),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Получаем текущее состояние брони до обновления
-        old_is_booked = await conn.fetchval("SELECT is_booked FROM items WHERE id = $1", item_id)
+        # Получаем текущее состояние брони
+        old = await conn.fetchrow("SELECT is_booked, text, serial FROM items WHERE id = $1", item_id)
+        old_is_booked = old["is_booked"] if old else False
+        old_text = old["text"] if old else ""
+        old_serial = old["serial"] if old else ""
+
         # Обновляем товар
         await conn.execute("""
             UPDATE items
-            SET text = $1, serial = $2, category_id = $3, is_booked = $4
-            WHERE id = $5
-        """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
-        # Если бронь была установлена (с False на True) – отправляем уведомление
+            SET text = $1, serial = $2, category_id = $3, is_booked = $4,
+                booking_price = $5, booking_prepayment = $6, booking_platform = $7,
+                booking_full_name = $8, booking_phone = $9
+            WHERE id = $10
+        """, text, serial.strip().upper() if serial else None, category_id, is_booked,
+           booking_price, booking_prepayment, booking_platform,
+           booking_full_name, booking_phone, item_id)
+
+        # Отправляем уведомления при изменении статуса брони
         if not old_is_booked and is_booked:
-            # Отправляем уведомление в топик предзаказов
-            serial_display = serial.strip().upper() if serial else "без серийного номера"
-            await send_booking_notification(text, serial_display)
+            # Бронь установлена
+            await send_booking_notification(
+                item_text=text,
+                serial=serial.strip().upper() if serial else "без серийного номера",
+                price=booking_price,
+                prepayment=booking_prepayment,
+                platform=booking_platform,
+                full_name=booking_full_name,
+                phone=booking_phone,
+                is_cancel=False
+            )
+        elif old_is_booked and not is_booked:
+            # Бронь снята
+            await send_booking_notification(
+                item_text=old_text,
+                serial=old_serial.strip().upper() if old_serial else "без серийного номера",
+                is_cancel=True
+            )
+        elif is_booked and (old_text != text or old_serial != serial):
+            # Если товар уже в брони, но изменился текст или серийник – уведомляем об изменении (опционально)
+            # Можно отправить уведомление, но по умолчанию не будем.
+            pass
+
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
@@ -204,17 +271,33 @@ async def add_item(
     serial: Optional[str] = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
+    booking_price: Optional[float] = Form(None),
+    booking_prepayment: Optional[float] = Form(None),
+    booking_platform: Optional[str] = Form(None),
+    booking_full_name: Optional[str] = Form(None),
+    booking_phone: Optional[str] = Form(None),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("""
-            INSERT INTO items (text, serial, category_id, is_booked)
-            VALUES ($1, $2, $3, $4)
-        """, text, serial.strip().upper() if serial else None, category_id, is_booked)
-        # Если товар добавляется сразу с броней – отправляем уведомление
+            INSERT INTO items (text, serial, category_id, is_booked,
+                               booking_price, booking_prepayment, booking_platform,
+                               booking_full_name, booking_phone)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        """, text, serial.strip().upper() if serial else None, category_id, is_booked,
+           booking_price, booking_prepayment, booking_platform,
+           booking_full_name, booking_phone)
         if is_booked:
-            serial_display = serial.strip().upper() if serial else "без серийного номера"
-            await send_booking_notification(text, serial_display)
+            await send_booking_notification(
+                item_text=text,
+                serial=serial.strip().upper() if serial else "без серийного номера",
+                price=booking_price,
+                prepayment=booking_prepayment,
+                platform=booking_platform,
+                full_name=booking_full_name,
+                phone=booking_phone,
+                is_cancel=False
+            )
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
