@@ -7,38 +7,35 @@
 {% block content %}
 <h1>Дашборд</h1>
 
-<!-- Карточки статистики -->
 <div class="row mt-4">
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card text-white bg-primary mb-3">
             <div class="card-header">Продажи сегодня</div>
             <div class="card-body">
-                <h5 class="card-title">{{ stats.sales_count }}</h5>
-                <p class="card-text">количество продаж</p>
+                <h5 class="card-title">{{ sales_today }}</h5>
+                <p class="card-text">
+                    {% if sales_change_yesterday > 0 %}📈 +{{ sales_change_yesterday }}% ко вчера{% elif sales_change_yesterday < 0 %}📉 {{ sales_change_yesterday }}% ко вчера{% else %}➡️ без изменений{% endif %}
+                    <br>
+                    {% if sales_change_week > 0 %}📈 +{{ sales_change_week }}% к среднему за неделю{% elif sales_change_week < 0 %}📉 {{ sales_change_week }}% к среднему за неделю{% else %}➡️ без изменений{% endif %}
+                </p>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card text-white bg-success mb-3">
-            <div class="card-header">Предзаказы сегодня</div>
+            <div class="card-header">Выручка сегодня</div>
             <div class="card-body">
-                <h5 class="card-title">{{ stats.preorders_count }}</h5>
-                <p class="card-text">количество предзаказов</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card text-white bg-warning mb-3">
-            <div class="card-header">Брони сегодня</div>
-            <div class="card-body">
-                <h5 class="card-title">{{ stats.bookings_count }}</h5>
-                <p class="card-text">количество броней</p>
+                <h5 class="card-title">{{ "{:,.0f}".format(revenue_today) }} ₽</h5>
+                <p class="card-text">
+                    {% if revenue_change_yesterday > 0 %}📈 +{{ revenue_change_yesterday }}% ко вчера{% elif revenue_change_yesterday < 0 %}📉 {{ revenue_change_yesterday }}% ко вчера{% else %}➡️ без изменений{% endif %}
+                    <br>
+                    {% if revenue_change_week > 0 %}📈 +{{ revenue_change_week }}% к среднему за неделю{% elif revenue_change_week < 0 %}📉 {{ revenue_change_week }}% к среднему за неделю{% else %}➡️ без изменений{% endif %}
+                </p>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Финансы -->
 <div class="row">
     <div class="col-md-12">
         <div class="card">
@@ -60,7 +57,6 @@
     </div>
 </div>
 
-<!-- Графики -->
 <div class="row mt-4">
     <div class="col-md-6">
         <div class="card">
@@ -70,6 +66,17 @@
             </div>
         </div>
     </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Динамика выручки (последние 7 дней)</div>
+            <div class="card-body">
+                <canvas id="revenueChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
@@ -90,7 +97,7 @@
 </div>
 
 <script>
-    // Линейный график
+    // Линейный график продаж
     new Chart(document.getElementById('salesChart'), {
         type: 'line',
         data: {
@@ -100,7 +107,17 @@
         options: { responsive: true, scales: { y: { beginAtZero: true, stepSize: 1, precision: 0 } } }
     });
 
-    // Круговая диаграмма
+    // Линейный график выручки
+    new Chart(document.getElementById('revenueChart'), {
+        type: 'line',
+        data: {
+            labels: {{ chart_dates|tojson }},
+            datasets: [{ label: 'Выручка (₽)', data: {{ chart_revenue|tojson }}, borderColor: 'green', backgroundColor: 'rgba(0,255,0,0.1)', fill: true, tension: 0.2 }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { callback: (value) => value.toLocaleString() + ' ₽' } } } }
+    });
+
+    // Круговая диаграмма топ-моделей
     let pieChart = null;
     const pieCtx = document.getElementById('topModelsChart').getContext('2d');
 
@@ -128,7 +145,6 @@
 
     document.getElementById('periodSelect').addEventListener('change', (e) => updateTopModels(e.target.value));
 
-    // Инициализация (если данные есть)
     {% if top_labels %}
     pieChart = new Chart(pieCtx, {
         type: 'pie',
