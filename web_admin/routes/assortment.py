@@ -86,20 +86,22 @@ async def send_booking_notification(
 
 async def send_sale_notification(
     item_text: str,
-    price: float,
-    payment_type: str,
-    prepayment: float = None,
+    price: float,          # полная стоимость товара
+    payment_type: str,     # способ оплаты текущего платежа
+    prepayment: float = None,   # П/О (предоплата, уже внесённая ранее)
+    payment_amount: float = None,  # Оплата (сумма, которую клиент внёс сейчас)
     platform: str = None,
     full_name: str = None,
     phone: str = None,
 ):
     """
-    Уведомление о продаже в топик «Продажи» согласно требуемому формату:
-    - Всегда выводится Стоимость
-    - Если П/О > 0, выводится строка П/О
-    - Затем строка: <Способ оплаты> – (Стоимость - П/О)
-    - Затем строка: Общая – Стоимость
-    - Затем ФИО, телефон, площадка (если есть)
+    Уведомление о продаже в топик «Продажи».
+    Формат:
+    - Стоимость – X
+    - П/О – Y (если Y > 0)
+    - Оплата – Z (сумма текущего платежа)
+    - Способ оплаты – ...
+    - Общая – Y + Z
     """
     try:
         bot = Bot(token=config.TOKEN)
@@ -107,12 +109,7 @@ async def send_sale_notification(
             'cash': 'Наличными', 'terminal': 'Терминал', 'qr': 'QR-код',
             'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
         }.get(payment_type, payment_type)
-        
-        # Рассчитываем сумму оплаты (стоимость минус предоплата)
-        paid_amount = price
-        if prepayment and prepayment > 0:
-            paid_amount = price - prepayment
-        
+
         lines = [item_text]
         # Стоимость
         lines.append(f"Стоимость – {format_number(price)}")
@@ -121,10 +118,14 @@ async def send_sale_notification(
         # П/О, если есть и больше 0
         if prepayment and prepayment > 0:
             lines.append(f"П/О – {format_number(prepayment)}")
-        # Способ оплаты – сумма к оплате
-        lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
-        # Общая сумма
-        lines.append(f"Общая – {format_number(price)}")
+        # Оплата (сумма текущего платежа)
+        if payment_amount is not None and payment_amount > 0:
+            lines.append(f"Оплата – {format_number(payment_amount)}")
+        # Способ оплаты
+        lines.append(f"Способ оплаты – {payment_type_ru}")
+        # Общая = П/О + Оплата (если нет П/О, то Общая = Оплата)
+        total_paid = (prepayment or 0) + (payment_amount or 0)
+        lines.append(f"Общая – {format_number(total_paid)}")
         # Пустые строки после блока сумм
         lines.append("")
         lines.append("")
@@ -135,7 +136,7 @@ async def send_sale_notification(
         lines.append("")
         if platform:
             lines.append(f"Площадка – {platform}")
-        
+
         message_text = "\n".join(lines)
         await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
@@ -156,6 +157,7 @@ async def delete_item_and_log_sale(
     price: float,
     prepayment: float,
     payment_type: str,
+    payment_amount: float,
     message_id: int = None
 ):
     """Удаляет товар, сохраняет в deleted_items, добавляет статистику продаж и финансы."""
@@ -169,24 +171,24 @@ async def delete_item_and_log_sale(
             """, item_id, text, serial, category_id)
             # Удаляем товар
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
-            # Добавляем статистику продажи
+            # Добавляем статистику продажи (используем payment_amount как сумму продажи)
             await StatsRepository.add_sale(
                 count=1,
-                cash=payment_type == 'cash' and price or 0,
-                terminal=payment_type == 'terminal' and price or 0,
-                qr=payment_type == 'qr' and price or 0,
-                transfer=payment_type == 'transfer' and price or 0,
-                invoice=payment_type == 'invoice' and price or 0,
-                installment=payment_type == 'installment' and price or 0,
+                cash=payment_type == 'cash' and payment_amount or 0,
+                terminal=payment_type == 'terminal' and payment_amount or 0,
+                qr=payment_type == 'qr' and payment_amount or 0,
+                transfer=payment_type == 'transfer' and payment_amount or 0,
+                invoice=payment_type == 'invoice' and payment_amount or 0,
+                installment=payment_type == 'installment' and payment_amount or 0,
                 is_accessory=False,
                 message_id=message_id,
                 conn=conn
             )
-            # Добавляем финансовую запись (daily_payments)
+            # Добавляем финансовую запись (daily_payments) – сумма текущего платежа
             await conn.execute("""
                 INSERT INTO daily_payments (type, payment_type, amount)
                 VALUES ('sale', $1, $2)
-            """, payment_type, price)
+            """, payment_type, payment_amount)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -286,7 +288,8 @@ async def edit_item_form(request: Request, item_id: int):
                    i.booking_price, i.booking_prepayment, i.booking_platform,
                    i.booking_full_name, i.booking_phone,
                    i.sale_price, i.sale_prepayment, i.sale_payment_type,
-                   i.sale_platform, i.sale_full_name, i.sale_phone, i.is_sold
+                   i.sale_platform, i.sale_full_name, i.sale_phone, i.is_sold,
+                   i.sale_payment_amount
             FROM items i
             JOIN categories c ON i.category_id = c.id
             WHERE i.id = $1
@@ -320,6 +323,7 @@ async def edit_item_submit(
     # Продажа
     sale_price: Optional[float] = Form(None),
     sale_prepayment: Optional[float] = Form(None),
+    sale_payment_amount: Optional[float] = Form(None),   # новое поле – Оплата
     sale_payment_type: Optional[str] = Form(None),
     sale_platform: Optional[str] = Form(None),
     sale_full_name: Optional[str] = Form(None),
@@ -343,12 +347,15 @@ async def edit_item_submit(
                 raise HTTPException(status_code=400, detail="Укажите стоимость продажи")
             if not sale_payment_type:
                 sale_payment_type = "cash"
+            if sale_payment_amount is None:
+                sale_payment_amount = 0
             # Отправляем уведомление в топик продаж
             await send_sale_notification(
                 item_text=text,
                 price=sale_price,
                 payment_type=sale_payment_type,
                 prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
+                payment_amount=sale_payment_amount if sale_payment_amount > 0 else None,
                 platform=sale_platform,
                 full_name=sale_full_name,
                 phone=sale_phone
@@ -360,7 +367,8 @@ async def edit_item_submit(
                 category_id=old_category_id,
                 price=sale_price,
                 prepayment=sale_prepayment or 0,
-                payment_type=sale_payment_type
+                payment_type=sale_payment_type,
+                payment_amount=sale_payment_amount or 0
             )
             AssortmentService.invalidate_cache()
             return RedirectResponse(url="/admin/assortment", status_code=303)
@@ -372,7 +380,8 @@ async def edit_item_submit(
                 booking_price = $5, booking_prepayment = $6, booking_platform = $7,
                 booking_full_name = $8, booking_phone = $9,
                 sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
-                sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL, is_sold = FALSE
+                sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
+                sale_payment_amount = NULL, is_sold = FALSE
             WHERE id = $10
         """, text, serial.strip().upper() if serial else None, category_id, is_booked,
            booking_price, booking_prepayment, booking_platform,
