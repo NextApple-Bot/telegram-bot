@@ -4,9 +4,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import logging
+from datetime import date
 
 from bot.services.assortment import AssortmentService
-from bot.repositories import ItemRepository
+from bot.repositories import ItemRepository, StatsRepository
 from bot.utils.validators import extract_serials
 from bot.db import get_pool
 from bot import config
@@ -35,7 +36,7 @@ def format_number(value: float) -> str:
 
 async def send_booking_notification(
     item_text: str,
-    serial: str,  # не используется, оставлен для совместимости вызовов
+    serial: str,
     price: float = None,
     prepayment: float = None,
     platform: str = None,
@@ -43,9 +44,7 @@ async def send_booking_notification(
     phone: str = None,
     is_cancel: bool = False
 ):
-    """Отправляет уведомление о брони (или отмене) в топик «Предзаказы».
-    Серийный номер не дублируется – используется исходный item_text.
-    """
+    """Уведомление о брони (без дублирования серийного номера)."""
     try:
         bot = Bot(token=config.TOKEN)
         if is_cancel:
@@ -57,7 +56,6 @@ async def send_booking_notification(
             lines = ["БРОНЬ:\n", item_text]
             if price is not None:
                 lines.append(f"Стоимость – {format_number(price)}")
-            # Две пустые строки после стоимости
             lines.append("")
             lines.append("")
             if prepayment is not None:
@@ -65,14 +63,12 @@ async def send_booking_notification(
             if price is not None and prepayment is not None:
                 lines.append(f"Остаток – {format_number(remainder)}")
                 lines.append(f"Общая – {format_number(price)}")
-            # Две пустые строки после блока сумм
             lines.append("")
             lines.append("")
             if full_name:
                 lines.append(full_name)
             if phone:
                 lines.append(phone)
-            # Пустая строка перед площадкой
             lines.append("")
             if platform:
                 lines.append(f"Площадка – {platform}")
@@ -86,6 +82,96 @@ async def send_booking_notification(
         logger.info(f"✅ Уведомление о брони отправлено: {item_text}")
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке уведомления о брони: {e}")
+
+
+async def send_sale_notification(
+    item_text: str,
+    price: float,
+    payment_type: str,
+    prepayment: float = None,
+    platform: str = None,
+    full_name: str = None,
+    phone: str = None,
+):
+    """Уведомление о продаже в топик «Продажи» (без слова БРОНЬ)."""
+    try:
+        bot = Bot(token=config.TOKEN)
+        payment_type_ru = {
+            'cash': 'Наличными', 'terminal': 'Терминал', 'qr': 'QR-код',
+            'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
+        }.get(payment_type, payment_type)
+        remainder = 0
+        if price and prepayment:
+            remainder = price - prepayment
+        lines = [item_text]
+        if price is not None:
+            lines.append(f"Стоимость - {format_number(price)}")
+        lines.append("")
+        lines.append("")
+        if prepayment is not None and prepayment > 0:
+            lines.append(f"П/О - {format_number(prepayment)}")
+        lines.append(f"{payment_type_ru} - {format_number(price)}")
+        lines.append(f"Общая - {format_number(price)}")
+        lines.append("")
+        lines.append("")
+        if full_name:
+            lines.append(full_name)
+        if phone:
+            lines.append(phone)
+        lines.append("")
+        if platform:
+            lines.append(f"Площадка - {platform}")
+        message_text = "\n".join(lines)
+        await bot.send_message(
+            chat_id=config.MAIN_GROUP_ID,
+            text=message_text,
+            message_thread_id=config.THREAD_SALES
+        )
+        await bot.session.close()
+        logger.info(f"✅ Уведомление о продаже отправлено: {item_text}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке уведомления о продаже: {e}")
+
+
+async def delete_item_and_log_sale(
+    item_id: int,
+    text: str,
+    serial: str,
+    category_id: int,
+    price: float,
+    prepayment: float,
+    payment_type: str,
+    message_id: int = None
+):
+    """Удаляет товар, сохраняет в deleted_items, добавляет статистику продаж и финансы."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Сохраняем в deleted_items
+            await conn.execute("""
+                INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                VALUES ($1, $2, $3, $4, 'sale_from_admin')
+            """, item_id, text, serial, category_id)
+            # Удаляем товар
+            await conn.execute("DELETE FROM items WHERE id = $1", item_id)
+            # Добавляем статистику продажи
+            await StatsRepository.add_sale(
+                count=1,
+                cash=payment_type == 'cash' and price or 0,
+                terminal=payment_type == 'terminal' and price or 0,
+                qr=payment_type == 'qr' and price or 0,
+                transfer=payment_type == 'transfer' and price or 0,
+                invoice=payment_type == 'invoice' and price or 0,
+                installment=payment_type == 'installment' and price or 0,
+                is_accessory=False,
+                message_id=message_id,
+                conn=conn
+            )
+            # Добавляем финансовую запись (daily_payments)
+            await conn.execute("""
+                INSERT INTO daily_payments (type, payment_type, amount)
+                VALUES ('sale', $1, $2)
+            """, payment_type, price)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -183,7 +269,9 @@ async def edit_item_form(request: Request, item_id: int):
             SELECT i.id, i.text, i.serial, i.is_booked, i.created_at,
                    c.id as category_id, c.name as category_name,
                    i.booking_price, i.booking_prepayment, i.booking_platform,
-                   i.booking_full_name, i.booking_phone
+                   i.booking_full_name, i.booking_phone,
+                   i.sale_price, i.sale_prepayment, i.sale_payment_type,
+                   i.sale_platform, i.sale_full_name, i.sale_phone, i.is_sold
             FROM items i
             JOIN categories c ON i.category_id = c.id
             WHERE i.id = $1
@@ -207,29 +295,81 @@ async def edit_item_submit(
     serial: Optional[str] = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
+    is_sold: bool = Form(False),
+    # Бронь
     booking_price: Optional[float] = Form(None),
     booking_prepayment: Optional[float] = Form(None),
     booking_platform: Optional[str] = Form(None),
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
+    # Продажа
+    sale_price: Optional[float] = Form(None),
+    sale_prepayment: Optional[float] = Form(None),
+    sale_payment_type: Optional[str] = Form(None),
+    sale_platform: Optional[str] = Form(None),
+    sale_full_name: Optional[str] = Form(None),
+    sale_phone: Optional[str] = Form(None),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        old = await conn.fetchrow("SELECT is_booked, text, serial FROM items WHERE id = $1", item_id)
-        old_is_booked = old["is_booked"] if old else False
-        old_text = old["text"] if old else ""
-        old_serial = old["serial"] if old else ""
+        # Получаем старые данные
+        old = await conn.fetchrow("SELECT is_sold, text, serial, category_id FROM items WHERE id = $1", item_id)
+        if not old:
+            raise HTTPException(status_code=404, detail="Item not found")
+        old_is_sold = old["is_sold"]
+        old_text = old["text"]
+        old_serial = old["serial"] or ""
+        old_category_id = old["category_id"]
 
+        # Если продажа уже была обработана ранее – не даём повторно
+        if old_is_sold:
+            raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
+
+        # Если установлена галочка "Продажа"
+        if is_sold:
+            # Валидация
+            if not sale_price:
+                raise HTTPException(status_code=400, detail="Укажите стоимость продажи")
+            if not sale_payment_type:
+                sale_payment_type = "cash"
+            # Отправляем уведомление в топик продаж
+            await send_sale_notification(
+                item_text=text,
+                price=sale_price,
+                payment_type=sale_payment_type,
+                prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
+                platform=sale_platform,
+                full_name=sale_full_name,
+                phone=sale_phone
+            )
+            # Удаляем товар и сохраняем статистику
+            await delete_item_and_log_sale(
+                item_id=item_id,
+                text=old_text,
+                serial=old_serial,
+                category_id=old_category_id,
+                price=sale_price,
+                prepayment=sale_prepayment or 0,
+                payment_type=sale_payment_type
+            )
+            AssortmentService.invalidate_cache()
+            return RedirectResponse(url="/admin/assortment", status_code=303)
+
+        # Иначе – обновляем обычные поля или бронь
         await conn.execute("""
             UPDATE items
             SET text = $1, serial = $2, category_id = $3, is_booked = $4,
                 booking_price = $5, booking_prepayment = $6, booking_platform = $7,
-                booking_full_name = $8, booking_phone = $9
+                booking_full_name = $8, booking_phone = $9,
+                sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
+                sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL, is_sold = FALSE
             WHERE id = $10
         """, text, serial.strip().upper() if serial else None, category_id, is_booked,
            booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone, item_id)
 
+        # Отправляем уведомление о брони (если статус изменился)
+        old_is_booked = await conn.fetchval("SELECT is_booked FROM items WHERE id = $1", item_id)
         if not old_is_booked and is_booked:
             await send_booking_notification(
                 item_text=text,
@@ -244,7 +384,7 @@ async def edit_item_submit(
         elif old_is_booked and not is_booked:
             await send_booking_notification(
                 item_text=old_text,
-                serial=old_serial.strip().upper() if old_serial else "без серийного номера",
+                serial=old_serial,
                 is_cancel=True
             )
 
