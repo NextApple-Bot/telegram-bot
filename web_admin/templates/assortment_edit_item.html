@@ -25,7 +25,6 @@
         <label class="form-check-label" for="is_booked">Бронь</label>
     </div>
 
-    <!-- Блок дополнительных полей для брони (показывается, если is_booked = true) -->
     <div id="bookingFields" style="display: {% if item.is_booked %}block{% else %}none{% endif %}; margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
         <h4>Данные бронирования</h4>
         <div class="mb-3">
@@ -50,7 +49,8 @@
         </div>
         <div class="mb-3">
             <label for="booking_phone" class="form-label">Номер телефона</label>
-            <input type="text" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone or '' }}">
+            <input type="tel" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone if item.booking_phone else '+7' }}" pattern="\+7[0-9]{10}" placeholder="+7XXXXXXXXXX">
+            <small class="form-text text-muted">Формат: +7XXXXXXXXXX (10 цифр после +7)</small>
         </div>
     </div>
 
@@ -72,16 +72,10 @@
         remainderInput.value = remainder.toFixed(2);
     }
 
-    // Показывать/скрывать поля при изменении чекбокса
     isBookedCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            bookingFieldsDiv.style.display = 'block';
-        } else {
-            bookingFieldsDiv.style.display = 'none';
-        }
+        bookingFieldsDiv.style.display = this.checked ? 'block' : 'none';
     });
 
-    // Инициализация остатка при загрузке
     calculateRemainder();
 </script>
 {% endblock %}
