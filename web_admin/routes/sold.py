@@ -19,11 +19,12 @@ async def list_sold(
     page: int = 1,
     per_page: int = 50,
 ):
+    """Отображает список проданных товаров (из deleted_items с reason='sale_from_admin')."""
     pool = await get_pool()
     offset = (page - 1) * per_page
 
     query = """
-        SELECT id, item_id, text, serial, category_id, deleted_at, sale_message_id
+        SELECT id, item_id, text, serial, category_id, deleted_at
         FROM deleted_items
         WHERE reason = 'sale_from_admin' AND restored = FALSE
         ORDER BY deleted_at DESC
@@ -55,8 +56,8 @@ async def restore_sold(deleted_id: int, request: Request):
     """
     Восстанавливает проданный товар (отмена продажи).
     При этом:
-    - Удаляется запись о продаже из таблицы sales (по sale_message_id).
-    - Удаляются соответствующие финансовые записи из daily_payments (по sale_message_id).
+    - Находится запись о продаже в таблице sales по item_id и отрицательному message_id (сгенерированному при продаже).
+    - Удаляется эта запись и соответствующая финансовая запись из daily_payments (по sale_message_id).
     - Товар возвращается в ассортимент.
     """
     pool = await get_pool()
@@ -64,7 +65,7 @@ async def restore_sold(deleted_id: int, request: Request):
         async with conn.transaction():
             # Получаем информацию о проданном товаре
             row = await conn.fetchrow("""
-                SELECT item_id, text, serial, category_id, sale_message_id
+                SELECT item_id, text, serial, category_id
                 FROM deleted_items
                 WHERE id = $1 AND reason = 'sale_from_admin' AND restored = FALSE
             """, deleted_id)
@@ -72,13 +73,30 @@ async def restore_sold(deleted_id: int, request: Request):
                 raise HTTPException(status_code=404, detail="Запись не найдена или уже восстановлена")
 
             item_id = row["item_id"]
-            sale_message_id = row["sale_message_id"]
 
-            # Удаляем запись о продаже из таблицы sales
-            await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
-
-            # Удаляем финансовую запись из daily_payments
-            await conn.execute("DELETE FROM daily_payments WHERE message_id = $1", sale_message_id)
+            # Находим запись о продаже в sales по item_id и отрицательному message_id (сортировка по убыванию, чтобы взять последнюю)
+            sale = await conn.fetchrow("""
+                SELECT message_id FROM sales
+                WHERE item_id = $1 AND message_id < 0
+                ORDER BY message_id DESC
+                LIMIT 1
+            """, item_id)
+            if sale:
+                sale_message_id = sale["message_id"]
+                # Удаляем запись из sales
+                await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
+                # Удаляем финансовую запись из daily_payments (по полю sale_message_id)
+                # Для этого сначала нужно добавить колонку sale_message_id в daily_payments.
+                # Если колонки нет, создадим её сейчас.
+                await conn.execute("""
+                    ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT
+                """)
+                await conn.execute("""
+                    DELETE FROM daily_payments WHERE sale_message_id = $1
+                """, sale_message_id)
+                logger.info(f"Удалены продажа и финансы для message_id={sale_message_id}")
+            else:
+                logger.warning(f"Не найдена запись продажи для item_id={item_id}")
 
             # Восстанавливаем товар в таблицу items
             await conn.execute("""
