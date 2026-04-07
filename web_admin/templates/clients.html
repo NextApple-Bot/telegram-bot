@@ -6,7 +6,7 @@
 
 <div class="row mb-3">
     <div class="col">
-        <a href="/admin/clients/export/csv?{{ request.query_params.urlencode() }}" class="btn btn-success">📥 Экспорт в CSV</a>
+        <a href="/admin/clients/export/csv{% if search %}?search={{ search }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}" class="btn btn-success">📥 Экспорт в CSV</a>
     </div>
 </div>
 
@@ -58,15 +58,12 @@
             <td>{{ client.telegram_username or '—' }}</td>
             <td>{{ client.created_at.strftime('%Y-%m-%d %H:%M') if client.created_at else '—' }}</td>
             <td>
-                <a href="/admin/clients/{{ client.id }}" class="btn btn-sm btn-info" title="Просмотр">
-                    <i class="bi bi-eye"></i>
-                </a>
                 <a href="/admin/clients/{{ client.id }}/edit" class="btn btn-sm btn-primary" title="Редактировать">
-                    <i class="bi bi-pencil"></i>
+                    <i class="bi bi-pencil-square"></i>
                 </a>
-                <form action="/admin/clients/delete/{{ client.id }}" method="post" style="display:inline;" onsubmit="return confirm('Удалить клиента?');">
+                <form action="/admin/clients/delete/{{ client.id }}" method="post" style="display:inline;" onsubmit="return confirm('Удалить клиента? Все его покупки также будут удалены.');">
                     <button type="submit" class="btn btn-sm btn-danger" title="Удалить">
-                        <i class="bi bi-trash"></i>
+                        <i class="bi bi-trash3"></i>
                     </button>
                 </form>
             </td>
@@ -76,5 +73,19 @@
 </table>
 
 <!-- Пагинация -->
-...
+{% if total_pages > 1 %}
+<nav>
+    <ul class="pagination">
+        {% if page > 1 %}
+        <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Первая</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Предыдущая</a></li>
+        {% endif %}
+        <li class="page-item active"><span class="page-link">Страница {{ page }} из {{ total_pages }}</span></li>
+        {% if page < total_pages %}
+        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Следующая</a></li>
+        <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}&search={{ search or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Последняя</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
 {% endblock %}
