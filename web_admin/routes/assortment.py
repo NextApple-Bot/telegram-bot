@@ -55,8 +55,6 @@ async def send_booking_notification(
             if price and prepayment:
                 remainder = price - prepayment
             lines = ["БРОНЬ:\n", item_text]
-            # Пустая строка после модели
-            lines.append("")
             if price is not None:
                 lines.append(f"Стоимость – {format_number(price)}")
             # Две пустые строки после стоимости
