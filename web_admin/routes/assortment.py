@@ -43,19 +43,7 @@ def validate_phone(phone: str) -> bool:
     return bool(re.match(r'^\+7\d{10}$', phone))
 
 
-def parse_number(s: str) -> float:
-    """Преобразует строку с числом (возможны пробелы, запятая как разделитель) в float."""
-    if not s:
-        return 0.0
-    # Убираем пробелы, заменяем запятую на точку
-    cleaned = s.replace(' ', '').replace(',', '.')
-    try:
-        return float(cleaned)
-    except ValueError:
-        return 0.0
-
-
-def generate_message_id() -> int:
+def generate_sale_message_id() -> int:
     """Генерирует уникальный отрицательный ID для продаж через админку."""
     return -int(time.time() * 1000)
 
@@ -122,6 +110,18 @@ async def send_sale_notification(
 ):
     """
     Уведомление о продаже в топик «Продажи».
+    Формат:
+    - Товар
+    - Стоимость – X
+    - пустая строка
+    - <Способ оплаты> – Y   (Y = оплата)
+    - пустая строка
+    - Общая – Z   (Z = П/О + оплата)
+    - пустая строка
+    - ФИО
+    - телефон
+    - пустая строка
+    - Площадка
     """
     try:
         bot = Bot(token=config.TOKEN)
@@ -131,15 +131,19 @@ async def send_sale_notification(
         }.get(payment_type, payment_type)
 
         lines = [item_text]
+        # Стоимость
         lines.append(f"Стоимость – {format_number(price)}")
+        # Пустая строка после стоимости
         lines.append("")
-        lines.append("")
+        # Строка оплаты: "<Способ оплаты> – <Оплата>"
         paid_amount = payment_amount if payment_amount is not None else 0
         lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
+        # Пустая строка после оплаты
         lines.append("")
+        # Общая = П/О + оплата
         total_paid = (prepayment or 0) + paid_amount
         lines.append(f"Общая – {format_number(total_paid)}")
-        lines.append("")
+        # Пустая строка после общей суммы
         lines.append("")
         if full_name:
             lines.append(full_name)
@@ -170,20 +174,20 @@ async def delete_item_and_log_sale(
     prepayment: float,
     payment_type: str,
     payment_amount: float,
-    message_id: int = None
+    message_id: int
 ):
-    """Удаляет товар, сохраняет в deleted_items, добавляет статистику продаж и финансы."""
+    """Удаляет товар, сохраняет в deleted_items, добавляет статистику продаж и финансы с уникальным message_id."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Сохраняем в deleted_items (с запоминанием message_id)
+            # Сохраняем в deleted_items
             await conn.execute("""
-                INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
-                VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
-            """, item_id, text, serial, category_id, message_id)
+                INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                VALUES ($1, $2, $3, $4, 'sale_from_admin')
+            """, item_id, text, serial, category_id)
             # Удаляем товар
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
-            # Добавляем статистику продажи
+            # Добавляем статистику продажи с уникальным message_id
             await StatsRepository.add_sale(
                 count=1,
                 cash=payment_type == 'cash' and payment_amount or 0,
@@ -196,9 +200,9 @@ async def delete_item_and_log_sale(
                 message_id=message_id,
                 conn=conn
             )
-            # Добавляем финансовую запись (daily_payments) с message_id
+            # Добавляем финансовую запись (daily_payments) – сумма текущего платежа
             await conn.execute("""
-                INSERT INTO daily_payments (type, payment_type, amount, message_id)
+                INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
                 VALUES ('sale', $1, $2, $3)
             """, payment_type, payment_amount, message_id)
 
@@ -327,27 +331,20 @@ async def edit_item_submit(
     is_booked: bool = Form(False),
     is_sold: bool = Form(False),
     # Бронь
-    booking_price: Optional[str] = Form(None),
-    booking_prepayment: Optional[str] = Form(None),
+    booking_price: Optional[float] = Form(None),
+    booking_prepayment: Optional[float] = Form(None),
     booking_platform: Optional[str] = Form(None),
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
     # Продажа
-    sale_price: Optional[str] = Form(None),
-    sale_prepayment: Optional[str] = Form(None),
-    sale_payment_amount: Optional[str] = Form(None),
+    sale_price: Optional[float] = Form(None),
+    sale_prepayment: Optional[float] = Form(None),
+    sale_payment_amount: Optional[float] = Form(None),
     sale_payment_type: Optional[str] = Form(None),
     sale_platform: Optional[str] = Form(None),
     sale_full_name: Optional[str] = Form(None),
     sale_phone: Optional[str] = Form(None),
 ):
-    # Преобразуем числовые поля из строк (убираем пробелы, заменяем запятую)
-    booking_price_val = parse_number(booking_price) if booking_price else None
-    booking_prepayment_val = parse_number(booking_prepayment) if booking_prepayment else None
-    sale_price_val = parse_number(sale_price) if sale_price else None
-    sale_prepayment_val = parse_number(sale_prepayment) if sale_prepayment else None
-    sale_payment_amount_val = parse_number(sale_payment_amount) if sale_payment_amount else None
-
     # Валидация номеров телефона
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
@@ -368,23 +365,21 @@ async def edit_item_submit(
             raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
         if is_sold:
-            if not sale_price_val:
+            if not sale_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость продажи")
             if not sale_payment_type:
                 sale_payment_type = "cash"
-            if sale_payment_amount_val is None:
-                sale_payment_amount_val = 0.0
-
-            # Генерируем уникальный ID для этой продажи
-            message_id = generate_message_id()
-
+            if sale_payment_amount is None:
+                sale_payment_amount = 0
+            # Генерируем уникальный message_id для продажи
+            sale_message_id = generate_sale_message_id()
             # Отправляем уведомление в топик продаж
             await send_sale_notification(
                 item_text=text,
-                price=sale_price_val,
+                price=sale_price,
                 payment_type=sale_payment_type,
-                prepayment=sale_prepayment_val if sale_prepayment_val and sale_prepayment_val > 0 else None,
-                payment_amount=sale_payment_amount_val if sale_payment_amount_val > 0 else None,
+                prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
+                payment_amount=sale_payment_amount if sale_payment_amount > 0 else None,
                 platform=sale_platform,
                 full_name=sale_full_name,
                 phone=sale_phone
@@ -394,11 +389,11 @@ async def edit_item_submit(
                 text=old_text,
                 serial=old_serial,
                 category_id=old_category_id,
-                price=sale_price_val,
-                prepayment=sale_prepayment_val or 0,
+                price=sale_price,
+                prepayment=sale_prepayment or 0,
                 payment_type=sale_payment_type,
-                payment_amount=sale_payment_amount_val,
-                message_id=message_id
+                payment_amount=sale_payment_amount or 0,
+                message_id=sale_message_id
             )
             AssortmentService.invalidate_cache()
             return RedirectResponse(url="/admin/assortment", status_code=303)
@@ -414,7 +409,7 @@ async def edit_item_submit(
                 sale_payment_amount = NULL, is_sold = FALSE
             WHERE id = $10
         """, text, serial.strip().upper() if serial else None, category_id, is_booked,
-           booking_price_val, booking_prepayment_val, booking_platform,
+           booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone, item_id)
 
         old_is_booked = await conn.fetchval("SELECT is_booked FROM items WHERE id = $1", item_id)
@@ -422,8 +417,8 @@ async def edit_item_submit(
             await send_booking_notification(
                 item_text=text,
                 serial=serial.strip().upper() if serial else "без серийного номера",
-                price=booking_price_val,
-                prepayment=booking_prepayment_val,
+                price=booking_price,
+                prepayment=booking_prepayment,
                 platform=booking_platform,
                 full_name=booking_full_name,
                 phone=booking_phone,
@@ -466,15 +461,13 @@ async def add_item(
     serial: Optional[str] = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
-    booking_price: Optional[str] = Form(None),
-    booking_prepayment: Optional[str] = Form(None),
+    booking_price: Optional[float] = Form(None),
+    booking_prepayment: Optional[float] = Form(None),
     booking_platform: Optional[str] = Form(None),
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
 ):
-    booking_price_val = parse_number(booking_price) if booking_price else None
-    booking_prepayment_val = parse_number(booking_prepayment) if booking_prepayment else None
-
+    # Валидация номера телефона
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
 
@@ -486,14 +479,14 @@ async def add_item(
                                booking_full_name, booking_phone)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         """, text, serial.strip().upper() if serial else None, category_id, is_booked,
-           booking_price_val, booking_prepayment_val, booking_platform,
+           booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone)
         if is_booked:
             await send_booking_notification(
                 item_text=text,
                 serial=serial.strip().upper() if serial else "без серийного номера",
-                price=booking_price_val,
-                prepayment=booking_prepayment_val,
+                price=booking_price,
+                prepayment=booking_prepayment,
                 platform=booking_platform,
                 full_name=booking_full_name,
                 phone=booking_phone,
