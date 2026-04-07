@@ -1,4 +1,4 @@
-# Файл: main.py
+# Файл: main.py (добавлена строка await init_db())
 import sys
 import logging
 import os
@@ -37,7 +37,7 @@ try:
     from aiogram.fsm.storage.redis import RedisStorage
     from aiogram.types import Update
     from bot.handlers import router
-    from bot.db import close_pool, get_pool, cleanup_sold_periodically
+    from bot.db import close_pool, get_pool, init_db, cleanup_sold_periodically
     from bot import config as bot_config
     import redis.asyncio as redis
 
@@ -71,6 +71,8 @@ async def on_startup():
     try:
         await get_pool()
         logger.info("✅ Пул соединений БД инициализирован")
+        await init_db()  # <-- ДОБАВЛЕНО: создание таблиц и колонок, если их нет
+        logger.info("✅ Инициализация БД (таблицы, колонки) выполнена")
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации пула БД: {e}")
 
