@@ -35,7 +35,7 @@ def format_number(value: float) -> str:
 
 async def send_booking_notification(
     item_text: str,
-    serial: str,  # не используется в тексте, оставлен для совместимости
+    serial: str,  # не используется, оставлен для совместимости вызовов
     price: float = None,
     prepayment: float = None,
     platform: str = None,
@@ -44,7 +44,7 @@ async def send_booking_notification(
     is_cancel: bool = False
 ):
     """Отправляет уведомление о брони (или отмене) в топик «Предзаказы».
-    Используется исходный item_text без добавления лишнего серийного номера.
+    Серийный номер не дублируется – используется исходный item_text.
     """
     try:
         bot = Bot(token=config.TOKEN)
