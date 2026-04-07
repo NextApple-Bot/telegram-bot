@@ -80,9 +80,10 @@ async def list_purchases(
         except ValueError:
             pass
 
+    # ИСПРАВЛЕНО: числовое приведение для фильтрации по типу оплаты
     if payment_type and payment_type != "all":
-        base_query += " AND COALESCE(p.payment_details->>$" + str(len(params)+1) + ", '0') != '0'"
-        count_query += " AND COALESCE(p.payment_details->>$" + str(len(count_params)+1) + ", '0') != '0'"
+        base_query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(params)+1) + " AS NUMERIC), 0) != 0"
+        count_query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(count_params)+1) + " AS NUMERIC), 0) != 0"
         params.append(payment_type)
         count_params.append(payment_type)
 
@@ -162,8 +163,9 @@ async def export_purchases_csv(
         except ValueError:
             pass
 
+    # ИСПРАВЛЕНО: числовое приведение для экспорта
     if payment_type and payment_type != "all":
-        query += " AND COALESCE(p.payment_details->>$" + str(len(params)+1) + ", '0') != '0'"
+        query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(params)+1) + " AS NUMERIC), 0) != 0"
         params.append(payment_type)
 
     if purchase_type and purchase_type != "all":
