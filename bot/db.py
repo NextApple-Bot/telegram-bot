@@ -1,4 +1,3 @@
-# 5. Полный файл bot/db.py (с добавленной функцией очистки продаж)
 # Файл: bot/db.py
 import os
 import asyncpg
@@ -201,6 +200,14 @@ async def init_db():
         await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0')
         await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS message_id BIGINT UNIQUE')
         await conn.execute('ALTER TABLE purchases ALTER COLUMN payment_details TYPE JSONB USING payment_details::jsonb')
+        # Добавляем колонки продажи, если их нет
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_price FLOAT')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_prepayment FLOAT')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_payment_type VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_platform VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_full_name VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_phone VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS is_sold BOOLEAN DEFAULT FALSE')
     logger.info("✅ Инициализация БД завершена")
 
 
