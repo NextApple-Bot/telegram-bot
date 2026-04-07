@@ -48,7 +48,6 @@ try:
     bot = Bot(token=config.TOKEN)
     logger.info("✅ Экземпляр Bot создан")
 
-    # Выбираем storage: Redis если задан URL, иначе Memory
     if config.REDIS_URL:
         redis_client = redis.from_url(config.REDIS_URL, decode_responses=True)
         storage = RedisStorage(redis=redis_client)
@@ -109,10 +108,13 @@ async def on_shutdown():
             logger.info("✅ Вебхук удалён, сессия бота закрыта")
         except Exception as e:
             logger.error(f"Ошибка при завершении работы бота: {e}")
-    # Закрываем Redis-клиент, если он был создан
-    if hasattr(dp, 'storage') and hasattr(dp.storage, 'redis'):
-        await dp.storage.redis.close()
-        logger.info("✅ Redis-клиент закрыт")
+    # Закрываем Redis-клиент, если он был создан (используем aclose вместо close)
+    if dp and hasattr(dp.storage, 'redis') and dp.storage.redis:
+        try:
+            await dp.storage.redis.aclose()
+            logger.info("✅ Redis-клиент закрыт")
+        except Exception as e:
+            logger.error(f"Ошибка при закрытии Redis: {e}")
 
 
 async def webhook(request: Request) -> Response:
