@@ -104,14 +104,18 @@ async def send_sale_notification(
 ):
     """
     Уведомление о продаже в топик «Продажи».
-    Формат:
+    Формат (согласно примеру):
+    - Товар
     - Стоимость – X
     - пустая строка
-    - <Способ оплаты на русском> – Z   (где Z = оплата)
+    - <Способ оплаты> – Y   (Y = оплата)
     - пустая строка
-    - Общая – Y                         (где Y = П/О + оплата)
-    - две пустые строки
-    - ФИО, телефон, площадка
+    - Общая – Z   (Z = П/О + оплата)
+    - пустая строка
+    - ФИО
+    - телефон
+    - пустая строка
+    - Площадка
     """
     try:
         bot = Bot(token=config.TOKEN)
@@ -125,15 +129,16 @@ async def send_sale_notification(
         lines.append(f"Стоимость – {format_number(price)}")
         # Пустая строка после стоимости
         lines.append("")
+        lines.append("")
         # Строка оплаты: "<Способ оплаты> – <Оплата>"
         paid_amount = payment_amount if payment_amount is not None else 0
         lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
-        # Пустая строка после оплаты (как в примере)
+        # Пустая строка после оплаты
         lines.append("")
         # Общая = П/О + оплата
         total_paid = (prepayment or 0) + paid_amount
         lines.append(f"Общая – {format_number(total_paid)}")
-        # Две пустые строки после блока сумм
+        # Пустая строка после общей суммы
         lines.append("")
         lines.append("")
         if full_name:
@@ -171,11 +176,14 @@ async def delete_item_and_log_sale(
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # Сохраняем в deleted_items
             await conn.execute("""
                 INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
                 VALUES ($1, $2, $3, $4, 'sale_from_admin')
             """, item_id, text, serial, category_id)
+            # Удаляем товар
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
+            # Добавляем статистику продажи (используем payment_amount как сумму продажи)
             await StatsRepository.add_sale(
                 count=1,
                 cash=payment_type == 'cash' and payment_amount or 0,
@@ -188,6 +196,7 @@ async def delete_item_and_log_sale(
                 message_id=message_id,
                 conn=conn
             )
+            # Добавляем финансовую запись (daily_payments) – сумма текущего платежа
             await conn.execute("""
                 INSERT INTO daily_payments (type, payment_type, amount)
                 VALUES ('sale', $1, $2)
@@ -358,6 +367,7 @@ async def edit_item_submit(
                 sale_payment_type = "cash"
             if sale_payment_amount is None:
                 sale_payment_amount = 0
+            # Отправляем уведомление в топик продаж
             await send_sale_notification(
                 item_text=text,
                 price=sale_price,
@@ -450,6 +460,7 @@ async def add_item(
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
 ):
+    # Валидация номера телефона
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
 
