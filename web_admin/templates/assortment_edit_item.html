@@ -49,8 +49,7 @@
         </div>
         <div class="mb-3">
             <label for="booking_phone" class="form-label">Номер телефона</label>
-            <input type="tel" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone if item.booking_phone else '+7' }}" pattern="\+7[0-9]{10}" placeholder="+7XXXXXXXXXX">
-            <small class="form-text text-muted">Формат: +7XXXXXXXXXX (10 цифр после +7)</small>
+            <input type="tel" class="form-control" id="booking_phone" name="booking_phone" value="+7" placeholder="+7XXXXXXXXXX">
         </div>
     </div>
 
