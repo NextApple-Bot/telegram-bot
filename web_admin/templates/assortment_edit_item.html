@@ -3,7 +3,7 @@
 {% block title %}Редактировать товар{% endblock %}
 {% block content %}
 <h1>Редактировать товар #{{ item.id }}</h1>
-<form method="post" id="editForm" onsubmit="return validatePhoneNumbers()">
+<form method="post" id="editForm" onsubmit="return validateAndClean()">
     <div class="mb-3">
         <label for="text" class="form-label">Текст товара</label>
         <input type="text" class="form-control" id="text" name="text" value="{{ item.text }}" required>
@@ -66,15 +66,15 @@
         <h4>Данные продажи</h4>
         <div class="mb-3">
             <label for="sale_price" class="form-label">Стоимость (₽)</label>
-            <input type="number" step="0.01" class="form-control" id="sale_price" name="sale_price" value="{{ item.sale_price or '' }}">
+            <input type="text" class="form-control" id="sale_price" name="sale_price" value="{{ item.sale_price or '' }}" placeholder="Например, 10000">
         </div>
         <div class="mb-3">
             <label for="sale_prepayment" class="form-label">П/О (предоплата, ₽)</label>
-            <input type="number" step="0.01" class="form-control" id="sale_prepayment" name="sale_prepayment" value="{{ item.sale_prepayment or '' }}">
+            <input type="text" class="form-control" id="sale_prepayment" name="sale_prepayment" value="{{ item.sale_prepayment or '' }}" placeholder="Например, 5000">
         </div>
         <div class="mb-3">
             <label for="sale_payment_amount" class="form-label">Оплата (₽)</label>
-            <input type="number" step="0.01" class="form-control" id="sale_payment_amount" name="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}">
+            <input type="text" class="form-control" id="sale_payment_amount" name="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}" placeholder="Например, 5000">
         </div>
         <div class="mb-3">
             <label for="sale_payment_type" class="form-label">Способ оплаты</label>
@@ -136,8 +136,27 @@
         }
     });
 
-    // Валидация номеров телефона перед отправкой
-    function validatePhoneNumbers() {
+    // Функция очистки чисел от пробелов и нецифровых символов (кроме точки и минуса)
+    function cleanNumber(value) {
+        if (!value) return '';
+        // Удаляем все символы, кроме цифр, точки и минуса
+        let cleaned = value.replace(/[^\d.-]/g, '');
+        return cleaned;
+    }
+
+    // Валидация и очистка перед отправкой формы
+    function validateAndClean() {
+        // Очищаем числовые поля от пробелов и лишних символов
+        const numberFields = ['sale_price', 'sale_prepayment', 'sale_payment_amount', 
+                              'booking_price', 'booking_prepayment'];
+        for (let fieldId of numberFields) {
+            const field = document.getElementById(fieldId);
+            if (field && field.value) {
+                field.value = cleanNumber(field.value);
+            }
+        }
+
+        // Валидация телефонов
         const phoneFields = ['booking_phone', 'sale_phone'];
         for (let fieldId of phoneFields) {
             const field = document.getElementById(fieldId);
@@ -150,6 +169,23 @@
                 }
             }
         }
+
+        // Проверка, что если продажа отмечена, то стоимость и оплата заполнены
+        if (isSoldCheckbox.checked) {
+            const priceField = document.getElementById('sale_price');
+            const amountField = document.getElementById('sale_payment_amount');
+            if (!priceField.value || parseFloat(priceField.value) <= 0) {
+                alert('Укажите стоимость продажи');
+                priceField.focus();
+                return false;
+            }
+            if (!amountField.value || parseFloat(amountField.value) <= 0) {
+                alert('Укажите сумму оплаты');
+                amountField.focus();
+                return false;
+            }
+        }
+
         return true;
     }
 </script>
