@@ -80,8 +80,8 @@ async def list_purchases(
         except ValueError:
             pass
 
-    # ИСПРАВЛЕНО: числовое приведение для фильтрации по типу оплаты
     if payment_type and payment_type != "all":
+        # Исправлено: числовое приведение через CAST
         base_query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(params)+1) + " AS NUMERIC), 0) != 0"
         count_query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(count_params)+1) + " AS NUMERIC), 0) != 0"
         params.append(payment_type)
@@ -103,7 +103,6 @@ async def list_purchases(
         rows = await conn.fetch(base_query, *params)
         purchases = [dict(row) for row in rows]
 
-    # Передаём параметры в шаблон для сохранения в ссылках
     query_params = request.query_params
     return templates.TemplateResponse("purchases.html", {
         "request": request,
@@ -163,7 +162,6 @@ async def export_purchases_csv(
         except ValueError:
             pass
 
-    # ИСПРАВЛЕНО: числовое приведение для экспорта
     if payment_type and payment_type != "all":
         query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(params)+1) + " AS NUMERIC), 0) != 0"
         params.append(payment_type)
