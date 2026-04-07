@@ -19,7 +19,6 @@ async def list_sold(
     page: int = 1,
     per_page: int = 50,
 ):
-    """Отображает список проданных товаров (из deleted_items с reason='sale_from_admin')."""
     pool = await get_pool()
     offset = (page - 1) * per_page
 
@@ -53,17 +52,9 @@ async def list_sold(
 
 @router.post("/restore/{deleted_id}")
 async def restore_sold(deleted_id: int, request: Request):
-    """
-    Восстанавливает проданный товар (отмена продажи).
-    При этом:
-    - Находится запись о продаже в таблице sales по item_id и отрицательному message_id (сгенерированному при продаже).
-    - Удаляется эта запись и соответствующая финансовая запись из daily_payments (по sale_message_id).
-    - Товар возвращается в ассортимент.
-    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Получаем информацию о проданном товаре
             row = await conn.fetchrow("""
                 SELECT item_id, text, serial, category_id
                 FROM deleted_items
@@ -74,7 +65,7 @@ async def restore_sold(deleted_id: int, request: Request):
 
             item_id = row["item_id"]
 
-            # Находим запись о продаже в sales по item_id и отрицательному message_id (сортировка по убыванию, чтобы взять последнюю)
+            # Находим запись о продаже по item_id и отрицательному message_id
             sale = await conn.fetchrow("""
                 SELECT message_id FROM sales
                 WHERE item_id = $1 AND message_id < 0
@@ -83,28 +74,19 @@ async def restore_sold(deleted_id: int, request: Request):
             """, item_id)
             if sale:
                 sale_message_id = sale["message_id"]
-                # Удаляем запись из sales
                 await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
                 # Удаляем финансовую запись из daily_payments (по полю sale_message_id)
-                # Для этого сначала нужно добавить колонку sale_message_id в daily_payments.
-                # Если колонки нет, создадим её сейчас.
-                await conn.execute("""
-                    ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT
-                """)
-                await conn.execute("""
-                    DELETE FROM daily_payments WHERE sale_message_id = $1
-                """, sale_message_id)
+                await conn.execute("DELETE FROM daily_payments WHERE sale_message_id = $1", sale_message_id)
                 logger.info(f"Удалены продажа и финансы для message_id={sale_message_id}")
             else:
                 logger.warning(f"Не найдена запись продажи для item_id={item_id}")
 
-            # Восстанавливаем товар в таблицу items
+            # Восстанавливаем товар
             await conn.execute("""
                 INSERT INTO items (text, serial, category_id, is_booked)
                 VALUES ($1, $2, $3, FALSE)
             """, row["text"], row["serial"], row["category_id"])
 
-            # Помечаем запись в deleted_items как восстановленную
             await conn.execute("""
                 UPDATE deleted_items SET restored = TRUE WHERE id = $1
             """, deleted_id)
