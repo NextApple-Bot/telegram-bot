@@ -19,12 +19,11 @@ async def list_sold(
     page: int = 1,
     per_page: int = 50,
 ):
-    """Отображает список проданных товаров (из deleted_items с reason='sale_from_admin')."""
     pool = await get_pool()
     offset = (page - 1) * per_page
 
     query = """
-        SELECT id, item_id, text, serial, category_id, deleted_at
+        SELECT id, item_id, text, serial, category_id, deleted_at, sale_message_id
         FROM deleted_items
         WHERE reason = 'sale_from_admin' AND restored = FALSE
         ORDER BY deleted_at DESC
@@ -53,23 +52,44 @@ async def list_sold(
 
 @router.post("/restore/{deleted_id}")
 async def restore_sold(deleted_id: int, request: Request):
-    """Восстанавливает проданный товар (отмена продажи)."""
+    """
+    Восстанавливает проданный товар (отмена продажи).
+    При этом:
+    - Удаляется запись о продаже из таблицы sales (по sale_message_id).
+    - Удаляются соответствующие финансовые записи из daily_payments (по sale_message_id).
+    - Товар возвращается в ассортимент.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # Получаем информацию о проданном товаре
             row = await conn.fetchrow("""
-                SELECT item_id, text, serial, category_id
+                SELECT item_id, text, serial, category_id, sale_message_id
                 FROM deleted_items
                 WHERE id = $1 AND reason = 'sale_from_admin' AND restored = FALSE
             """, deleted_id)
             if not row:
                 raise HTTPException(status_code=404, detail="Запись не найдена или уже восстановлена")
+
+            item_id = row["item_id"]
+            sale_message_id = row["sale_message_id"]
+
+            # Удаляем запись о продаже из таблицы sales
+            await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
+
+            # Удаляем финансовую запись из daily_payments
+            await conn.execute("DELETE FROM daily_payments WHERE message_id = $1", sale_message_id)
+
+            # Восстанавливаем товар в таблицу items
             await conn.execute("""
                 INSERT INTO items (text, serial, category_id, is_booked)
                 VALUES ($1, $2, $3, FALSE)
             """, row["text"], row["serial"], row["category_id"])
+
+            # Помечаем запись в deleted_items как восстановленную
             await conn.execute("""
                 UPDATE deleted_items SET restored = TRUE WHERE id = $1
             """, deleted_id)
+
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/sold", status_code=303)
