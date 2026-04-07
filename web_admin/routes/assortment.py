@@ -94,10 +94,10 @@ async def send_booking_notification(
 
 async def send_sale_notification(
     item_text: str,
-    price: float,                # полная стоимость товара
-    payment_type: str,           # способ оплаты текущего платежа (cash, terminal, ...)
-    prepayment: float = None,    # П/О (предоплата, уже внесённая ранее)
-    payment_amount: float = None, # Оплата (сумма, которую клиент внёс сейчас)
+    price: float,
+    payment_type: str,
+    prepayment: float = None,
+    payment_amount: float = None,
     platform: str = None,
     full_name: str = None,
     phone: str = None,
@@ -106,10 +106,11 @@ async def send_sale_notification(
     Уведомление о продаже в топик «Продажи».
     Формат:
     - Стоимость – X
-    - Пустая строка
+    - пустая строка
     - <Способ оплаты на русском> – Z   (где Z = оплата)
+    - пустая строка
     - Общая – Y                         (где Y = П/О + оплата)
-    - Пустые строки
+    - две пустые строки
     - ФИО, телефон, площадка
     """
     try:
@@ -127,10 +128,12 @@ async def send_sale_notification(
         # Строка оплаты: "<Способ оплаты> – <Оплата>"
         paid_amount = payment_amount if payment_amount is not None else 0
         lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
+        # Пустая строка после оплаты (как в примере)
+        lines.append("")
         # Общая = П/О + оплата
         total_paid = (prepayment or 0) + paid_amount
         lines.append(f"Общая – {format_number(total_paid)}")
-        # Пустые строки после блока сумм
+        # Две пустые строки после блока сумм
         lines.append("")
         lines.append("")
         if full_name:
@@ -168,14 +171,11 @@ async def delete_item_and_log_sale(
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Сохраняем в deleted_items
             await conn.execute("""
                 INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
                 VALUES ($1, $2, $3, $4, 'sale_from_admin')
             """, item_id, text, serial, category_id)
-            # Удаляем товар
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
-            # Добавляем статистику продажи (используем payment_amount как сумму продажи)
             await StatsRepository.add_sale(
                 count=1,
                 cash=payment_type == 'cash' and payment_amount or 0,
@@ -188,7 +188,6 @@ async def delete_item_and_log_sale(
                 message_id=message_id,
                 conn=conn
             )
-            # Добавляем финансовую запись (daily_payments) – сумма текущего платежа
             await conn.execute("""
                 INSERT INTO daily_payments (type, payment_type, amount)
                 VALUES ('sale', $1, $2)
@@ -359,7 +358,6 @@ async def edit_item_submit(
                 sale_payment_type = "cash"
             if sale_payment_amount is None:
                 sale_payment_amount = 0
-            # Отправляем уведомление в топик продаж
             await send_sale_notification(
                 item_text=text,
                 price=sale_price,
@@ -452,7 +450,6 @@ async def add_item(
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
 ):
-    # Валидация номера телефона
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
 
