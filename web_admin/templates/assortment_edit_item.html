@@ -21,7 +21,7 @@
         </select>
     </div>
 
-    <!-- БЛОК БРОНИ -->
+    <!-- БЛОК БРОНИ (без изменений) -->
     <div class="form-check mb-3">
         <input type="checkbox" class="form-check-input" id="is_booked" name="is_booked" {% if item.is_booked %}checked{% endif %}>
         <label class="form-check-label" for="is_booked">Бронь</label>
@@ -50,12 +50,12 @@
         </div>
         <div class="mb-3">
             <label for="booking_phone" class="form-label">Номер телефона</label>
-            <input type="tel" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone or '+7' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Введите номер в формате +7XXXXXXXXXX (ровно 12 символов)">
+            <input type="tel" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone or '+7' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Формат +7XXXXXXXXXX">
             <small class="form-text text-muted">Формат: +7 и 10 цифр (например, +79991234567)</small>
         </div>
     </div>
 
-    <!-- БЛОК ПРОДАЖИ -->
+    <!-- БЛОК ПРОДАЖИ (исправлены поля) -->
     <hr class="mt-4">
     <div class="form-check mb-3">
         <input type="checkbox" class="form-check-input" id="is_sold" name="is_sold" {% if item.is_sold %}checked{% endif %}>
@@ -97,7 +97,7 @@
         </div>
         <div class="mb-3">
             <label for="sale_phone" class="form-label">Номер телефона</label>
-            <input type="tel" class="form-control" id="sale_phone" name="sale_phone" value="{{ item.sale_phone or '+7' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Введите номер в формате +7XXXXXXXXXX (ровно 12 символов)">
+            <input type="tel" class="form-control" id="sale_phone" name="sale_phone" value="{{ item.sale_phone or '+7' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Формат +7XXXXXXXXXX">
             <small class="form-text text-muted">Формат: +7 и 10 цифр (например, +79991234567)</small>
         </div>
     </div>
@@ -136,17 +136,15 @@
         }
     });
 
-    // Функция очистки чисел от пробелов и нецифровых символов (кроме точки и минуса)
+    // Очистка чисел от пробелов и нецифровых символов
     function cleanNumber(value) {
         if (!value) return '';
-        // Удаляем все символы, кроме цифр, точки и минуса
         let cleaned = value.replace(/[^\d.-]/g, '');
         return cleaned;
     }
 
-    // Валидация и очистка перед отправкой формы
     function validateAndClean() {
-        // Очищаем числовые поля от пробелов и лишних символов
+        // Очищаем числовые поля
         const numberFields = ['sale_price', 'sale_prepayment', 'sale_payment_amount', 
                               'booking_price', 'booking_prepayment'];
         for (let fieldId of numberFields) {
@@ -170,7 +168,7 @@
             }
         }
 
-        // Проверка, что если продажа отмечена, то стоимость и оплата заполнены
+        // Проверка обязательных полей продажи
         if (isSoldCheckbox.checked) {
             const priceField = document.getElementById('sale_price');
             const amountField = document.getElementById('sale_payment_amount');
