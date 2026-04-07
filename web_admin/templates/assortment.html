@@ -1,108 +1,9 @@
-{# Файл: web_admin/templates/assortment.html #}
-{% extends "base.html" %}
-{% block title %}Ассортимент{% endblock %}
-{% block content %}
-<h1>Ассортимент</h1>
+{# Файл: web_admin/templates/assortment.html — только изменения в модальном окне #}
+<!-- ... всё остальное без изменений ... -->
 
-<div class="row mb-3">
-    <div class="col">
-        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addItemModal">➕ Добавить товар</button>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">📁 Добавить категорию</button>
-    </div>
-</div>
-
-<!-- Фильтры и поиск -->
-<form method="get" class="row g-3 mb-3">
-    <div class="col-md-4">
-        <input type="text" class="form-control" id="searchInput" name="search" placeholder="Поиск" value="{{ search or '' }}" autocomplete="off" list="searchSuggestions">
-        <datalist id="searchSuggestions"></datalist>
-    </div>
-    <div class="col-md-3">
-        <select name="category_id" class="form-select">
-            <option value="">Все категории</option>
-            {% for cat in categories %}
-            <option value="{{ cat.id }}" {% if category_id|string == cat.id|string %}selected{% endif %}>{{ cat.name }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="col-md-2">
-        <select name="per_page" class="form-select">
-            <option value="50" {% if per_page == 50 %}selected{% endif %}>50 на страницу</option>
-            <option value="100" {% if per_page == 100 %}selected{% endif %}>100 на страницу</option>
-            <option value="200" {% if per_page == 200 %}selected{% endif %}>200 на страницу</option>
-        </select>
-    </div>
-    <div class="col-md-1">
-        <button type="submit" class="btn btn-primary w-100">Фильтр</button>
-    </div>
-</form>
-
-<div class="row mb-2">
-    <div class="col">
-        <span class="badge bg-secondary">Всего товаров: {{ total }}</span>
-    </div>
-</div>
-
-<div class="table-responsive">
-    <table class="table table-striped table-bordered">
-        <thead>
-            <tr>
-                <th><a href="?sort_by=id&sort_order={% if sort_by == 'id' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}">ID {% if sort_by == 'id' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                <th><a href="?sort_by=text&sort_order={% if sort_by == 'text' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}">Товар {% if sort_by == 'text' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                <th><a href="?sort_by=serial&sort_order={% if sort_by == 'serial' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}">Серийный номер {% if sort_by == 'serial' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                <th><a href="?sort_by=category_name&sort_order={% if sort_by == 'category_name' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}">Категория {% if sort_by == 'category_name' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                <th><a href="?sort_by=is_booked&sort_order={% if sort_by == 'is_booked' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}">Бронь {% if sort_by == 'is_booked' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                <th><a href="?sort_by=created_at&sort_order={% if sort_by == 'created_at' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&page={{ page }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}">Дата добавления {% if sort_by == 'created_at' %}{% if sort_order == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                <th>Действия</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in items %}
-            <tr>
-                <td>{{ item.id }}</td>
-                <td>{{ item.text }}</td>
-                <td>{{ item.serial or '—' }}</td>
-                <td>{{ item.category_name }}</td>
-                <td>{% if item.is_booked %}✅{% else %}—{% endif %}</td>
-                <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '—' }}</td>
-                <td>
-                    <a href="/admin/assortment/edit/{{ item.id }}" class="btn btn-sm btn-primary" title="Редактировать">
-                        <i class="bi bi-pencil-square"></i>
-                    </a>
-                    <form action="/admin/assortment/delete/{{ item.id }}" method="post" style="display:inline;" onsubmit="return confirm('Удалить товар?');">
-                        <button type="submit" class="btn btn-sm btn-danger" title="Удалить">
-                            <i class="bi bi-trash3"></i>
-                        </button>
-                    </form>
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="7" class="text-center">Нет товаров</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<!-- Пагинация -->
-{% if total_pages > 1 %}
-<nav>
-    <ul class="pagination">
-        {% if page > 1 %}
-        <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Первая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Предыдущая</a></li>
-        {% endif %}
-        <li class="page-item active"><span class="page-link">Страница {{ page }} из {{ total_pages }}</span></li>
-        {% if page < total_pages %}
-        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Следующая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}">Последняя</a></li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
-
-<!-- Модальное окно добавления товара -->
+<!-- Модальное окно добавления товара (добавлены поля брони) -->
 <div class="modal fade" id="addItemModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form action="/admin/assortment/add" method="post">
                 <div class="modal-header">
@@ -126,33 +27,36 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="form-check">
-                        <input type="checkbox" class="form-check-input" id="is_booked" name="is_booked">
-                        <label class="form-check-label" for="is_booked">Бронь</label>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="add_is_booked" name="is_booked">
+                        <label class="form-check-label" for="add_is_booked">Бронь</label>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn btn-primary">Добавить</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Модальное окно добавления категории -->
-<div class="modal fade" id="addCategoryModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form action="/admin/assortment/add_category" method="post">
-                <div class="modal-header">
-                    <h5 class="modal-title">Добавить категорию</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="categoryName" class="form-label">Название категории</label>
-                        <input type="text" class="form-control" id="categoryName" name="name" required>
+                    <div id="addBookingFields" style="display: none; margin-top: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+                        <h5>Данные бронирования</h5>
+                        <div class="mb-3">
+                            <label for="booking_price" class="form-label">Стоимость (₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="booking_price" name="booking_price" oninput="calculateAddRemainder()">
+                        </div>
+                        <div class="mb-3">
+                            <label for="booking_prepayment" class="form-label">П/О (предоплата, ₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="booking_prepayment" name="booking_prepayment" oninput="calculateAddRemainder()">
+                        </div>
+                        <div class="mb-3">
+                            <label for="booking_remainder" class="form-label">Остаток (₽)</label>
+                            <input type="text" class="form-control" id="booking_remainder" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="booking_platform" class="form-label">Площадка</label>
+                            <input type="text" class="form-control" id="booking_platform" name="booking_platform">
+                        </div>
+                        <div class="mb-3">
+                            <label for="booking_full_name" class="form-label">ФИО</label>
+                            <input type="text" class="form-control" id="booking_full_name" name="booking_full_name">
+                        </div>
+                        <div class="mb-3">
+                            <label for="booking_phone" class="form-label">Номер телефона</label>
+                            <input type="text" class="form-control" id="booking_phone" name="booking_phone">
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -165,30 +69,15 @@
 </div>
 
 <script>
-    // Умный поиск с автодополнением
-    const searchInput = document.getElementById('searchInput');
-    const suggestionsList = document.getElementById('searchSuggestions');
-    let debounceTimer;
-    searchInput.addEventListener('input', function() {
-        clearTimeout(debounceTimer);
-        const query = this.value.trim();
-        if (query.length < 2) {
-            suggestionsList.innerHTML = '';
-            return;
-        }
-        debounceTimer = setTimeout(() => {
-            fetch(`/admin/assortment/search?q=${encodeURIComponent(query)}`)
-                .then(res => res.json())
-                .then(data => {
-                    suggestionsList.innerHTML = '';
-                    data.results.forEach(item => {
-                        const option = document.createElement('option');
-                        option.value = item.text;
-                        suggestionsList.appendChild(option);
-                    });
-                })
-                .catch(err => console.error('Search error:', err));
-        }, 300);
+    // Показывать/скрывать поля брони при добавлении товара
+    const addIsBooked = document.getElementById('add_is_booked');
+    const addBookingFields = document.getElementById('addBookingFields');
+    addIsBooked.addEventListener('change', function() {
+        addBookingFields.style.display = this.checked ? 'block' : 'none';
     });
+    function calculateAddRemainder() {
+        const price = parseFloat(document.getElementById('booking_price').value) || 0;
+        const prepay = parseFloat(document.getElementById('booking_prepayment').value) || 0;
+        document.getElementById('booking_remainder').value = (price - prepay).toFixed(2);
+    }
 </script>
-{% endblock %}
