@@ -32,8 +32,8 @@
                     <form action="/admin/sold/restore/{{ item.id }}" method="post" onsubmit="return confirm('Восстановить товар? Он вернётся в ассортимент.');">
                         <button type="submit" class="btn btn-sm btn-success">↩️ Восстановить</button>
                     </form>
-                 </td>
-             </tr>
+                </td>
+            </tr>
             {% else %}
             <tr><td colspan="6" class="text-center">Нет проданных товаров</td></tr>
             {% endfor %}
