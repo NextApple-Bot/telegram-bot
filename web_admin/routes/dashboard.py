@@ -5,16 +5,18 @@ from fastapi.templating import Jinja2Templates
 from datetime import date, timedelta
 from collections import Counter
 import re
+import logging
 
 from bot.repositories import StatsRepository
 from bot.db import get_pool
-from bot.services.cache import RedisCache
+from bot.services.cache import cache
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
+
 def extract_base_model(full_text: str) -> str:
-    # (функция без изменений)
     for sep in [',', '(', '（']:
         if sep in full_text:
             full_text = full_text.split(sep)[0]
@@ -39,7 +41,7 @@ async def dashboard(
     stats = await StatsRepository.get_today_stats()
     pool = await get_pool()
 
-    # Финансы за сегодня (не кэшируем, так как актуальность)
+    # Финансы за сегодня (без кэша, так как актуальность важна)
     async with pool.acquire() as conn:
         rows = await conn.fetch('''
             SELECT payment_type, SUM(amount) as total
@@ -52,33 +54,27 @@ async def dashboard(
         payments.setdefault(pt, 0.0)
     total_revenue = sum(payments.values())
 
-    # График продаж (линейный) за 7 дней – кэшируем на 1 час
-    cache_key_sales_chart = "dashboard:sales_chart"
-    chart_data = await RedisCache.get(cache_key_sales_chart)
-    if chart_data is None:
-        end_date = date.today()
-        start_date = end_date - timedelta(days=6)
-        async with pool.acquire() as conn:
-            sales_rows = await conn.fetch('''
-                SELECT DATE(sold_at) as day, COUNT(*) as count
-                FROM sales
-                WHERE sold_at >= $1
-                GROUP BY day
-                ORDER BY day
-            ''', start_date)
-        sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
-        dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
-        sales_counts = [sales_dict.get(d, 0) for d in dates]
-        chart_data = {"dates": dates, "sales_counts": sales_counts}
-        await RedisCache.set(cache_key_sales_chart, chart_data, ttl=3600)
-    else:
-        dates = chart_data["dates"]
-        sales_counts = chart_data["sales_counts"]
+    # График продаж (линейный) за 7 дней (без кэша)
+    end_date = date.today()
+    start_date = end_date - timedelta(days=6)
+    async with pool.acquire() as conn:
+        sales_rows = await conn.fetch('''
+            SELECT DATE(sold_at) as day, COUNT(*) as count
+            FROM sales
+            WHERE sold_at >= $1
+            GROUP BY day
+            ORDER BY day
+        ''', start_date)
+    sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
+    dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
+    sales_counts = [sales_dict.get(d, 0) for d in dates]
 
-    # Топ-5 моделей – кэшируем на 1 час (зависит от выбранного периода, но для упрощения кэшируем по дням)
-    cache_key_top = f"dashboard:top_models:{days}"
-    top_data = await RedisCache.get(cache_key_top)
-    if top_data is None:
+    # Топ-5 моделей (кэш на 1 час)
+    cache_key = f"dashboard:top_models:{days}"
+    cached_top = await cache.get(cache_key)
+    if cached_top:
+        top_labels, top_counts = cached_top
+    else:
         period_start = date.today() - timedelta(days=days - 1)
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
@@ -95,11 +91,7 @@ async def dashboard(
         top_5 = model_counter.most_common(5)
         top_labels = [item[0] for item in top_5]
         top_counts = [item[1] for item in top_5]
-        top_data = {"labels": top_labels, "counts": top_counts}
-        await RedisCache.set(cache_key_top, top_data, ttl=3600)
-    else:
-        top_labels = top_data["labels"]
-        top_counts = top_data["counts"]
+        await cache.set(cache_key, (top_labels, top_counts), ttl=3600)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -117,11 +109,12 @@ async def dashboard(
 
 @router.get("/top_models_data")
 async def top_models_data(days: int = Query(7, ge=7, le=90)):
-    """API для динамической загрузки топ-моделей – тоже с кэшированием."""
+    """API для динамической загрузки топ-моделей (с кэшем)"""
     cache_key = f"dashboard:top_models:{days}"
-    cached = await RedisCache.get(cache_key)
+    cached = await cache.get(cache_key)
     if cached:
-        return JSONResponse(content=cached)
+        labels, counts = cached
+        return JSONResponse(content={"labels": labels, "counts": counts})
 
     pool = await get_pool()
     period_start = date.today() - timedelta(days=days - 1)
@@ -132,14 +125,13 @@ async def top_models_data(days: int = Query(7, ge=7, le=90)):
             JOIN items i ON s.item_id = i.id
             WHERE s.sold_at >= $1 AND i.text IS NOT NULL
         ''', period_start)
-
     model_counter = Counter()
     for row in rows:
         base = extract_base_model(row['text'])
         if base:
             model_counter[base] += 1
-
     top_5 = model_counter.most_common(5)
-    result = {"labels": [item[0] for item in top_5], "counts": [item[1] for item in top_5]}
-    await RedisCache.set(cache_key, result, ttl=3600)
-    return JSONResponse(content=result)
+    labels = [item[0] for item in top_5]
+    counts = [item[1] for item in top_5]
+    await cache.set(cache_key, (labels, counts), ttl=3600)
+    return JSONResponse(content={"labels": labels, "counts": counts})
