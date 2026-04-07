@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import logging
+import re
 from datetime import date
 
 from bot.services.assortment import AssortmentService
@@ -32,6 +33,13 @@ def format_number(value: float) -> str:
     if value is None:
         return ""
     return f"{value:,.0f}".replace(",", " ")
+
+
+def validate_phone(phone: str) -> bool:
+    """Проверяет, что номер телефона имеет формат +7XXXXXXXXXX (ровно 12 символов)."""
+    if not phone:
+        return True
+    return bool(re.match(r'^\+7\d{10}$', phone))
 
 
 async def send_booking_notification(
@@ -86,10 +94,10 @@ async def send_booking_notification(
 
 async def send_sale_notification(
     item_text: str,
-    price: float,          # полная стоимость товара
-    payment_type: str,     # способ оплаты текущего платежа
-    prepayment: float = None,   # П/О (предоплата, уже внесённая ранее)
-    payment_amount: float = None,  # Оплата (сумма, которую клиент внёс сейчас)
+    price: float,                # полная стоимость товара
+    payment_type: str,           # способ оплаты текущего платежа (cash, terminal, ...)
+    prepayment: float = None,    # П/О (предоплата, уже внесённая ранее)
+    payment_amount: float = None, # Оплата (сумма, которую клиент внёс сейчас)
     platform: str = None,
     full_name: str = None,
     phone: str = None,
@@ -98,10 +106,11 @@ async def send_sale_notification(
     Уведомление о продаже в топик «Продажи».
     Формат:
     - Стоимость – X
-    - П/О – Y (если Y > 0)
-    - Оплата – Z (сумма текущего платежа)
-    - Способ оплаты – ...
-    - Общая – Y + Z
+    - Пустая строка
+    - <Способ оплаты на русском> – Z   (где Z = оплата)
+    - Общая – Y                         (где Y = П/О + оплата)
+    - Пустые строки
+    - ФИО, телефон, площадка
     """
     try:
         bot = Bot(token=config.TOKEN)
@@ -115,16 +124,11 @@ async def send_sale_notification(
         lines.append(f"Стоимость – {format_number(price)}")
         # Пустая строка после стоимости
         lines.append("")
-        # П/О, если есть и больше 0
-        if prepayment and prepayment > 0:
-            lines.append(f"П/О – {format_number(prepayment)}")
-        # Оплата (сумма текущего платежа)
-        if payment_amount is not None and payment_amount > 0:
-            lines.append(f"Оплата – {format_number(payment_amount)}")
-        # Способ оплаты
-        lines.append(f"Способ оплаты – {payment_type_ru}")
-        # Общая = П/О + Оплата (если нет П/О, то Общая = Оплата)
-        total_paid = (prepayment or 0) + (payment_amount or 0)
+        # Строка оплаты: "<Способ оплаты> – <Оплата>"
+        paid_amount = payment_amount if payment_amount is not None else 0
+        lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
+        # Общая = П/О + оплата
+        total_paid = (prepayment or 0) + paid_amount
         lines.append(f"Общая – {format_number(total_paid)}")
         # Пустые строки после блока сумм
         lines.append("")
@@ -323,12 +327,18 @@ async def edit_item_submit(
     # Продажа
     sale_price: Optional[float] = Form(None),
     sale_prepayment: Optional[float] = Form(None),
-    sale_payment_amount: Optional[float] = Form(None),   # новое поле – Оплата
+    sale_payment_amount: Optional[float] = Form(None),
     sale_payment_type: Optional[str] = Form(None),
     sale_platform: Optional[str] = Form(None),
     sale_full_name: Optional[str] = Form(None),
     sale_phone: Optional[str] = Form(None),
 ):
+    # Валидация номеров телефона
+    if booking_phone and not validate_phone(booking_phone):
+        raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
+    if sale_phone and not validate_phone(sale_phone):
+        raise HTTPException(status_code=400, detail="Номер телефона продажи должен быть в формате +7XXXXXXXXXX")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         old = await conn.fetchrow("SELECT is_sold, text, serial, category_id FROM items WHERE id = $1", item_id)
@@ -442,6 +452,10 @@ async def add_item(
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
 ):
+    # Валидация номера телефона
+    if booking_phone and not validate_phone(booking_phone):
+        raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("""
