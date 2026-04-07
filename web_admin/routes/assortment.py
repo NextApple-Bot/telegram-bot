@@ -110,18 +110,6 @@ async def send_sale_notification(
 ):
     """
     Уведомление о продаже в топик «Продажи».
-    Формат:
-    - Товар
-    - Стоимость – X
-    - пустая строка
-    - <Способ оплаты> – Y   (Y = оплата)
-    - пустая строка
-    - Общая – Z   (Z = П/О + оплата)
-    - пустая строка
-    - ФИО
-    - телефон
-    - пустая строка
-    - Площадка
     """
     try:
         bot = Bot(token=config.TOKEN)
@@ -131,19 +119,13 @@ async def send_sale_notification(
         }.get(payment_type, payment_type)
 
         lines = [item_text]
-        # Стоимость
         lines.append(f"Стоимость – {format_number(price)}")
-        # Пустая строка после стоимости
         lines.append("")
-        # Строка оплаты: "<Способ оплаты> – <Оплата>"
         paid_amount = payment_amount if payment_amount is not None else 0
         lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
-        # Пустая строка после оплаты
         lines.append("")
-        # Общая = П/О + оплата
         total_paid = (prepayment or 0) + paid_amount
         lines.append(f"Общая – {format_number(total_paid)}")
-        # Пустая строка после общей суммы
         lines.append("")
         if full_name:
             lines.append(full_name)
