@@ -1,53 +1,46 @@
 # Файл: bot/services/assortment.py
 import logging
-import asyncio
+from typing import List, Dict
 from bot.repositories import ItemRepository
+from bot.services.cache import RedisCache
 
 logger = logging.getLogger(__name__)
 
+CACHE_KEY_ASSORTMENT = "assortment:full"
+CACHE_TTL = 300  # 5 минут
+
 class AssortmentService:
-    _cache = {"data": None, "timestamp": 0, "loading": False}
-    CACHE_TTL = 10
-    _cache_lock = asyncio.Lock()
+    @classmethod
+    async def load_inventory(cls) -> List[Dict]:
+        """Загружает ассортимент с кэшированием в Redis."""
+        # Пытаемся взять из кэша
+        cached = await RedisCache.get(CACHE_KEY_ASSORTMENT)
+        if cached is not None:
+            logger.debug("Ассортимент загружен из Redis-кэша")
+            return cached
+
+        # Если нет в кэше – загружаем из БД
+        categories = await ItemRepository.get_all_categories_with_items()
+        await RedisCache.set(CACHE_KEY_ASSORTMENT, categories, ttl=CACHE_TTL)
+        logger.info("Ассортимент загружен из БД и сохранён в Redis-кэш")
+        return categories
 
     @classmethod
-    def invalidate_cache(cls):
-        """Сбрасывает кэш."""
-        cls._cache["data"] = None
-        cls._cache["timestamp"] = 0
+    async def invalidate_cache(cls) -> None:
+        """Сбрасывает кэш ассортимента."""
+        await RedisCache.delete(CACHE_KEY_ASSORTMENT)
         logger.debug("Кэш ассортимента инвалидирован")
 
     @classmethod
-    async def load_inventory(cls):
-        """Загружает ассортимент с кэшированием."""
-        import time
-        now = time.time()
-        
-        if cls._cache["data"] and (now - cls._cache["timestamp"]) < cls.CACHE_TTL:
-            return cls._cache["data"]
-        
-        async with cls._cache_lock:
-            if cls._cache["data"] and (now - cls._cache["timestamp"]) < cls.CACHE_TTL:
-                return cls._cache["data"]
-            
-            categories = await ItemRepository.get_all_categories_with_items()
-            cls._cache["data"] = categories
-            cls._cache["timestamp"] = now
-            return categories
-
-    @classmethod
-    async def save_inventory(cls, categories):
-        """
-        Сохраняет ассортимент (заменяет текущий). Ожидает список категорий в формате:
-        [{"header": "Категория:", "items": ["товар1", "товар2"]}, ...]
-        """
+    async def save_inventory(cls, categories: List[Dict]) -> None:
+        """Сохраняет ассортимент в БД и сбрасывает кэш."""
         await ItemRepository.bulk_replace_assortment(categories)
-        cls.invalidate_cache()
+        await cls.invalidate_cache()
         logger.info(f"Ассортимент сохранён: {len(categories)} категорий")
 
     @classmethod
     async def remove_by_serial(cls, serial: str, reason: str = 'manual', conn=None) -> int:
-        """Удаляет товар по серийному номеру с сохранением в deleted_items."""
+        """Удаляет товар по серийному номеру, сбрасывает кэш."""
         item = await ItemRepository.get_item_by_serial(serial, conn=conn)
         if not item:
             return 0
@@ -78,5 +71,5 @@ class AssortmentService:
             removed_count = await ItemRepository.remove_item_by_serial(serial, conn=conn)
 
         if removed_count > 0:
-            cls.invalidate_cache()
+            await cls.invalidate_cache()
         return removed_count
