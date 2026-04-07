@@ -3,7 +3,7 @@
 {% block title %}Редактировать товар{% endblock %}
 {% block content %}
 <h1>Редактировать товар #{{ item.id }}</h1>
-<form method="post">
+<form method="post" id="editForm">
     <div class="mb-3">
         <label for="text" class="form-label">Текст товара</label>
         <input type="text" class="form-control" id="text" name="text" value="{{ item.text }}" required>
@@ -24,7 +24,64 @@
         <input type="checkbox" class="form-check-input" id="is_booked" name="is_booked" {% if item.is_booked %}checked{% endif %}>
         <label class="form-check-label" for="is_booked">Бронь</label>
     </div>
+
+    <!-- Блок дополнительных полей для брони (показывается, если is_booked = true) -->
+    <div id="bookingFields" style="display: {% if item.is_booked %}block{% else %}none{% endif %}; margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+        <h4>Данные бронирования</h4>
+        <div class="mb-3">
+            <label for="booking_price" class="form-label">Стоимость (₽)</label>
+            <input type="number" step="0.01" class="form-control" id="booking_price" name="booking_price" value="{{ item.booking_price or '' }}" oninput="calculateRemainder()">
+        </div>
+        <div class="mb-3">
+            <label for="booking_prepayment" class="form-label">П/О (предоплата, ₽)</label>
+            <input type="number" step="0.01" class="form-control" id="booking_prepayment" name="booking_prepayment" value="{{ item.booking_prepayment or '' }}" oninput="calculateRemainder()">
+        </div>
+        <div class="mb-3">
+            <label for="booking_remainder" class="form-label">Остаток (₽)</label>
+            <input type="text" class="form-control" id="booking_remainder" readonly>
+        </div>
+        <div class="mb-3">
+            <label for="booking_platform" class="form-label">Площадка</label>
+            <input type="text" class="form-control" id="booking_platform" name="booking_platform" value="{{ item.booking_platform or '' }}">
+        </div>
+        <div class="mb-3">
+            <label for="booking_full_name" class="form-label">ФИО</label>
+            <input type="text" class="form-control" id="booking_full_name" name="booking_full_name" value="{{ item.booking_full_name or '' }}">
+        </div>
+        <div class="mb-3">
+            <label for="booking_phone" class="form-label">Номер телефона</label>
+            <input type="text" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone or '' }}">
+        </div>
+    </div>
+
     <button type="submit" class="btn btn-primary">Сохранить</button>
     <a href="/admin/assortment" class="btn btn-secondary">Отмена</a>
 </form>
+
+<script>
+    const bookingFieldsDiv = document.getElementById('bookingFields');
+    const isBookedCheckbox = document.getElementById('is_booked');
+    const priceInput = document.getElementById('booking_price');
+    const prepayInput = document.getElementById('booking_prepayment');
+    const remainderInput = document.getElementById('booking_remainder');
+
+    function calculateRemainder() {
+        const price = parseFloat(priceInput.value) || 0;
+        const prepay = parseFloat(prepayInput.value) || 0;
+        const remainder = price - prepay;
+        remainderInput.value = remainder.toFixed(2);
+    }
+
+    // Показывать/скрывать поля при изменении чекбокса
+    isBookedCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+            bookingFieldsDiv.style.display = 'block';
+        } else {
+            bookingFieldsDiv.style.display = 'none';
+        }
+    });
+
+    // Инициализация остатка при загрузке
+    calculateRemainder();
+</script>
 {% endblock %}
