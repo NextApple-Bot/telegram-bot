@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>{% block title %}Admin Panel{% endblock %}</title>
-    <!-- Google Fonts + Bootstrap + Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -47,7 +46,30 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* ---------- БОКОВОЕ МЕНЮ ---------- */
+        /* ========== КАСТОМНЫЕ СКРОЛЛБАРЫ ========== */
+        /* Для WebKit (Chrome, Safari, Edge) */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--border-light);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--secondary);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+        /* Для Firefox */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: var(--secondary) var(--border-light);
+        }
+
+        /* ========== БОКОВОЕ МЕНЮ ========== */
         .sidebar {
             position: fixed;
             top: 0;
@@ -127,7 +149,7 @@
             color: var(--primary);
         }
 
-        /* ---------- ОСНОВНОЙ КОНТЕНТ ---------- */
+        /* ========== ОСНОВНОЙ КОНТЕНТ ========== */
         .main-content {
             margin-left: var(--sidebar-width);
             transition: margin-left 0.25s ease-in-out;
@@ -138,7 +160,6 @@
             margin-left: var(--sidebar-collapsed-width);
         }
 
-        /* Верхняя панель */
         .top-bar {
             display: flex;
             justify-content: space-between;
@@ -217,67 +238,84 @@
             background-color: rgba(0, 0, 0, 0.02);
         }
 
-        /* Кнопки */
-        .btn {
+        /* Кнопки действий (иконки) – улучшенные */
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 0.4rem 0.8rem;
             border-radius: var(--radius-md);
-            padding: 0.5rem 1rem;
             font-weight: 500;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             transition: all 0.2s;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
         }
-
-        .btn-primary {
+        .btn-action i {
+            font-size: 1rem;
+        }
+        .btn-edit {
             background-color: var(--primary);
-            border-color: var(--primary);
+            color: white;
         }
-
-        .btn-primary:hover {
+        .btn-edit:hover {
             background-color: var(--primary-hover);
-            border-color: var(--primary-hover);
+            color: white;
         }
-
-        .btn-outline-secondary {
-            border-color: var(--border-light);
-            color: var(--text-dark);
+        .btn-delete {
+            background-color: var(--danger);
+            color: white;
         }
-
-        /* Формы */
-        .form-control, .form-select {
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-light);
-            padding: 0.5rem 0.75rem;
-            font-size: 0.875rem;
-        }
-
-        .form-control:focus, .form-select:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-
-        /* Пагинация */
-        .pagination .page-link {
-            border-radius: var(--radius-md);
-            margin: 0 2px;
-            color: var(--text-dark);
-            border: 1px solid var(--border-light);
-        }
-
-        .pagination .page-item.active .page-link {
-            background-color: var(--primary);
-            border-color: var(--primary);
+        .btn-delete:hover {
+            background-color: #dc2626;
             color: white;
         }
 
-        /* Мобильное меню */
-        .mobile-menu-toggle {
+        /* Анимация загрузки Apple (заполнение яблока) */
+        .apple-loader {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            z-index: 9999;
             display: none;
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            margin-right: 1rem;
+            background: rgba(255,255,255,0.9);
+            border-radius: 50%;
+            backdrop-filter: blur(5px);
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-lg);
+        }
+        .apple-loader svg {
+            width: 60px;
+            height: 60px;
+            animation: fillApple 1s ease-in-out infinite;
+        }
+        @keyframes fillApple {
+            0% { transform: scale(0.9); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.5; }
+        }
+        body.loading .apple-loader {
+            display: flex;
         }
 
-        /* ---------- ТЁМНАЯ ТЕМА ---------- */
+        /* Тёмная тема для скроллбаров */
+        body.dark-mode ::-webkit-scrollbar-track {
+            background: #334155;
+        }
+        body.dark-mode ::-webkit-scrollbar-thumb {
+            background: #64748b;
+        }
+        body.dark-mode ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Остальные стили тёмной темы (из предыдущих версий) */
         body.dark-mode {
             --light-bg: #0f172a;
             --card-bg: #1e293b;
@@ -287,23 +325,28 @@
             --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
             --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
         }
-
         body.dark-mode .sidebar .nav-link:hover {
             background-color: #334155;
         }
-
         body.dark-mode .sidebar .nav-link.active {
             background-color: #1e3a8a;
         }
-
         body.dark-mode .table-striped tbody tr:nth-of-type(odd) {
             background-color: rgba(255, 255, 255, 0.02);
         }
-
         body.dark-mode .form-control, body.dark-mode .form-select {
             background-color: #0f172a;
             border-color: #334155;
             color: #e2e8f0;
+        }
+        body.dark-mode .btn-edit {
+            background-color: #3b82f6;
+        }
+        body.dark-mode .btn-delete {
+            background-color: #ef4444;
+        }
+        body.dark-mode .apple-loader {
+            background: rgba(30, 41, 59, 0.9);
         }
 
         /* Адаптивность */
@@ -325,10 +368,15 @@
             .top-bar h2 {
                 font-size: 1.5rem;
             }
+            .btn-action {
+                padding: 0.3rem 0.6rem;
+                font-size: 0.7rem;
+            }
         }
-
-        /* Сворачивание меню двойным кликом (десктоп) */
         @media (min-width: 769px) {
+            .mobile-menu-toggle {
+                display: none;
+            }
             .sidebar-collapsed .nav-link span {
                 display: none;
             }
@@ -337,7 +385,13 @@
             }
         }
 
-        /* Footer */
+        .mobile-menu-toggle {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            margin-right: 1rem;
+        }
+
         .footer {
             margin-top: 3rem;
             text-align: center;
@@ -350,7 +404,7 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <!-- Боковое меню -->
+    <!-- Боковое меню (без изменений) -->
     <div class="sidebar" id="sidebar">
         <div class="logo-area">
             <h4>📊 Bot Admin</h4>
@@ -405,6 +459,18 @@
         </div>
     </div>
 
+    <!-- Apple Loader (анимация заполнения яблока) -->
+    <div class="apple-loader" id="appleLoader">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 90 C25 90 10 70 10 50 C10 30 25 10 50 10 C75 10 90 30 90 50 C90 70 75 90 50 90 Z" fill="none" stroke="var(--primary)" stroke-width="4" stroke-dasharray="200 200" stroke-dashoffset="200" id="applePath">
+                <animate attributeName="stroke-dashoffset" from="200" to="0" dur="1s" repeatCount="indefinite" />
+            </path>
+            <path d="M50 20 L50 80 M30 40 L70 40" stroke="var(--primary)" stroke-width="4" stroke-linecap="round">
+                <animate attributeName="opacity" values="0;1;0" dur="1s" repeatCount="indefinite" />
+            </path>
+        </svg>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Переключение темы
@@ -455,6 +521,36 @@
                 }
             });
         }
+
+        // Глобальная функция показа/скрытия анимации загрузки
+        window.showAppleLoader = function() {
+            document.body.classList.add('loading');
+        };
+        window.hideAppleLoader = function() {
+            document.body.classList.remove('loading');
+        };
+
+        // Автоматический показ при отправке любых форм и при AJAX-запросах
+        document.addEventListener('submit', function(e) {
+            if (e.target.tagName === 'FORM') {
+                window.showAppleLoader();
+            }
+        });
+        // Перехват fetch для автоматического скрытия (простой вариант)
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            window.showAppleLoader();
+            return originalFetch.apply(this, args).finally(() => {
+                window.hideAppleLoader();
+            });
+        };
+        // Для XMLHttpRequest (если используется)
+        const originalXHROpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function() {
+            window.showAppleLoader();
+            this.addEventListener('loadend', () => window.hideAppleLoader());
+            return originalXHROpen.apply(this, arguments);
+        };
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
