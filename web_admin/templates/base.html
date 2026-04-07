@@ -46,30 +46,24 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* ========== КАСТОМНЫЕ СКРОЛЛБАРЫ ========== */
-        /* Для WebKit (Chrome, Safari, Edge) */
+        /* ----- КАСТОМНЫЕ СКРОЛЛБАРЫ (светлая тема) ----- */
         ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
         }
         ::-webkit-scrollbar-track {
-            background: var(--border-light);
+            background: #f1f1f1;
             border-radius: 10px;
         }
         ::-webkit-scrollbar-thumb {
-            background: var(--secondary);
+            background: #c1c1c1;
             border-radius: 10px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: var(--primary);
-        }
-        /* Для Firefox */
-        * {
-            scrollbar-width: thin;
-            scrollbar-color: var(--secondary) var(--border-light);
+            background: #a8a8a8;
         }
 
-        /* ========== БОКОВОЕ МЕНЮ ========== */
+        /* ----- БОКОВОЕ МЕНЮ ----- */
         .sidebar {
             position: fixed;
             top: 0;
@@ -149,7 +143,7 @@
             color: var(--primary);
         }
 
-        /* ========== ОСНОВНОЙ КОНТЕНТ ========== */
+        /* ----- ОСНОВНОЙ КОНТЕНТ ----- */
         .main-content {
             margin-left: var(--sidebar-width);
             transition: margin-left 0.25s ease-in-out;
@@ -238,84 +232,115 @@
             background-color: rgba(0, 0, 0, 0.02);
         }
 
-        /* Кнопки действий (иконки) – улучшенные */
-        .btn-action {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            padding: 0.4rem 0.8rem;
+        /* Кнопки */
+        .btn {
             border-radius: var(--radius-md);
+            padding: 0.5rem 1rem;
             font-weight: 500;
-            font-size: 0.8rem;
+            font-size: 0.875rem;
             transition: all 0.2s;
-            text-decoration: none;
-            border: none;
-            cursor: pointer;
         }
-        .btn-action i {
-            font-size: 1rem;
-        }
-        .btn-edit {
+
+        .btn-primary {
             background-color: var(--primary);
-            color: white;
+            border-color: var(--primary);
         }
-        .btn-edit:hover {
+
+        .btn-primary:hover {
             background-color: var(--primary-hover);
-            color: white;
+            border-color: var(--primary-hover);
         }
-        .btn-delete {
-            background-color: var(--danger);
-            color: white;
+
+        .btn-outline-secondary {
+            border-color: var(--border-light);
+            color: var(--text-dark);
         }
-        .btn-delete:hover {
-            background-color: #dc2626;
+
+        /* Формы */
+        .form-control, .form-select {
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-light);
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Пагинация */
+        .pagination .page-link {
+            border-radius: var(--radius-md);
+            margin: 0 2px;
+            color: var(--text-dark);
+            border: 1px solid var(--border-light);
+        }
+
+        .pagination .page-item.active .page-link {
+            background-color: var(--primary);
+            border-color: var(--primary);
             color: white;
         }
 
-        /* Анимация загрузки Apple (заполнение яблока) */
+        /* ----- АНИМАЦИЯ ЗАГРУЗКИ APPLE (ЗАПОЛНЕНИЕ ЯБЛОКА) ----- */
         .apple-loader {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80px;
-            height: 80px;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
             z-index: 9999;
-            display: none;
-            background: rgba(255,255,255,0.9);
-            border-radius: 50%;
-            backdrop-filter: blur(5px);
+            display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: var(--shadow-lg);
+            transition: opacity 0.3s;
         }
-        .apple-loader svg {
+        .apple-loader.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .apple-svg {
             width: 60px;
             height: 60px;
-            animation: fillApple 1s ease-in-out infinite;
         }
-        @keyframes fillApple {
-            0% { transform: scale(0.9); opacity: 0.5; }
-            50% { transform: scale(1.1); opacity: 1; }
-            100% { transform: scale(0.9); opacity: 0.5; }
+        .apple-outline {
+            stroke: #e0e0e0;
+            stroke-width: 2;
+            fill: none;
         }
-        body.loading .apple-loader {
-            display: flex;
+        .apple-fill {
+            stroke: var(--primary);
+            stroke-width: 2;
+            fill: none;
+            stroke-dasharray: 200;
+            stroke-dashoffset: 200;
+            animation: appleFill 1.5s ease-in-out infinite alternate;
+        }
+        @keyframes appleFill {
+            0% { stroke-dashoffset: 200; }
+            100% { stroke-dashoffset: 0; }
+        }
+        /* Для тёмной темы */
+        body.dark-mode .apple-loader {
+            background: rgba(0, 0, 0, 0.8);
+        }
+        body.dark-mode .apple-outline {
+            stroke: #555;
         }
 
-        /* Тёмная тема для скроллбаров */
-        body.dark-mode ::-webkit-scrollbar-track {
-            background: #334155;
-        }
-        body.dark-mode ::-webkit-scrollbar-thumb {
-            background: #64748b;
-        }
-        body.dark-mode ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
+        /* Мобильное меню */
+        .mobile-menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            margin-right: 1rem;
         }
 
-        /* Остальные стили тёмной темы (из предыдущих версий) */
+        /* ---------- ТЁМНАЯ ТЕМА (скроллбары) ---------- */
         body.dark-mode {
             --light-bg: #0f172a;
             --card-bg: #1e293b;
@@ -325,28 +350,34 @@
             --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
             --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
         }
+
         body.dark-mode .sidebar .nav-link:hover {
             background-color: #334155;
         }
+
         body.dark-mode .sidebar .nav-link.active {
             background-color: #1e3a8a;
         }
+
         body.dark-mode .table-striped tbody tr:nth-of-type(odd) {
             background-color: rgba(255, 255, 255, 0.02);
         }
+
         body.dark-mode .form-control, body.dark-mode .form-select {
             background-color: #0f172a;
             border-color: #334155;
             color: #e2e8f0;
         }
-        body.dark-mode .btn-edit {
-            background-color: #3b82f6;
+
+        /* Кастомные скроллбары для тёмной темы */
+        body.dark-mode ::-webkit-scrollbar-track {
+            background: #2d3748;
         }
-        body.dark-mode .btn-delete {
-            background-color: #ef4444;
+        body.dark-mode ::-webkit-scrollbar-thumb {
+            background: #4a5568;
         }
-        body.dark-mode .apple-loader {
-            background: rgba(30, 41, 59, 0.9);
+        body.dark-mode ::-webkit-scrollbar-thumb:hover {
+            background: #718096;
         }
 
         /* Адаптивность */
@@ -368,28 +399,16 @@
             .top-bar h2 {
                 font-size: 1.5rem;
             }
-            .btn-action {
-                padding: 0.3rem 0.6rem;
-                font-size: 0.7rem;
-            }
         }
+
+        /* Сворачивание меню двойным кликом (десктоп) */
         @media (min-width: 769px) {
-            .mobile-menu-toggle {
-                display: none;
-            }
             .sidebar-collapsed .nav-link span {
                 display: none;
             }
             .sidebar-collapsed .nav-link i {
                 margin: 0 auto;
             }
-        }
-
-        .mobile-menu-toggle {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            margin-right: 1rem;
         }
 
         .footer {
@@ -404,7 +423,16 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <!-- Боковое меню (без изменений) -->
+    <!-- Анимация загрузки Apple (заполнение яблока) -->
+    <div id="appleLoader" class="apple-loader hidden">
+        <svg class="apple-svg" viewBox="0 0 100 100">
+            <path class="apple-outline" d="M50,20 C30,10 10,30 10,50 C10,70 30,90 50,90 C70,90 90,70 90,50 C90,30 70,10 50,20Z" />
+            <path class="apple-fill" d="M50,20 C30,10 10,30 10,50 C10,70 30,90 50,90 C70,90 90,70 90,50 C90,30 70,10 50,20Z" />
+            <path class="apple-outline" d="M50,20 L50,90" />
+        </svg>
+    </div>
+
+    <!-- Боковое меню -->
     <div class="sidebar" id="sidebar">
         <div class="logo-area">
             <h4>📊 Bot Admin</h4>
@@ -459,18 +487,6 @@
         </div>
     </div>
 
-    <!-- Apple Loader (анимация заполнения яблока) -->
-    <div class="apple-loader" id="appleLoader">
-        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <path d="M50 90 C25 90 10 70 10 50 C10 30 25 10 50 10 C75 10 90 30 90 50 C90 70 75 90 50 90 Z" fill="none" stroke="var(--primary)" stroke-width="4" stroke-dasharray="200 200" stroke-dashoffset="200" id="applePath">
-                <animate attributeName="stroke-dashoffset" from="200" to="0" dur="1s" repeatCount="indefinite" />
-            </path>
-            <path d="M50 20 L50 80 M30 40 L70 40" stroke="var(--primary)" stroke-width="4" stroke-linecap="round">
-                <animate attributeName="opacity" values="0;1;0" dur="1s" repeatCount="indefinite" />
-            </path>
-        </svg>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Переключение темы
@@ -522,34 +538,30 @@
             });
         }
 
-        // Глобальная функция показа/скрытия анимации загрузки
-        window.showAppleLoader = function() {
-            document.body.classList.add('loading');
-        };
-        window.hideAppleLoader = function() {
-            document.body.classList.remove('loading');
-        };
-
-        // Автоматический показ при отправке любых форм и при AJAX-запросах
-        document.addEventListener('submit', function(e) {
-            if (e.target.tagName === 'FORM') {
-                window.showAppleLoader();
-            }
+        // Анимация загрузки: показываем при отправке форм и AJAX
+        const loader = document.getElementById('appleLoader');
+        function showLoader() {
+            loader.classList.remove('hidden');
+        }
+        function hideLoader() {
+            loader.classList.add('hidden');
+        }
+        // Перехват всех форм
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', () => showLoader());
         });
-        // Перехват fetch для автоматического скрытия (простой вариант)
+        // Перехват fetch/XHR (для AJAX)
         const originalFetch = window.fetch;
         window.fetch = function(...args) {
-            window.showAppleLoader();
-            return originalFetch.apply(this, args).finally(() => {
-                window.hideAppleLoader();
-            });
+            showLoader();
+            return originalFetch(...args).finally(() => hideLoader());
         };
-        // Для XMLHttpRequest (если используется)
-        const originalXHROpen = XMLHttpRequest.prototype.open;
+        // Также для XMLHttpRequest
+        const xhrOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function() {
-            window.showAppleLoader();
-            this.addEventListener('loadend', () => window.hideAppleLoader());
-            return originalXHROpen.apply(this, arguments);
+            this.addEventListener('loadend', () => hideLoader());
+            showLoader();
+            return xhrOpen.apply(this, arguments);
         };
     </script>
     {% block extra_scripts %}{% endblock %}
