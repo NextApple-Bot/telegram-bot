@@ -21,6 +21,9 @@ ALLOWED_SORT_FIELDS = {
     "client_name": "c.full_name",
 }
 
+payment_types = ["cash", "terminal", "qr", "transfer", "invoice", "installment"]
+purchase_types = ["sale", "preorder", "booking"]
+
 
 @router.get("/", response_class=HTMLResponse)
 async def list_purchases(
@@ -99,9 +102,8 @@ async def list_purchases(
         rows = await conn.fetch(base_query, *params)
         purchases = [dict(row) for row in rows]
 
-    payment_types = ["cash", "terminal", "qr", "transfer", "invoice", "installment"]
-    purchase_types = ["sale", "preorder", "booking"]
-
+    # Передаём параметры в шаблон для сохранения в ссылках
+    query_params = request.query_params
     return templates.TemplateResponse("purchases.html", {
         "request": request,
         "purchases": purchases,
@@ -118,7 +120,76 @@ async def list_purchases(
         "purchase_types": purchase_types,
         "sort_by": sort_by,
         "sort_order": sort_order,
+        "query_params": query_params,
     })
 
 
-# Остальные эндпоинты (export) без изменений, они уже есть в вашем коде.
+@router.get("/export/csv")
+async def export_purchases_csv(
+    request: Request,
+    client_search: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    payment_type: Optional[str] = Query(None),
+    purchase_type: Optional[str] = Query(None),
+):
+    pool = await get_pool()
+    query = """
+        SELECT p.*, c.full_name as client_name, c.phone as client_phone
+        FROM purchases p
+        LEFT JOIN clients c ON p.client_id = c.id
+        WHERE 1=1
+    """
+    params = []
+
+    if client_search:
+        query += " AND (c.full_name ILIKE $" + str(len(params)+1) + " OR c.phone ILIKE $" + str(len(params)+1) + ")"
+        params.append(f"%{client_search}%")
+
+    if date_from:
+        try:
+            start_date = datetime.strptime(date_from, "%Y-%m-%d")
+            query += " AND p.created_at >= $" + str(len(params)+1)
+            params.append(start_date)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            end_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            query += " AND p.created_at < $" + str(len(params)+1)
+            params.append(end_date)
+        except ValueError:
+            pass
+
+    if payment_type and payment_type != "all":
+        query += " AND COALESCE(p.payment_details->>$" + str(len(params)+1) + ", '0') != '0'"
+        params.append(payment_type)
+
+    if purchase_type and purchase_type != "all":
+        query += " AND p.purchase_type = $" + str(len(params)+1)
+        params.append(purchase_type)
+
+    query += " ORDER BY p.created_at DESC"
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['ID покупки', 'Клиент', 'Телефон клиента', 'Дата', 'Сумма', 'Тип', 'Товары (JSON)', 'Детали оплаты (JSON)'])
+    for row in rows:
+        writer.writerow([
+            row['id'],
+            row['client_name'] or '',
+            row['client_phone'] or '',
+            row['created_at'].isoformat() if row['created_at'] else '',
+            float(row['total_amount']) if row['total_amount'] else 0,
+            row['purchase_type'] or '',
+            row['items_json'] or '',
+            row['payment_details'] or ''
+        ])
+
+    response = StreamingResponse(iter([output.getvalue().encode('utf-8-sig')]), media_type="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=purchases_export.csv"
+    return response
