@@ -73,14 +73,17 @@ async def close_pool():
 
 
 async def init_db():
+    """Создаёт все таблицы, индексы и недостающие колонки."""
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Таблица категорий
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE
             )
         ''')
+        # Таблица товаров
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS items (
                 id SERIAL PRIMARY KEY,
@@ -91,6 +94,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица продаж
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS sales (
                 id SERIAL PRIMARY KEY,
@@ -107,6 +111,7 @@ async def init_db():
                 sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица предзаказов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS preorders (
                 id SERIAL PRIMARY KEY,
@@ -119,6 +124,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица броней
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
                 id SERIAL PRIMARY KEY,
@@ -127,6 +133,7 @@ async def init_db():
                 booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица клиентов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS clients (
                 id SERIAL PRIMARY KEY,
@@ -140,6 +147,7 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица покупок
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS purchases (
                 id SERIAL PRIMARY KEY,
@@ -151,6 +159,7 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Таблица удалённых товаров (для Undo и продаж через админку)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS deleted_items (
                 id SERIAL PRIMARY KEY,
@@ -163,6 +172,7 @@ async def init_db():
                 reason TEXT
             )
         ''')
+        # Таблица обработанных сообщений
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS processed_messages (
                 id SERIAL PRIMARY KEY,
@@ -172,6 +182,7 @@ async def init_db():
                 UNIQUE(chat_id, message_id)
             )
         ''')
+        # Таблица ежедневных платежей (финансы)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS daily_payments (
                 id SERIAL PRIMARY KEY,
@@ -183,6 +194,8 @@ async def init_db():
                 CHECK (payment_type IN ('cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'))
             )
         ''')
+        
+        # Индексы
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_categories_lower_name ON categories(LOWER(name))')
@@ -194,45 +207,86 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_items_restored ON deleted_items(restored)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_created_at ON daily_payments(created_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_processed_messages_processed_at ON processed_messages(processed_at)')
-        await conn.execute('ALTER TABLE preorders ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0')
-        await conn.execute('ALTER TABLE preorders ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0')
-        await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0')
-        await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0')
-        await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS message_id BIGINT UNIQUE')
-        await conn.execute('ALTER TABLE purchases ALTER COLUMN payment_details TYPE JSONB USING payment_details::jsonb')
-        # Добавляем колонки продажи, если их нет
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_sales_item_id ON sales(item_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_updated_at ON clients(updated_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_type ON daily_payments(type)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_processed_messages_chat_processed ON processed_messages(chat_id, processed_at)')
+
+        # Добавление новых колонок, если их нет (для совместимости)
+        await conn.execute('''
+            ALTER TABLE preorders 
+            ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0
+        ''')
+        await conn.execute('''
+            ALTER TABLE sales 
+            ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS message_id BIGINT UNIQUE
+        ''')
+        await conn.execute('''
+            ALTER TABLE purchases 
+            ALTER COLUMN payment_details TYPE JSONB USING payment_details::jsonb
+        ''')
+        # Колонки для брони
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_price FLOAT')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_prepayment FLOAT')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_platform VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_full_name VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_phone VARCHAR')
+        # Колонки для продажи через админку
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_price FLOAT')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_prepayment FLOAT')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_payment_type VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_platform VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_full_name VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_phone VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_payment_amount FLOAT')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS is_sold BOOLEAN DEFAULT FALSE')
-    logger.info("✅ Инициализация БД завершена")
+        # Колонка для связи daily_payments с продажей (для точного восстановления)
+        await conn.execute('ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
+
+    logger.info("✅ Инициализация БД завершена (таблицы, индексы и колонки созданы)")
 
 
 async def cleanup_old_records():
+    """Фоновая задача: удаляет старые записи из processed_messages и daily_payments."""
     while True:
-        await asyncio.sleep(86400)
+        await asyncio.sleep(86400)  # раз в сутки
         try:
             pool = await get_pool()
             async with pool.acquire() as conn:
-                res1 = await conn.execute('DELETE FROM processed_messages WHERE processed_at < NOW() - INTERVAL \'30 days\'')
-                res2 = await conn.execute('DELETE FROM daily_payments WHERE created_at < NOW() - INTERVAL \'90 days\'')
-                logger.info(f"Очистка БД: удалено processed_messages={res1.split()[1] if res1.startswith('DELETE') else 0}, daily_payments={res2.split()[1] if res2.startswith('DELETE') else 0}")
+                # Удаляем обработанные сообщения старше 30 дней
+                res1 = await conn.execute('''
+                    DELETE FROM processed_messages 
+                    WHERE processed_at < NOW() - INTERVAL '30 days'
+                ''')
+                # Удаляем платежи старше 90 дней
+                res2 = await conn.execute('''
+                    DELETE FROM daily_payments 
+                    WHERE created_at < NOW() - INTERVAL '90 days'
+                ''')
+                logger.info(f"Очистка БД: удалено processed_messages={res1.split()[1] if res1.startswith('DELETE') else 0}, "
+                            f"daily_payments={res2.split()[1] if res2.startswith('DELETE') else 0}")
         except Exception as e:
             logger.exception(f"Ошибка при фоновой очистке БД: {e}")
 
 
 async def cleanup_sold_periodically():
+    """Фоновая задача: раз в сутки удаляет записи о проданных товарах старше 7 дней."""
     from datetime import datetime, timedelta
     while True:
-        await asyncio.sleep(86400)
+        await asyncio.sleep(86400)  # 24 часа
         try:
             pool = await get_pool()
             cutoff = datetime.now() - timedelta(days=7)
             async with pool.acquire() as conn:
-                result = await conn.execute("DELETE FROM deleted_items WHERE reason = 'sale_from_admin' AND deleted_at < $1", cutoff)
+                result = await conn.execute("""
+                    DELETE FROM deleted_items
+                    WHERE reason = 'sale_from_admin' AND deleted_at < $1
+                """, cutoff)
                 deleted = result.split()[1] if result.startswith('DELETE') else 0
                 logger.info(f"Очистка продаж: удалено {deleted} записей старше 7 дней")
         except Exception as e:
