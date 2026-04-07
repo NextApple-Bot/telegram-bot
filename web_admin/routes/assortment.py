@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import logging
+import re
 
 from bot.services.assortment import AssortmentService
 from bot.repositories import ItemRepository
@@ -33,6 +34,13 @@ def format_number(value: float) -> str:
     return f"{value:,.0f}".replace(",", " ")
 
 
+def remove_serial_from_text(text: str) -> str:
+    """Удаляет серийный номер из текста (в скобках в конце)."""
+    # Удаляем скобки с серийным номером (буквы, цифры, дефисы) в конце строки
+    cleaned = re.sub(r'\s*\([A-Za-z0-9\-]+\)\s*$', '', text)
+    return cleaned if cleaned else text
+
+
 async def send_booking_notification(
     item_text: str,
     serial: str,
@@ -49,23 +57,28 @@ async def send_booking_notification(
         if is_cancel:
             message_text = f"❌ Отмена Брони:\n\n{item_text} ({serial})"
         else:
-            # Рассчитываем остаток
+            # Убираем серийный номер из item_text, чтобы не дублировать
+            clean_item_text = remove_serial_from_text(item_text)
+            if not clean_item_text:
+                clean_item_text = item_text
             remainder = 0
             if price and prepayment:
                 remainder = price - prepayment
-            lines = ["БРОНЬ:\n", f"{item_text} ({serial})"]
+            lines = ["БРОНЬ:\n", f"{clean_item_text} ({serial})"]
             # Пустая строка после модели
             lines.append("")
             if price is not None:
                 lines.append(f"Стоимость – {format_number(price)}")
-            # Пустая строка после стоимости
+            # Две пустые строки после стоимости
+            lines.append("")
             lines.append("")
             if prepayment is not None:
                 lines.append(f"П/О – {format_number(prepayment)}")
             if price is not None and prepayment is not None:
                 lines.append(f"Остаток – {format_number(remainder)}")
                 lines.append(f"Общая – {format_number(price)}")
-            # Пустая строка перед ФИО/телефоном
+            # Две пустые строки после общей суммы
+            lines.append("")
             lines.append("")
             if full_name:
                 lines.append(full_name)
