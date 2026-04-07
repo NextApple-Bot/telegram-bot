@@ -4,7 +4,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import logging
-import re
 
 from bot.services.assortment import AssortmentService
 from bot.repositories import ItemRepository
@@ -34,16 +33,9 @@ def format_number(value: float) -> str:
     return f"{value:,.0f}".replace(",", " ")
 
 
-def remove_serial_from_text(text: str) -> str:
-    """Удаляет серийный номер из текста (в скобках в конце)."""
-    # Удаляем скобки с серийным номером (буквы, цифры, дефисы) в конце строки
-    cleaned = re.sub(r'\s*\([A-Za-z0-9\-]+\)\s*$', '', text)
-    return cleaned if cleaned else text
-
-
 async def send_booking_notification(
     item_text: str,
-    serial: str,
+    serial: str,  # не используется в тексте, оставлен для совместимости
     price: float = None,
     prepayment: float = None,
     platform: str = None,
@@ -51,20 +43,18 @@ async def send_booking_notification(
     phone: str = None,
     is_cancel: bool = False
 ):
-    """Отправляет уведомление о брони (или отмене) в топик «Предзаказы»."""
+    """Отправляет уведомление о брони (или отмене) в топик «Предзаказы».
+    Используется исходный item_text без добавления лишнего серийного номера.
+    """
     try:
         bot = Bot(token=config.TOKEN)
         if is_cancel:
-            message_text = f"❌ Отмена Брони:\n\n{item_text} ({serial})"
+            message_text = f"❌ Отмена Брони:\n\n{item_text}"
         else:
-            # Убираем серийный номер из item_text, чтобы не дублировать
-            clean_item_text = remove_serial_from_text(item_text)
-            if not clean_item_text:
-                clean_item_text = item_text
             remainder = 0
             if price and prepayment:
                 remainder = price - prepayment
-            lines = ["БРОНЬ:\n", f"{clean_item_text} ({serial})"]
+            lines = ["БРОНЬ:\n", item_text]
             # Пустая строка после модели
             lines.append("")
             if price is not None:
@@ -77,7 +67,7 @@ async def send_booking_notification(
             if price is not None and prepayment is not None:
                 lines.append(f"Остаток – {format_number(remainder)}")
                 lines.append(f"Общая – {format_number(price)}")
-            # Две пустые строки после общей суммы
+            # Две пустые строки после блока сумм
             lines.append("")
             lines.append("")
             if full_name:
@@ -95,7 +85,7 @@ async def send_booking_notification(
             message_thread_id=config.THREAD_PREORDER
         )
         await bot.session.close()
-        logger.info(f"✅ Уведомление о брони отправлено: {item_text} ({serial})")
+        logger.info(f"✅ Уведомление о брони отправлено: {item_text}")
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке уведомления о брони: {e}")
 
