@@ -93,25 +93,39 @@ async def send_sale_notification(
     full_name: str = None,
     phone: str = None,
 ):
-    """Уведомление о продаже в топик «Продажи» (без слова БРОНЬ)."""
+    """
+    Уведомление о продаже в топик «Продажи» согласно требуемому формату:
+    - Всегда выводится Стоимость
+    - Если П/О > 0, выводится строка П/О
+    - Затем строка: <Способ оплаты> – (Стоимость - П/О)
+    - Затем строка: Общая – Стоимость
+    - Затем ФИО, телефон, площадка (если есть)
+    """
     try:
         bot = Bot(token=config.TOKEN)
         payment_type_ru = {
             'cash': 'Наличными', 'terminal': 'Терминал', 'qr': 'QR-код',
             'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
         }.get(payment_type, payment_type)
-        remainder = 0
-        if price and prepayment:
-            remainder = price - prepayment
+        
+        # Рассчитываем сумму оплаты (стоимость минус предоплата)
+        paid_amount = price
+        if prepayment and prepayment > 0:
+            paid_amount = price - prepayment
+        
         lines = [item_text]
-        if price is not None:
-            lines.append(f"Стоимость - {format_number(price)}")
+        # Стоимость
+        lines.append(f"Стоимость – {format_number(price)}")
+        # Пустая строка после стоимости
         lines.append("")
-        lines.append("")
-        if prepayment is not None and prepayment > 0:
-            lines.append(f"П/О - {format_number(prepayment)}")
-        lines.append(f"{payment_type_ru} - {format_number(price)}")
-        lines.append(f"Общая - {format_number(price)}")
+        # П/О, если есть и больше 0
+        if prepayment and prepayment > 0:
+            lines.append(f"П/О – {format_number(prepayment)}")
+        # Способ оплаты – сумма к оплате
+        lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
+        # Общая сумма
+        lines.append(f"Общая – {format_number(price)}")
+        # Пустые строки после блока сумм
         lines.append("")
         lines.append("")
         if full_name:
@@ -120,7 +134,8 @@ async def send_sale_notification(
             lines.append(phone)
         lines.append("")
         if platform:
-            lines.append(f"Площадка - {platform}")
+            lines.append(f"Площадка – {platform}")
+        
         message_text = "\n".join(lines)
         await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
@@ -312,7 +327,6 @@ async def edit_item_submit(
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Получаем старые данные
         old = await conn.fetchrow("SELECT is_sold, text, serial, category_id FROM items WHERE id = $1", item_id)
         if not old:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -321,13 +335,10 @@ async def edit_item_submit(
         old_serial = old["serial"] or ""
         old_category_id = old["category_id"]
 
-        # Если продажа уже была обработана ранее – не даём повторно
         if old_is_sold:
             raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
-        # Если установлена галочка "Продажа"
         if is_sold:
-            # Валидация
             if not sale_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость продажи")
             if not sale_payment_type:
@@ -342,7 +353,6 @@ async def edit_item_submit(
                 full_name=sale_full_name,
                 phone=sale_phone
             )
-            # Удаляем товар и сохраняем статистику
             await delete_item_and_log_sale(
                 item_id=item_id,
                 text=old_text,
@@ -368,7 +378,6 @@ async def edit_item_submit(
            booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone, item_id)
 
-        # Отправляем уведомление о брони (если статус изменился)
         old_is_booked = await conn.fetchval("SELECT is_booked FROM items WHERE id = $1", item_id)
         if not old_is_booked and is_booked:
             await send_booking_notification(
