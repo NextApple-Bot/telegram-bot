@@ -26,6 +26,13 @@ ALLOWED_SORT_FIELDS = {
 }
 
 
+def format_number(value: float) -> str:
+    """Форматирует число с пробелом как разделитель тысяч."""
+    if value is None:
+        return ""
+    return f"{value:,.0f}".replace(",", " ")
+
+
 async def send_booking_notification(
     item_text: str,
     serial: str,
@@ -46,18 +53,26 @@ async def send_booking_notification(
             remainder = 0
             if price and prepayment:
                 remainder = price - prepayment
-            lines = [f"БРОНЬ:\n\n{item_text} ({serial})"]
+            lines = ["БРОНЬ:\n", f"{item_text} ({serial})"]
+            # Пустая строка после модели
+            lines.append("")
             if price is not None:
-                lines.append(f"Стоимость – {price:,.0f} ₽")
+                lines.append(f"Стоимость – {format_number(price)}")
+            # Пустая строка после стоимости
+            lines.append("")
             if prepayment is not None:
-                lines.append(f"П/О – {prepayment:,.0f} ₽")
+                lines.append(f"П/О – {format_number(prepayment)}")
             if price is not None and prepayment is not None:
-                lines.append(f"Остаток – {remainder:,.0f} ₽")
-                lines.append(f"Общая – {price:,.0f} ₽")
+                lines.append(f"Остаток – {format_number(remainder)}")
+                lines.append(f"Общая – {format_number(price)}")
+            # Пустая строка перед ФИО/телефоном
+            lines.append("")
             if full_name:
-                lines.append(f"\nФИО – {full_name}")
+                lines.append(full_name)
             if phone:
-                lines.append(f"Номер телефона – {phone}")
+                lines.append(phone)
+            # Пустая строка перед площадкой
+            lines.append("")
             if platform:
                 lines.append(f"Площадка – {platform}")
             message_text = "\n".join(lines)
@@ -199,13 +214,11 @@ async def edit_item_submit(
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Получаем текущее состояние брони
         old = await conn.fetchrow("SELECT is_booked, text, serial FROM items WHERE id = $1", item_id)
         old_is_booked = old["is_booked"] if old else False
         old_text = old["text"] if old else ""
         old_serial = old["serial"] if old else ""
 
-        # Обновляем товар
         await conn.execute("""
             UPDATE items
             SET text = $1, serial = $2, category_id = $3, is_booked = $4,
@@ -216,9 +229,7 @@ async def edit_item_submit(
            booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone, item_id)
 
-        # Отправляем уведомления при изменении статуса брони
         if not old_is_booked and is_booked:
-            # Бронь установлена
             await send_booking_notification(
                 item_text=text,
                 serial=serial.strip().upper() if serial else "без серийного номера",
@@ -230,16 +241,11 @@ async def edit_item_submit(
                 is_cancel=False
             )
         elif old_is_booked and not is_booked:
-            # Бронь снята
             await send_booking_notification(
                 item_text=old_text,
                 serial=old_serial.strip().upper() if old_serial else "без серийного номера",
                 is_cancel=True
             )
-        elif is_booked and (old_text != text or old_serial != serial):
-            # Если товар уже в брони, но изменился текст или серийник – уведомляем об изменении (опционально)
-            # Можно отправить уведомление, но по умолчанию не будем.
-            pass
 
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
