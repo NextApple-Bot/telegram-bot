@@ -6,7 +6,7 @@
 
 <div class="row mb-3">
     <div class="col">
-        <a href="/admin/purchases/export/csv?{{ request.query_params.urlencode() }}" class="btn btn-success">📥 Экспорт в CSV</a>
+        <a href="/admin/purchases/export/csv?{{ request.query_params | urlencode }}" class="btn btn-success">📥 Экспорт в CSV</a>
     </div>
 </div>
 
@@ -69,9 +69,6 @@
             <td>{{ purchase.purchase_type }}</td>
             <td>{{ purchase.payment_details if purchase.payment_details else '—' }}</td>
             <td>
-                <a href="/admin/purchases/{{ purchase.id }}/edit" class="btn btn-sm btn-primary" title="Редактировать (пока недоступно)">
-                    <i class="bi bi-pencil-square"></i>
-                </a>
                 <form action="/admin/purchases/delete/{{ purchase.id }}" method="post" style="display:inline;" onsubmit="return confirm('Удалить покупку?');">
                     <button type="submit" class="btn btn-sm btn-danger" title="Удалить">
                         <i class="bi bi-trash3"></i>
