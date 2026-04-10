@@ -22,7 +22,7 @@ async def list_sold(
     offset = (page - 1) * per_page
 
     query = """
-        SELECT id, item_id, text, serial, category_id, deleted_at
+        SELECT id, item_id, text, serial, category_id, deleted_at, sale_message_id
         FROM deleted_items
         WHERE reason = 'sale_from_admin' AND restored = FALSE
         ORDER BY deleted_at DESC
@@ -55,7 +55,7 @@ async def restore_sold(deleted_id: int, request: Request):
     async with pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow("""
-                SELECT item_id, text, serial, category_id
+                SELECT item_id, text, serial, category_id, sale_message_id
                 FROM deleted_items
                 WHERE id = $1 AND reason = 'sale_from_admin' AND restored = FALSE
             """, deleted_id)
@@ -63,21 +63,18 @@ async def restore_sold(deleted_id: int, request: Request):
                 raise HTTPException(status_code=404, detail="Запись не найдена или уже восстановлена")
 
             item_id = row["item_id"]
+            sale_message_id = row["sale_message_id"]
 
-            sale = await conn.fetchrow("""
-                SELECT message_id FROM sales
-                WHERE item_id = $1 AND message_id < 0
-                ORDER BY message_id DESC
-                LIMIT 1
-            """, item_id)
-            if sale:
-                sale_message_id = sale["message_id"]
+            if sale_message_id:
+                # Удаляем запись из sales
                 await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
+                # Удаляем финансовую запись из daily_payments
                 await conn.execute("DELETE FROM daily_payments WHERE sale_message_id = $1", sale_message_id)
-                logger.info(f"Удалены продажа и финансы для message_id={sale_message_id}")
+                logger.info(f"Удалены продажа и финансы для sale_message_id={sale_message_id}")
             else:
-                logger.warning(f"Не найдена запись продажи для item_id={item_id}")
+                logger.warning(f"Не найден sale_message_id для записи deleted_id={deleted_id}, статистика не удалена")
 
+            # Восстанавливаем товар
             await conn.execute("""
                 INSERT INTO items (text, serial, category_id, is_booked)
                 VALUES ($1, $2, $3, FALSE)
