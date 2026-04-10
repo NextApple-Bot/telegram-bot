@@ -1,4 +1,4 @@
-# Файл: main.py (добавлена строка await init_db())
+# Файл: main.py
 import sys
 import logging
 import os
@@ -11,6 +11,7 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 from dotenv import load_dotenv
+import aiohttp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,18 +67,57 @@ except Exception as e:
     logger.error(traceback.format_exc())
 
 
+async def check_and_set_webhook():
+    """Проверяет текущий вебхук через Telegram API и переустанавливает, если нужно."""
+    if not bot or not config or not config.RENDER_URL:
+        logger.warning("❌ Нельзя проверить вебхук: бот или RENDER_URL не заданы")
+        return
+
+    expected_url = f"{config.RENDER_URL}/webhook"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"https://api.telegram.org/bot{config.TOKEN}/getWebhookInfo") as resp:
+                data = await resp.json()
+                if not data.get("ok"):
+                    logger.error(f"Ошибка получения информации о вебхуке: {data}")
+                    return
+                current_url = data["result"].get("url", "")
+                if current_url != expected_url:
+                    logger.warning(f"Вебхук не соответствует: ожидается {expected_url}, сейчас {current_url}. Переустанавливаем...")
+                    await bot.delete_webhook(drop_pending_updates=True)
+                    await bot.set_webhook(
+                        url=expected_url,
+                        allowed_updates=dp.resolve_used_update_types()
+                    )
+                    logger.info(f"✅ Вебхук переустановлен на {expected_url}")
+                else:
+                    logger.debug(f"Вебхук корректен: {expected_url}")
+    except Exception as e:
+        logger.error(f"Ошибка при проверке вебхука: {e}")
+
+
+async def webhook_healthcheck():
+    """Фоновая задача: проверяет вебхук каждые 5 минут."""
+    while True:
+        await asyncio.sleep(300)  # 5 минут
+        await check_and_set_webhook()
+
+
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
     try:
         await get_pool()
         logger.info("✅ Пул соединений БД инициализирован")
-        await init_db()  # <-- ДОБАВЛЕНО: создание таблиц и колонок, если их нет
+        await init_db()
         logger.info("✅ Инициализация БД (таблицы, колонки) выполнена")
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации пула БД: {e}")
 
     asyncio.create_task(cleanup_sold_periodically())
     logger.info("✅ Фоновая задача очистки продаж запущена")
+
+    asyncio.create_task(webhook_healthcheck())
+    logger.info("✅ Фоновая задача проверки вебхука запущена (каждые 5 минут)")
 
     if bot and dp:
         logger.info("✅ Бот и диспетчер готовы")
