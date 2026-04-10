@@ -64,6 +64,7 @@ async def send_booking_notification(
             if price and prepayment:
                 remainder = price - prepayment
             lines = ["БРОНЬ:\n", item_text]
+            lines.append("")
             if price is not None:
                 lines.append(f"Стоимость – {format_number(price)}")
             lines.append("")
@@ -322,11 +323,10 @@ async def edit_item_submit(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        old = await conn.fetchrow("SELECT is_sold, is_booked, text, serial, category_id FROM items WHERE id = $1", item_id)
+        old = await conn.fetchrow("SELECT is_sold, text, serial, category_id FROM items WHERE id = $1", item_id)
         if not old:
             raise HTTPException(status_code=404, detail="Item not found")
         old_is_sold = old["is_sold"]
-        old_is_booked = old["is_booked"]
         old_text = old["text"]
         old_serial = old["serial"] or ""
         old_category_id = old["category_id"]
@@ -334,7 +334,7 @@ async def edit_item_submit(
         if old_is_sold:
             raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
-        # Если отмечена продажа – обрабатываем продажу
+        # Обработка ПРОДАЖИ
         if is_sold:
             if not sale_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость продажи")
@@ -370,22 +370,26 @@ async def edit_item_submit(
             AssortmentService.invalidate_cache()
             return RedirectResponse(url="/admin/assortment", status_code=303)
 
-        # Иначе – обновляем поля брони или обычные поля
-        await conn.execute("""
-            UPDATE items
-            SET text = $1, serial = $2, category_id = $3, is_booked = $4,
-                booking_price = $5, booking_prepayment = $6, booking_platform = $7,
-                booking_full_name = $8, booking_phone = $9,
-                sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
-                sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
-                sale_payment_amount = NULL, is_sold = FALSE
-            WHERE id = $10
-        """, text, serial.strip().upper() if serial else None, category_id, is_booked,
-           booking_price, booking_prepayment, booking_platform,
-           booking_full_name, booking_phone, item_id)
-
-        # Отправляем уведомление о брони, если статус изменился
-        if not old_is_booked and is_booked:
+        # Обработка БРОНИ
+        if is_booked:
+            # Проверяем, что заполнены обязательные поля брони
+            if not booking_price:
+                raise HTTPException(status_code=400, detail="Укажите стоимость брони")
+            # Сохраняем данные брони
+            await conn.execute("""
+                UPDATE items
+                SET text = $1, serial = $2, category_id = $3, is_booked = $4,
+                    booking_price = $5, booking_prepayment = $6, booking_platform = $7,
+                    booking_full_name = $8, booking_phone = $9,
+                    sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
+                    sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
+                    sale_payment_amount = NULL, is_sold = FALSE
+                WHERE id = $10
+            """, text, serial.strip().upper() if serial else None, category_id, is_booked,
+               booking_price, booking_prepayment, booking_platform,
+               booking_full_name, booking_phone, item_id)
+            
+            # Отправляем уведомление о брони
             await send_booking_notification(
                 item_text=text,
                 serial=serial.strip().upper() if serial else "без серийного номера",
@@ -396,14 +400,28 @@ async def edit_item_submit(
                 phone=booking_phone,
                 is_cancel=False
             )
-            logger.info(f"Уведомление о брони отправлено для товара {item_id}")
-        elif old_is_booked and not is_booked:
-            await send_booking_notification(
-                item_text=old_text,
-                serial=old_serial,
-                is_cancel=True
-            )
-            logger.info(f"Уведомление об отмене брони отправлено для товара {item_id}")
+            logger.info(f"Бронь товара {item_id} успешно сохранена")
+        else:
+            # Если бронь снята (галочка убрана) – обновляем обычные поля
+            old_is_booked_val = await conn.fetchval("SELECT is_booked FROM items WHERE id = $1", item_id)
+            await conn.execute("""
+                UPDATE items
+                SET text = $1, serial = $2, category_id = $3, is_booked = $4,
+                    booking_price = NULL, booking_prepayment = NULL, booking_platform = NULL,
+                    booking_full_name = NULL, booking_phone = NULL,
+                    sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
+                    sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
+                    sale_payment_amount = NULL, is_sold = FALSE
+                WHERE id = $5
+            """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
+            
+            # Если бронь была, а теперь снята – отправляем уведомление об отмене
+            if old_is_booked_val and not is_booked:
+                await send_booking_notification(
+                    item_text=old_text,
+                    serial=old_serial,
+                    is_cancel=True
+                )
 
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
