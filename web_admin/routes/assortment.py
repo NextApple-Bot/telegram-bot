@@ -154,11 +154,14 @@ async def delete_item_and_log_sale(
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # Сохраняем в deleted_items с sale_message_id
             await conn.execute("""
-                INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
-                VALUES ($1, $2, $3, $4, 'sale_from_admin')
-            """, item_id, text, serial, category_id)
+                INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
+                VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
+            """, item_id, text, serial, category_id, message_id)
+            # Удаляем товар
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
+            # Добавляем статистику продажи
             await StatsRepository.add_sale(
                 count=1,
                 cash=payment_type == 'cash' and payment_amount or 0,
@@ -171,6 +174,7 @@ async def delete_item_and_log_sale(
                 message_id=message_id,
                 conn=conn
             )
+            # Добавляем финансовую запись
             await conn.execute("""
                 INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
                 VALUES ('sale', $1, $2, $3)
@@ -368,6 +372,7 @@ async def edit_item_submit(
             AssortmentService.invalidate_cache()
             return RedirectResponse(url="/admin/assortment", status_code=303)
 
+        # Иначе – обновляем обычные поля или бронь (бронь и продажа не могут быть вместе)
         await conn.execute("""
             UPDATE items
             SET text = $1, serial = $2, category_id = $3, is_booked = $4,
