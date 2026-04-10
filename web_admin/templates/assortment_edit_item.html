@@ -3,7 +3,7 @@
 {% block title %}Редактировать товар{% endblock %}
 {% block content %}
 <h1>Редактировать товар #{{ item.id }}</h1>
-<form method="post" id="editForm" onsubmit="return validateAndClean()">
+<form method="post" id="editForm" action="/admin/assortment/edit/{{ item.id }}">
     <div class="mb-3">
         <label for="text" class="form-label">Текст товара</label>
         <input type="text" class="form-control" id="text" name="text" value="{{ item.text }}" required>
@@ -135,53 +135,5 @@
             bookingDiv.style.display = 'none';
         }
     });
-
-    function cleanNumber(value) {
-        if (!value) return '';
-        return value.replace(/[^\d.-]/g, '');
-    }
-
-    function validateAndClean() {
-        // Очищаем числовые поля
-        const numberFields = ['sale_price', 'sale_prepayment', 'sale_payment_amount', 
-                              'booking_price', 'booking_prepayment'];
-        for (let fieldId of numberFields) {
-            const field = document.getElementById(fieldId);
-            if (field && field.value) {
-                field.value = cleanNumber(field.value);
-            }
-        }
-
-        // Валидация телефонов
-        const phoneFields = ['booking_phone', 'sale_phone'];
-        for (let fieldId of phoneFields) {
-            const field = document.getElementById(fieldId);
-            if (field && field.value && field.value.trim() !== '') {
-                const phoneRegex = /^\+7\d{10}$/;
-                if (!phoneRegex.test(field.value)) {
-                    alert('Номер телефона должен быть в формате +7XXXXXXXXXX (ровно 12 символов)');
-                    field.focus();
-                    return false;
-                }
-            }
-        }
-
-        // Проверка обязательных полей продажи
-        if (isSoldCheckbox.checked) {
-            const priceField = document.getElementById('sale_price');
-            const amountField = document.getElementById('sale_payment_amount');
-            if (!priceField.value || parseFloat(priceField.value) <= 0) {
-                alert('Укажите стоимость продажи');
-                priceField.focus();
-                return false;
-            }
-            if (!amountField.value || parseFloat(amountField.value) <= 0) {
-                alert('Укажите сумму оплаты');
-                amountField.focus();
-                return false;
-            }
-        }
-        return true;
-    }
 </script>
 {% endblock %}
