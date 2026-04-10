@@ -21,7 +21,7 @@
         </select>
     </div>
 
-    <!-- БЛОК БРОНИ (без изменений) -->
+    <!-- Блок брони -->
     <div class="form-check mb-3">
         <input type="checkbox" class="form-check-input" id="is_booked" name="is_booked" {% if item.is_booked %}checked{% endif %}>
         <label class="form-check-label" for="is_booked">Бронь</label>
@@ -55,7 +55,7 @@
         </div>
     </div>
 
-    <!-- БЛОК ПРОДАЖИ (исправлены поля) -->
+    <!-- Блок продажи -->
     <hr class="mt-4">
     <div class="form-check mb-3">
         <input type="checkbox" class="form-check-input" id="is_sold" name="is_sold" {% if item.is_sold %}checked{% endif %}>
@@ -136,11 +136,9 @@
         }
     });
 
-    // Очистка чисел от пробелов и нецифровых символов
     function cleanNumber(value) {
         if (!value) return '';
-        let cleaned = value.replace(/[^\d.-]/g, '');
-        return cleaned;
+        return value.replace(/[^\d.-]/g, '');
     }
 
     function validateAndClean() {
@@ -161,7 +159,7 @@
             if (field && field.value && field.value.trim() !== '') {
                 const phoneRegex = /^\+7\d{10}$/;
                 if (!phoneRegex.test(field.value)) {
-                    alert('Номер телефона должен быть в формате +7XXXXXXXXXX (ровно 12 символов, только цифры после +7)');
+                    alert('Номер телефона должен быть в формате +7XXXXXXXXXX (ровно 12 символов)');
                     field.focus();
                     return false;
                 }
@@ -183,7 +181,6 @@
                 return false;
             }
         }
-
         return true;
     }
 </script>
