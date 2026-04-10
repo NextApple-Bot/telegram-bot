@@ -211,8 +211,8 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_updated_at ON clients(updated_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_type ON daily_payments(type)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_is_booked ON items(is_booked)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_processed_messages_chat_processed ON processed_messages(chat_id, processed_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_category_booked_created ON items(category_id, is_booked, created_at)')
 
         # Добавление новых колонок, если их нет (для совместимости)
         await conn.execute('''
@@ -254,22 +254,13 @@ async def init_db():
 async def cleanup_old_records():
     """Фоновая задача: удаляет старые записи из processed_messages и daily_payments."""
     while True:
-        await asyncio.sleep(86400)  # раз в сутки
+        await asyncio.sleep(86400)
         try:
             pool = await get_pool()
             async with pool.acquire() as conn:
-                # Удаляем обработанные сообщения старше 30 дней
-                res1 = await conn.execute('''
-                    DELETE FROM processed_messages 
-                    WHERE processed_at < NOW() - INTERVAL '30 days'
-                ''')
-                # Удаляем платежи старше 90 дней
-                res2 = await conn.execute('''
-                    DELETE FROM daily_payments 
-                    WHERE created_at < NOW() - INTERVAL '90 days'
-                ''')
-                logger.info(f"Очистка БД: удалено processed_messages={res1.split()[1] if res1.startswith('DELETE') else 0}, "
-                            f"daily_payments={res2.split()[1] if res2.startswith('DELETE') else 0}")
+                res1 = await conn.execute('DELETE FROM processed_messages WHERE processed_at < NOW() - INTERVAL \'30 days\'')
+                res2 = await conn.execute('DELETE FROM daily_payments WHERE created_at < NOW() - INTERVAL \'90 days\'')
+                logger.info(f"Очистка БД: удалено processed_messages={res1.split()[1] if res1.startswith('DELETE') else 0}, daily_payments={res2.split()[1] if res2.startswith('DELETE') else 0}")
         except Exception as e:
             logger.exception(f"Ошибка при фоновой очистке БД: {e}")
 
@@ -278,15 +269,12 @@ async def cleanup_sold_periodically():
     """Фоновая задача: раз в сутки удаляет записи о проданных товарах старше 7 дней."""
     from datetime import datetime, timedelta
     while True:
-        await asyncio.sleep(86400)  # 24 часа
+        await asyncio.sleep(86400)
         try:
             pool = await get_pool()
             cutoff = datetime.now() - timedelta(days=7)
             async with pool.acquire() as conn:
-                result = await conn.execute("""
-                    DELETE FROM deleted_items
-                    WHERE reason = 'sale_from_admin' AND deleted_at < $1
-                """, cutoff)
+                result = await conn.execute("DELETE FROM deleted_items WHERE reason = 'sale_from_admin' AND deleted_at < $1", cutoff)
                 deleted = result.split()[1] if result.startswith('DELETE') else 0
                 logger.info(f"Очистка продаж: удалено {deleted} записей старше 7 дней")
         except Exception as e:
