@@ -2,6 +2,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.gzip import GZipMiddleware
 import logging
 import json
 
@@ -12,6 +13,10 @@ from .routes import dashboard, clients, purchases, assortment, stats, auth, sold
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Telegram Bot Admin Panel")
+
+# Добавляем сжатие GZip для ответов размером более 500 байт
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 templates = Jinja2Templates(directory="web_admin/templates")
 
 def safe_fromjson(value):
