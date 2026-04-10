@@ -64,7 +64,6 @@ async def restore_sold(deleted_id: int, request: Request):
 
             item_id = row["item_id"]
 
-            # Находим запись о продаже по item_id и отрицательному message_id
             sale = await conn.fetchrow("""
                 SELECT message_id FROM sales
                 WHERE item_id = $1 AND message_id < 0
@@ -79,7 +78,6 @@ async def restore_sold(deleted_id: int, request: Request):
             else:
                 logger.warning(f"Не найдена запись продажи для item_id={item_id}")
 
-            # Восстанавливаем товар
             await conn.execute("""
                 INSERT INTO items (text, serial, category_id, is_booked)
                 VALUES ($1, $2, $3, FALSE)
