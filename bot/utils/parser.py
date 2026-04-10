@@ -25,7 +25,7 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     patterns = {
         'cash': [r'Наличными', r'Наличные', r'наличными'],
         'terminal': [r'Терминал'],
-        'qr': [r'QR[- ]?код', r'QRCode', r'QrCode', r'QR\s*код', r'Qrкод', r'QRCODE', r'Qrcode', r'Qrcod', r'Qr-код', r'Qr-Код'],
+        'qr': [r'QR[- ]?код', r'QRCode', r'QrCode', r'QR\s*код', r'Qrкод', r'QRCODE', r'Qrcode', r'Qrcod', r'Qr-код', r'Qr-Код', r'Qr-code', r'QR-code'],
         'transfer': [r'Перевод'],
         'invoice': [r'Оплата по счету', r'Оплата По Счету', r'по счету'],
         'installment': [r'Рассрочка'],
@@ -114,8 +114,72 @@ def extract_prepayments(text: str) -> Dict[str, float]:
             lines.append(line)
     if not lines:
         return {key: 0.0 for key in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
+    
     prepay_text = '\n'.join(lines)
-    return extract_payment_amounts(prepay_text, ignore_prepay=False)
+    
+    # Сначала пробуем стандартную обработку
+    payments = extract_payment_amounts(prepay_text, ignore_prepay=False)
+    
+    # Если стандартная обработка не дала результатов, пытаемся явно извлечь тип из скобок
+    if all(v == 0 for v in payments.values()):
+        for line in lines:
+            # Ищем число в строке
+            match_num = re.search(r'(\d[\d\s]*(?:[.,]\d+)?)', line)
+            if not match_num:
+                continue
+            num_str = match_num.group(1).replace(' ', '').replace(',', '.')
+            try:
+                amount = float(num_str)
+            except ValueError:
+                continue
+            
+            # Ищем скобки с указанием типа оплаты
+            match_bracket = re.search(r'\(([^)]+)\)', line)
+            if match_bracket:
+                bracket_content = match_bracket.group(1).strip().lower()
+                # Сопоставляем содержимое скобок с типами оплаты
+                if re.search(r'нал|cash', bracket_content):
+                    payments['cash'] += amount
+                    logger.info(f"➕ prepay cash += {amount} (из скобок: {bracket_content})")
+                elif re.search(r'терминал|terminal', bracket_content):
+                    payments['terminal'] += amount
+                    logger.info(f"➕ prepay terminal += {amount} (из скобок: {bracket_content})")
+                elif re.search(r'qr|qrcode|qr-?code', bracket_content):
+                    payments['qr'] += amount
+                    logger.info(f"➕ prepay qr += {amount} (из скобок: {bracket_content})")
+                elif re.search(r'перевод|transfer', bracket_content):
+                    payments['transfer'] += amount
+                    logger.info(f"➕ prepay transfer += {amount} (из скобок: {bracket_content})")
+                elif re.search(r'счет|invoice', bracket_content):
+                    payments['invoice'] += amount
+                    logger.info(f"➕ prepay invoice += {amount} (из скобок: {bracket_content})")
+                elif re.search(r'рассрочка|installment', bracket_content):
+                    payments['installment'] += amount
+                    logger.info(f"➕ prepay installment += {amount} (из скобок: {bracket_content})")
+                else:
+                    # Если тип не распознан, пробуем по ключевым словам в самой строке
+                    found = False
+                    for pay_type, keywords in {'cash': ['нал'], 'terminal': ['терминал'], 'qr': ['qr'], 'transfer': ['перевод'], 'invoice': ['счет'], 'installment': ['рассрочка']}.items():
+                        for kw in keywords:
+                            if re.search(kw, line, re.IGNORECASE):
+                                payments[pay_type] += amount
+                                logger.info(f"➕ prepay {pay_type} += {amount} (из строки: {line[:50]})")
+                                found = True
+                                break
+                        if found:
+                            break
+            else:
+                # Нет скобок – пробуем по ключевым словам в строке
+                for pay_type, keywords in {'cash': ['нал'], 'terminal': ['терминал'], 'qr': ['qr'], 'transfer': ['перевод'], 'invoice': ['счет'], 'installment': ['рассрочка']}.items():
+                    for kw in keywords:
+                        if re.search(kw, line, re.IGNORECASE):
+                            payments[pay_type] += amount
+                            logger.info(f"➕ prepay {pay_type} += {amount} (из строки: {line[:50]})")
+                            break
+                    else:
+                        continue
+                    break
+    return payments
 
 def parse_client_data(text: str) -> dict:
     """
