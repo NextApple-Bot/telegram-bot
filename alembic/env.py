@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения
 load_dotenv()
 
-# Импортируем модели из правильного места
-from bot.models import Base
+# Импортируем Base из пакета bot (теперь доступен через bot.Base)
+from bot import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
