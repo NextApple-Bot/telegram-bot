@@ -154,14 +154,11 @@ async def delete_item_and_log_sale(
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Сохраняем в deleted_items с sale_message_id
             await conn.execute("""
                 INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
                 VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
             """, item_id, text, serial, category_id, message_id)
-            # Удаляем товар
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
-            # Добавляем статистику продажи
             await StatsRepository.add_sale(
                 count=1,
                 cash=payment_type == 'cash' and payment_amount or 0,
@@ -174,7 +171,6 @@ async def delete_item_and_log_sale(
                 message_id=message_id,
                 conn=conn
             )
-            # Добавляем финансовую запись
             await conn.execute("""
                 INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
                 VALUES ('sale', $1, $2, $3)
@@ -317,7 +313,7 @@ async def edit_item_submit(
     sale_full_name: Optional[str] = Form(None),
     sale_phone: Optional[str] = Form(None),
 ):
-    logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}")
+    logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}, is_booked={is_booked}")
 
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
@@ -326,10 +322,11 @@ async def edit_item_submit(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        old = await conn.fetchrow("SELECT is_sold, text, serial, category_id FROM items WHERE id = $1", item_id)
+        old = await conn.fetchrow("SELECT is_sold, is_booked, text, serial, category_id FROM items WHERE id = $1", item_id)
         if not old:
             raise HTTPException(status_code=404, detail="Item not found")
         old_is_sold = old["is_sold"]
+        old_is_booked = old["is_booked"]
         old_text = old["text"]
         old_serial = old["serial"] or ""
         old_category_id = old["category_id"]
@@ -337,6 +334,7 @@ async def edit_item_submit(
         if old_is_sold:
             raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
+        # Если отмечена продажа – обрабатываем продажу
         if is_sold:
             if not sale_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость продажи")
@@ -372,7 +370,7 @@ async def edit_item_submit(
             AssortmentService.invalidate_cache()
             return RedirectResponse(url="/admin/assortment", status_code=303)
 
-        # Иначе – обновляем обычные поля или бронь (бронь и продажа не могут быть вместе)
+        # Иначе – обновляем поля брони или обычные поля
         await conn.execute("""
             UPDATE items
             SET text = $1, serial = $2, category_id = $3, is_booked = $4,
@@ -386,7 +384,7 @@ async def edit_item_submit(
            booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone, item_id)
 
-        old_is_booked = await conn.fetchval("SELECT is_booked FROM items WHERE id = $1", item_id)
+        # Отправляем уведомление о брони, если статус изменился
         if not old_is_booked and is_booked:
             await send_booking_notification(
                 item_text=text,
@@ -398,12 +396,14 @@ async def edit_item_submit(
                 phone=booking_phone,
                 is_cancel=False
             )
+            logger.info(f"Уведомление о брони отправлено для товара {item_id}")
         elif old_is_booked and not is_booked:
             await send_booking_notification(
                 item_text=old_text,
                 serial=old_serial,
                 is_cancel=True
             )
+            logger.info(f"Уведомление об отмене брони отправлено для товара {item_id}")
 
     AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
