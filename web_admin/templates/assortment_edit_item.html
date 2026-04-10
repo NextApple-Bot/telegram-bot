@@ -142,15 +142,11 @@
         }
     });
 
-    // Очистка чисел от пробелов и нецифровых символов (кроме точки и минуса)
     function cleanNumber(value) {
         if (!value) return '';
-        let cleaned = value.replace(/[^\d.-]/g, '');
-        console.log(`cleanNumber: ${value} -> ${cleaned}`);
-        return cleaned;
+        return value.replace(/[^\d.-]/g, '');
     }
 
-    // Валидация телефона
     function validatePhone(phone) {
         if (!phone || phone.trim() === '') return true;
         const phoneRegex = /^\+7\d{10}$/;
@@ -160,7 +156,6 @@
     function validateAndClean() {
         console.log("validateAndClean вызван");
 
-        // Очищаем числовые поля
         const numberFields = ['sale_price', 'sale_prepayment', 'sale_payment_amount', 
                               'booking_price', 'booking_prepayment'];
         for (let fieldId of numberFields) {
@@ -170,36 +165,30 @@
             }
         }
 
-        // Валидация телефонов
         const bookingPhone = document.getElementById('booking_phone');
         const salePhone = document.getElementById('sale_phone');
         if (bookingPhone && bookingPhone.value && !validatePhone(bookingPhone.value)) {
-            alert('Номер телефона брони должен быть в формате +7XXXXXXXXXX (ровно 12 символов)');
+            alert('Номер телефона брони должен быть в формате +7XXXXXXXXXX');
             bookingPhone.focus();
-            console.log("Ошибка валидации телефона брони");
             return false;
         }
         if (salePhone && salePhone.value && !validatePhone(salePhone.value)) {
-            alert('Номер телефона продажи должен быть в формате +7XXXXXXXXXX (ровно 12 символов)');
+            alert('Номер телефона продажи должен быть в формате +7XXXXXXXXXX');
             salePhone.focus();
-            console.log("Ошибка валидации телефона продажи");
             return false;
         }
 
-        // Проверка обязательных полей продажи
         if (isSoldCheckbox.checked) {
             const priceField = document.getElementById('sale_price');
             const amountField = document.getElementById('sale_payment_amount');
             if (!priceField.value || parseFloat(priceField.value) <= 0) {
                 alert('Укажите стоимость продажи');
                 priceField.focus();
-                console.log("Ошибка: не указана стоимость продажи");
                 return false;
             }
             if (!amountField.value || parseFloat(amountField.value) <= 0) {
                 alert('Укажите сумму оплаты');
                 amountField.focus();
-                console.log("Ошибка: не указана сумма оплаты");
                 return false;
             }
         }
@@ -208,12 +197,10 @@
         return true;
     }
 
-    // Дополнительное логирование отправки формы
     const form = document.getElementById('editForm');
     form.addEventListener('submit', function(e) {
         console.log("Событие submit перехвачено");
         if (!validateAndClean()) {
-            console.log("Валидация не пройдена, отправка отменена");
             e.preventDefault();
         } else {
             console.log("Форма отправляется...");
