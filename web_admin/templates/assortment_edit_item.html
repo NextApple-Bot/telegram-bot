@@ -55,7 +55,7 @@
         </div>
     </div>
 
-    <!-- Блок продажи -->
+    <!-- Блок продажи (независим от брони) -->
     <hr class="mt-4">
     <div class="form-check mb-3">
         <input type="checkbox" class="form-check-input" id="is_sold" name="is_sold" {% if item.is_sold %}checked{% endif %}>
@@ -122,6 +122,11 @@
 
     isBookedCheckbox.addEventListener('change', function() {
         bookingDiv.style.display = this.checked ? 'block' : 'none';
+        // Если бронь включена, снимаем продажу
+        if (this.checked) {
+            isSoldCheckbox.checked = false;
+            saleDiv.style.display = 'none';
+        }
     });
     calculateRemainder();
 
@@ -130,6 +135,7 @@
     const isSoldCheckbox = document.getElementById('is_sold');
     isSoldCheckbox.addEventListener('change', function() {
         saleDiv.style.display = this.checked ? 'block' : 'none';
+        // Если продажа включена, снимаем бронь
         if (this.checked) {
             isBookedCheckbox.checked = false;
             bookingDiv.style.display = 'none';
