@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from typing import Optional
 import logging
 
 from bot.db import get_pool
@@ -75,7 +74,6 @@ async def restore_sold(deleted_id: int, request: Request):
             if sale:
                 sale_message_id = sale["message_id"]
                 await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
-                # Удаляем финансовую запись из daily_payments (по полю sale_message_id)
                 await conn.execute("DELETE FROM daily_payments WHERE sale_message_id = $1", sale_message_id)
                 logger.info(f"Удалены продажа и финансы для message_id={sale_message_id}")
             else:
