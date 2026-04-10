@@ -16,7 +16,7 @@ from bot import config
 from aiogram import Bot
 
 logger = logging.getLogger(__name__)
-router = APIRouter()  # <-- ЭТО БЫЛО ПРОПУЩЕНО
+router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
 ALLOWED_SORT_FIELDS = {
