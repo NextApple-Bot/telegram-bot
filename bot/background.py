@@ -80,7 +80,7 @@ async def background_sold_cleanup_loop():
 
 async def webhook_healthcheck_loop():
     """Проверка вебхука каждые 5 минут (без блокировки, т.к. не критично дублирование)."""
-    from main import check_and_set_webhook
+    from bot.webhook_utils import check_and_set_webhook
     while True:
         await asyncio.sleep(300)
         await check_and_set_webhook()
