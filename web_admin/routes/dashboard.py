@@ -72,93 +72,136 @@ async def dashboard(
     request: Request,
     days: int = Query(7, ge=7, le=90)
 ):
-    stats = await StatsRepository.get_today_stats()
-    pool = await get_pool()
-
-    # Финансы за сегодня
-    async with pool.acquire() as conn:
-        rows = await conn.fetch('''
-            SELECT payment_type, SUM(amount) as total
-            FROM daily_payments
-            WHERE DATE(created_at) = CURRENT_DATE
-            GROUP BY payment_type
-        ''')
-    payments = {row['payment_type']: float(row['total']) for row in rows}
-    for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
-        payments.setdefault(pt, 0.0)
-    total_revenue = sum(payments.values())
-
-    # График продаж (количество) за 7 дней
-    end_date = date.today()
-    start_date = end_date - timedelta(days=6)
-    async with pool.acquire() as conn:
-        sales_rows = await conn.fetch('''
-            SELECT DATE(sold_at) as day, COUNT(*) as count
-            FROM sales
-            WHERE sold_at >= $1
-            GROUP BY day
-            ORDER BY day
-        ''', start_date)
-    sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
-    dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
-    sales_counts = [sales_dict.get(d, 0) for d in dates]
-
-    # График выручки (деньги) за 7 дней
-    async with pool.acquire() as conn:
-        revenue_rows = await conn.fetch('''
-            SELECT DATE(sold_at) as day,
-                   COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
-                   COALESCE(SUM(transfer),0) + COALESCE(SUM(invoice),0) + COALESCE(SUM(installment),0) as revenue
-            FROM sales
-            WHERE sold_at >= $1
-            GROUP BY day
-            ORDER BY day
-        ''', start_date)
-    revenue_dict = {row['day'].isoformat(): float(row['revenue']) for row in revenue_rows}
-    revenue_counts = [revenue_dict.get(d, 0) for d in dates]
-
-    # Топ-5 моделей (кэш)
-    cache_key = f"dashboard:top_models:{days}"
-    cached_top = await cache.get(cache_key)
-    if cached_top:
-        top_labels, top_counts = cached_top
+    # Пытаемся получить кэшированные данные дашборда на сегодня
+    cache_key = f"dashboard:summary:{date.today().isoformat()}"
+    cached_data = await cache.get(cache_key)
+    
+    if cached_data:
+        stats = cached_data.get('stats')
+        payments = cached_data.get('payments')
+        total_revenue = cached_data.get('total_revenue')
+        sales_counts = cached_data.get('sales_counts')
+        revenue_counts = cached_data.get('revenue_counts')
+        dates = cached_data.get('dates')
+        top_labels = cached_data.get('top_labels')
+        top_counts = cached_data.get('top_counts')
+        prev_stats = await get_previous_period_stats()
+        sales_today = stats['sales_count']
+        revenue_today = total_revenue
+        
+        sales_change_yesterday = 0
+        if prev_stats['sales_yesterday']:
+            sales_change_yesterday = (sales_today - prev_stats['sales_yesterday']) / prev_stats['sales_yesterday'] * 100
+        revenue_change_yesterday = 0
+        if prev_stats['revenue_yesterday']:
+            revenue_change_yesterday = (revenue_today - prev_stats['revenue_yesterday']) / prev_stats['revenue_yesterday'] * 100
+        sales_change_week = 0
+        if prev_stats['sales_last_week']:
+            sales_change_week = (sales_today - prev_stats['sales_last_week'] / 7) / (prev_stats['sales_last_week'] / 7) * 100
+        revenue_change_week = 0
+        if prev_stats['revenue_last_week']:
+            revenue_change_week = (revenue_today - prev_stats['revenue_last_week'] / 7) / (prev_stats['revenue_last_week'] / 7) * 100
     else:
-        period_start = date.today() - timedelta(days=days - 1)
+        stats = await StatsRepository.get_today_stats()
+        pool = await get_pool()
+
+        # Финансы за сегодня
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
-                SELECT i.text
-                FROM sales s
-                JOIN items i ON s.item_id = i.id
-                WHERE s.sold_at >= $1 AND i.text IS NOT NULL
-            ''', period_start)
-        model_counter = Counter()
-        for row in rows:
-            base = extract_base_model(row['text'])
-            if base:
-                model_counter[base] += 1
-        top_5 = model_counter.most_common(5)
-        top_labels = [item[0] for item in top_5]
-        top_counts = [item[1] for item in top_5]
-        await cache.set(cache_key, (top_labels, top_counts), ttl=3600)
+                SELECT payment_type, SUM(amount) as total
+                FROM daily_payments
+                WHERE DATE(created_at) = CURRENT_DATE
+                GROUP BY payment_type
+            ''')
+        payments = {row['payment_type']: float(row['total']) for row in rows}
+        for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
+            payments.setdefault(pt, 0.0)
+        total_revenue = sum(payments.values())
 
-    # Динамика по сравнению с предыдущим периодом
-    prev_stats = await get_previous_period_stats()
-    sales_today = stats['sales_count']
-    revenue_today = total_revenue
+        # График продаж (количество) за 7 дней
+        end_date = date.today()
+        start_date = end_date - timedelta(days=6)
+        async with pool.acquire() as conn:
+            sales_rows = await conn.fetch('''
+                SELECT DATE(sold_at) as day, COUNT(*) as count
+                FROM sales
+                WHERE sold_at >= $1
+                GROUP BY day
+                ORDER BY day
+            ''', start_date)
+        sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
+        dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
+        sales_counts = [sales_dict.get(d, 0) for d in dates]
 
-    sales_change_yesterday = 0
-    if prev_stats['sales_yesterday']:
-        sales_change_yesterday = (sales_today - prev_stats['sales_yesterday']) / prev_stats['sales_yesterday'] * 100
-    revenue_change_yesterday = 0
-    if prev_stats['revenue_yesterday']:
-        revenue_change_yesterday = (revenue_today - prev_stats['revenue_yesterday']) / prev_stats['revenue_yesterday'] * 100
+        # График выручки (деньги) за 7 дней
+        async with pool.acquire() as conn:
+            revenue_rows = await conn.fetch('''
+                SELECT DATE(sold_at) as day,
+                       COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
+                       COALESCE(SUM(transfer),0) + COALESCE(SUM(invoice),0) + COALESCE(SUM(installment),0) as revenue
+                FROM sales
+                WHERE sold_at >= $1
+                GROUP BY day
+                ORDER BY day
+            ''', start_date)
+        revenue_dict = {row['day'].isoformat(): float(row['revenue']) for row in revenue_rows}
+        revenue_counts = [revenue_dict.get(d, 0) for d in dates]
 
-    sales_change_week = 0
-    if prev_stats['sales_last_week']:
-        sales_change_week = (sales_today - prev_stats['sales_last_week'] / 7) / (prev_stats['sales_last_week'] / 7) * 100
-    revenue_change_week = 0
-    if prev_stats['revenue_last_week']:
-        revenue_change_week = (revenue_today - prev_stats['revenue_last_week'] / 7) / (prev_stats['revenue_last_week'] / 7) * 100
+        # Топ-5 моделей (кэш)
+        top_cache_key = f"dashboard:top_models:{days}"
+        cached_top = await cache.get(top_cache_key)
+        if cached_top:
+            top_labels, top_counts = cached_top
+        else:
+            period_start = date.today() - timedelta(days=days - 1)
+            async with pool.acquire() as conn:
+                rows = await conn.fetch('''
+                    SELECT i.text
+                    FROM sales s
+                    JOIN items i ON s.item_id = i.id
+                    WHERE s.sold_at >= $1 AND i.text IS NOT NULL
+                ''', period_start)
+            model_counter = Counter()
+            for row in rows:
+                base = extract_base_model(row['text'])
+                if base:
+                    model_counter[base] += 1
+            top_5 = model_counter.most_common(5)
+            top_labels = [item[0] for item in top_5]
+            top_counts = [item[1] for item in top_5]
+            await cache.set(top_cache_key, (top_labels, top_counts), ttl=3600)
+
+        # Динамика по сравнению с предыдущим периодом
+        prev_stats = await get_previous_period_stats()
+        sales_today = stats['sales_count']
+        revenue_today = total_revenue
+
+        sales_change_yesterday = 0
+        if prev_stats['sales_yesterday']:
+            sales_change_yesterday = (sales_today - prev_stats['sales_yesterday']) / prev_stats['sales_yesterday'] * 100
+        revenue_change_yesterday = 0
+        if prev_stats['revenue_yesterday']:
+            revenue_change_yesterday = (revenue_today - prev_stats['revenue_yesterday']) / prev_stats['revenue_yesterday'] * 100
+
+        sales_change_week = 0
+        if prev_stats['sales_last_week']:
+            sales_change_week = (sales_today - prev_stats['sales_last_week'] / 7) / (prev_stats['sales_last_week'] / 7) * 100
+        revenue_change_week = 0
+        if prev_stats['revenue_last_week']:
+            revenue_change_week = (revenue_today - prev_stats['revenue_last_week'] / 7) / (prev_stats['revenue_last_week'] / 7) * 100
+
+        # Сохраняем кэш дашборда (кроме top_models, у которых свой TTL)
+        cache_payload = {
+            'stats': stats,
+            'payments': payments,
+            'total_revenue': total_revenue,
+            'sales_counts': sales_counts,
+            'revenue_counts': revenue_counts,
+            'dates': dates,
+            'top_labels': top_labels,
+            'top_counts': top_counts,
+        }
+        await cache.set(cache_key, cache_payload, ttl=60)  # 1 минута
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
