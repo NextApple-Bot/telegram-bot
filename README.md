@@ -1,13 +1,26 @@
 # Telegram Bot для учёта продаж
 
-... (предыдущее содержимое остаётся) ...
+Бот для автоматизации учёта продаж, броней и предзаказов в Telegram-группах.
 
-## 🚀 Деплой на Render
+## 🚀 Быстрый старт
 
-Инструкции по развёртыванию на Render с поддержкой Zero Downtime, масштабирования и фоновых задач см. в файле [DEPLOYMENT.md](DEPLOYMENT.md).
+### Локальный запуск
+```bash
+# 1. Клонировать репозиторий
+git clone https://github.com/yourusername/telegram-bot.git
+cd telegram-bot
 
-Кратко:
-1. Создайте Web Service и подключите репозиторий.
-2. Установите все переменные окружения (см. `.env.example`).
-3. Убедитесь, что `SCALING_ENABLED=true` и `REDIS_URL` указан, если планируете масштабирование.
-4. Добавьте Cron Job для `manage.py cleanup`.
+# 2. Создать виртуальное окружение
+python -m venv venv
+source venv/bin/activate  # для Linux/Mac
+# venv\Scripts\activate  # для Windows
+
+# 3. Установить зависимости
+pip install -r requirements.txt
+
+# 4. Настроить переменные окружения
+cp .env.example .env
+# Отредактировать .env, указав свои токены
+
+# 5. Запустить бота
+python main.py
