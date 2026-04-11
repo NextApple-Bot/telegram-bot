@@ -1,2 +1,1 @@
-# Инициализация пакета роутов
-from . import dashboard, clients, purchases, assortment, stats, auth, sold, debug
+# Пакет веб-админки (пустой __init__.py для предотвращения циклических импортов)
