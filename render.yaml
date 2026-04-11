@@ -31,3 +31,17 @@ services:
         value: 600000
       - key: PORT
         value: 10000
+      - key: SCALING_ENABLED
+        value: true              # Включаем проверку Redis для масштабирования
+
+  - type: cron
+    name: daily-cleanup
+    runtime: python
+    schedule: "0 3 * * *"        # Каждый день в 03:00 UTC
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py cleanup
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
