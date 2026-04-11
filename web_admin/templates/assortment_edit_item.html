@@ -3,7 +3,7 @@
 {% block title %}Редактировать товар{% endblock %}
 {% block content %}
 <h1>Редактировать товар #{{ item.id }}</h1>
-<form method="post" id="editForm" action="/admin/assortment/edit/{{ item.id }}" onsubmit="return validateAndClean()">
+<form method="post" id="editForm" action="/admin/assortment/edit/{{ item.id }}">
     <div class="mb-3">
         <label for="text" class="form-label">Текст товара</label>
         <input type="text" class="form-control" id="text" name="text" value="{{ item.text }}" required>
@@ -30,11 +30,11 @@
         <h4>Данные бронирования</h4>
         <div class="mb-3">
             <label for="booking_price" class="form-label">Стоимость (₽)</label>
-            <input type="number" step="0.01" class="form-control" id="booking_price" name="booking_price" value="{{ item.booking_price or '' }}" oninput="calculateRemainder()">
+            <input type="number" step="0.01" class="form-control" id="booking_price" name="booking_price" value="{{ item.booking_price or '' }}">
         </div>
         <div class="mb-3">
             <label for="booking_prepayment" class="form-label">П/О (предоплата, ₽)</label>
-            <input type="number" step="0.01" class="form-control" id="booking_prepayment" name="booking_prepayment" value="{{ item.booking_prepayment or '' }}" oninput="calculateRemainder()">
+            <input type="number" step="0.01" class="form-control" id="booking_prepayment" name="booking_prepayment" value="{{ item.booking_prepayment or '' }}">
         </div>
         <div class="mb-3">
             <label for="booking_payment_type" class="form-label">Способ оплаты П/О</label>
@@ -47,10 +47,6 @@
                 <option value="invoice" {% if item.booking_payment_type == 'invoice' %}selected{% endif %}>Оплата по счету</option>
                 <option value="installment" {% if item.booking_payment_type == 'installment' %}selected{% endif %}>Рассрочка</option>
             </select>
-        </div>
-        <div class="mb-3">
-            <label for="booking_remainder" class="form-label">Остаток (₽)</label>
-            <input type="text" class="form-control" id="booking_remainder" readonly>
         </div>
         <div class="mb-3">
             <label for="booking_platform" class="form-label">Площадка</label>
@@ -78,15 +74,15 @@
         <h4>Данные продажи</h4>
         <div class="mb-3">
             <label for="sale_price" class="form-label">Стоимость (₽)</label>
-            <input type="text" class="form-control" id="sale_price" name="sale_price" value="{{ item.sale_price or '' }}" placeholder="Например, 10000">
+            <input type="number" step="0.01" class="form-control" id="sale_price" name="sale_price" value="{{ item.sale_price or '' }}" placeholder="Например, 10000">
         </div>
         <div class="mb-3">
             <label for="sale_prepayment" class="form-label">П/О (предоплата, ₽)</label>
-            <input type="text" class="form-control" id="sale_prepayment" name="sale_prepayment" value="{{ item.sale_prepayment or '' }}" placeholder="Например, 5000">
+            <input type="number" step="0.01" class="form-control" id="sale_prepayment" name="sale_prepayment" value="{{ item.sale_prepayment or '' }}" placeholder="Например, 5000">
         </div>
         <div class="mb-3">
             <label for="sale_payment_amount" class="form-label">Оплата (₽)</label>
-            <input type="text" class="form-control" id="sale_payment_amount" name="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}" placeholder="Например, 5000">
+            <input type="number" step="0.01" class="form-control" id="sale_payment_amount" name="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}" placeholder="Например, 5000">
         </div>
         <div class="mb-3">
             <label for="sale_payment_type" class="form-label">Способ оплаты</label>
@@ -119,104 +115,86 @@
 </form>
 
 <script>
-    console.log("Форма загружена");
-
-    // Блок брони
+    // Управление видимостью блоков
     const bookingDiv = document.getElementById('bookingFields');
     const isBookedCheckbox = document.getElementById('is_booked');
-    const priceInput = document.getElementById('booking_price');
-    const prepayInput = document.getElementById('booking_prepayment');
-    const remainderInput = document.getElementById('booking_remainder');
+    const saleDiv = document.getElementById('saleFields');
+    const isSoldCheckbox = document.getElementById('is_sold');
 
-    function calculateRemainder() {
-        const price = parseFloat(priceInput.value) || 0;
-        const prepay = parseFloat(prepayInput.value) || 0;
-        remainderInput.value = (price - prepay).toFixed(2);
+    function updateVisibility() {
+        bookingDiv.style.display = isBookedCheckbox.checked ? 'block' : 'none';
+        saleDiv.style.display = isSoldCheckbox.checked ? 'block' : 'none';
     }
 
     isBookedCheckbox.addEventListener('change', function() {
-        bookingDiv.style.display = this.checked ? 'block' : 'none';
         if (this.checked) {
             isSoldCheckbox.checked = false;
-            saleDiv.style.display = 'none';
         }
+        updateVisibility();
     });
-    calculateRemainder();
 
-    // Блок продажи
-    const saleDiv = document.getElementById('saleFields');
-    const isSoldCheckbox = document.getElementById('is_sold');
     isSoldCheckbox.addEventListener('change', function() {
-        saleDiv.style.display = this.checked ? 'block' : 'none';
         if (this.checked) {
             isBookedCheckbox.checked = false;
-            bookingDiv.style.display = 'none';
+        }
+        updateVisibility();
+    });
+
+    // При загрузке страницы синхронизируем видимость
+    updateVisibility();
+
+    // Простая очистка числовых полей от лишних символов (только цифры, точка, минус)
+    function cleanNumberInput(event) {
+        const input = event.target;
+        let value = input.value;
+        // Разрешаем только цифры, точку и минус
+        value = value.replace(/[^\d.-]/g, '');
+        // Заменяем запятую на точку
+        value = value.replace(',', '.');
+        // Убираем лишние минусы и точки (оставляем только первый минус и первую точку)
+        const parts = value.split('.');
+        if (parts.length > 2) {
+            value = parts[0] + '.' + parts.slice(1).join('');
+        }
+        if (value.startsWith('-')) {
+            value = '-' + value.slice(1).replace(/-/g, '');
+        } else {
+            value = value.replace(/-/g, '');
+        }
+        input.value = value;
+    }
+
+    // Применяем очистку ко всем числовым полям
+    const numberFields = ['booking_price', 'booking_prepayment', 'sale_price', 'sale_prepayment', 'sale_payment_amount'];
+    numberFields.forEach(id => {
+        const field = document.getElementById(id);
+        if (field) {
+            field.addEventListener('input', cleanNumberInput);
         }
     });
 
-    function cleanNumber(value) {
-        if (!value) return '';
-        return value.replace(/[^\d.-]/g, '');
-    }
-
-    function validatePhone(phone) {
-        if (!phone || phone.trim() === '') return true;
-        const phoneRegex = /^\+7\d{10}$/;
-        return phoneRegex.test(phone);
-    }
-
-    function validateAndClean() {
-        console.log("validateAndClean вызван");
-
-        const numberFields = ['sale_price', 'sale_prepayment', 'sale_payment_amount', 
-                              'booking_price', 'booking_prepayment'];
-        for (let fieldId of numberFields) {
-            const field = document.getElementById(fieldId);
-            if (field && field.value) {
-                field.value = cleanNumber(field.value);
+    // Перед отправкой формы дополнительно очищаем все числовые поля
+    document.getElementById('editForm').addEventListener('submit', function(e) {
+        numberFields.forEach(id => {
+            const field = document.getElementById(id);
+            if (field) {
+                let value = field.value;
+                value = value.replace(/[^\d.-]/g, '').replace(',', '.');
+                // Убираем лишние символы
+                const parts = value.split('.');
+                if (parts.length > 2) {
+                    value = parts[0] + '.' + parts.slice(1).join('');
+                }
+                if (value.startsWith('-')) {
+                    value = '-' + value.slice(1).replace(/-/g, '');
+                } else {
+                    value = value.replace(/-/g, '');
+                }
+                field.value = value;
             }
-        }
-
-        const bookingPhone = document.getElementById('booking_phone');
-        const salePhone = document.getElementById('sale_phone');
-        if (bookingPhone && bookingPhone.value && !validatePhone(bookingPhone.value)) {
-            alert('Номер телефона брони должен быть в формате +7XXXXXXXXXX');
-            bookingPhone.focus();
-            return false;
-        }
-        if (salePhone && salePhone.value && !validatePhone(salePhone.value)) {
-            alert('Номер телефона продажи должен быть в формате +7XXXXXXXXXX');
-            salePhone.focus();
-            return false;
-        }
-
-        if (isSoldCheckbox.checked) {
-            const priceField = document.getElementById('sale_price');
-            const amountField = document.getElementById('sale_payment_amount');
-            if (!priceField.value || parseFloat(priceField.value) <= 0) {
-                alert('Укажите стоимость продажи');
-                priceField.focus();
-                return false;
-            }
-            if (!amountField.value || parseFloat(amountField.value) <= 0) {
-                alert('Укажите сумму оплаты');
-                amountField.focus();
-                return false;
-            }
-        }
-
-        console.log("Валидация пройдена, форма будет отправлена");
-        return true;
-    }
-
-    const form = document.getElementById('editForm');
-    form.addEventListener('submit', function(e) {
-        console.log("Событие submit перехвачено");
-        if (!validateAndClean()) {
-            e.preventDefault();
-        } else {
-            console.log("Форма отправляется...");
-        }
+        });
+        // Дополнительная проверка телефона оставлена на HTML5 (pattern)
+        // Серверная валидация также присутствует
     });
 </script>
 {% endblock %}
