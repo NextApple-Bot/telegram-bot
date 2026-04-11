@@ -39,7 +39,7 @@ try:
     from aiogram.fsm.storage.redis import RedisStorage
     from aiogram.types import Update
     from bot.handlers import router
-    from bot.db import close_pool, get_pool, init_db, cleanup_sold_periodically, check_db_health, check_redis_health
+    from bot.db import close_pool, get_pool, init_db, check_db_health, check_redis_health
     from bot import config as bot_config
     import redis.asyncio as redis
 
@@ -79,42 +79,6 @@ try:
 except Exception as e:
     logger.error(f"❌ Ошибка при инициализации бота: {e}")
     logger.error(traceback.format_exc())
-
-
-async def check_and_set_webhook():
-    """Проверяет текущий вебхук через Telegram API и переустанавливает, если нужно."""
-    if not bot or not config or not config.RENDER_URL:
-        logger.warning("❌ Нельзя проверить вебхук: бот или RENDER_URL не заданы")
-        return
-
-    expected_url = f"{config.RENDER_URL}/webhook"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"https://api.telegram.org/bot{config.TOKEN}/getWebhookInfo") as resp:
-                data = await resp.json()
-                if not data.get("ok"):
-                    logger.error(f"Ошибка получения информации о вебхуке: {data}")
-                    return
-                current_url = data["result"].get("url", "")
-                if current_url != expected_url:
-                    logger.warning(f"Вебхук не соответствует: ожидается {expected_url}, сейчас {current_url}. Переустанавливаем...")
-                    await bot.delete_webhook(drop_pending_updates=True)
-                    await bot.set_webhook(
-                        url=expected_url,
-                        allowed_updates=dp.resolve_used_update_types()
-                    )
-                    logger.info(f"✅ Вебхук переустановлен на {expected_url}")
-                else:
-                    logger.debug(f"Вебхук корректен: {expected_url}")
-    except Exception as e:
-        logger.error(f"Ошибка при проверке вебхука: {e}")
-
-
-async def webhook_healthcheck():
-    """Фоновая задача: проверяет вебхук каждые 5 минут."""
-    while True:
-        await asyncio.sleep(300)  # 5 минут
-        await check_and_set_webhook()
 
 
 async def on_startup():
@@ -191,7 +155,15 @@ async def health(_: Request) -> Response:
     # Расширенная проверка здоровья
     db_ok = await check_db_health()
     redis_ok = await check_redis_health()
-    if db_ok and redis_ok:
+    telegram_ok = True
+    if bot:
+        try:
+            await bot.get_me()
+        except Exception as e:
+            logger.warning(f"Telegram API health check failed: {e}")
+            telegram_ok = False
+
+    if db_ok and redis_ok and telegram_ok:
         return PlainTextResponse("OK")
     else:
         status = {}
@@ -199,6 +171,8 @@ async def health(_: Request) -> Response:
             status["database"] = "unhealthy"
         if not redis_ok:
             status["redis"] = "unhealthy"
+        if not telegram_ok:
+            status["telegram"] = "unhealthy"
         return JSONResponse(status, status_code=503)
 
 
@@ -230,11 +204,21 @@ else:
 # Обработка сигналов для graceful shutdown
 def handle_exit_signal(signum, frame):
     logger.info(f"Получен сигнал {signum}, запускаем graceful shutdown...")
-    # Uvicorn сам обрабатывает сигналы, но мы можем вызвать shutdown
-    # Здесь просто для логирования
+    # Uvicorn сам обрабатывает сигналы, но мы логируем для уверенности
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_exit_signal)
+signal.signal(signal.SIGINT, handle_exit_signal)
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
     logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
     # Uvicorn с поддержкой graceful shutdown
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", timeout_graceful_shutdown=30)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info",
+        timeout_graceful_shutdown=30,
+        timeout_keep_alive=30
+    )
