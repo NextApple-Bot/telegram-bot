@@ -8,7 +8,10 @@ import json
 
 from bot import config
 from .auth import is_authenticated
-from .routes import dashboard, clients, purchases, assortment, stats, auth, sold
+from .routes import dashboard, clients, purchases, stats, auth, sold
+from .routes.assortment import views as assortment_views
+from .routes.assortment import manage as assortment_manage
+from .routes import debug
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +36,11 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(purchases.router, prefix="/purchases", tags=["purchases"])
-app.include_router(assortment.router, prefix="/assortment", tags=["assortment"])
+app.include_router(assortment_views.router, prefix="/assortment", tags=["assortment"])
+app.include_router(assortment_manage.router, prefix="/assortment", tags=["assortment_manage"])
 app.include_router(sold.router, prefix="/sold", tags=["sold"])
 app.include_router(stats.router, prefix="/stats", tags=["stats"])
+app.include_router(debug.router, prefix="/admin", tags=["debug"])
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
