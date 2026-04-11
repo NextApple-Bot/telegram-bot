@@ -4,10 +4,11 @@ import logging
 import os
 import traceback
 import asyncio
+import signal
 from starlette.applications import Starlette
 from starlette.routing import Route
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import PlainTextResponse, Response, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 from dotenv import load_dotenv
@@ -38,12 +39,18 @@ try:
     from aiogram.fsm.storage.redis import RedisStorage
     from aiogram.types import Update
     from bot.handlers import router
-    from bot.db import close_pool, get_pool, init_db, cleanup_sold_periodically
+    from bot.db import close_pool, get_pool, init_db, cleanup_sold_periodically, check_db_health, check_redis_health
     from bot import config as bot_config
     import redis.asyncio as redis
 
     config = bot_config
     logger.info("✅ Конфигурация загружена")
+
+    # Проверка обязательных переменных для масштабирования
+    scaling_enabled = os.getenv("SCALING_ENABLED", "false").lower() == "true"
+    if scaling_enabled and not config.REDIS_URL:
+        logger.critical("❌ SCALING_ENABLED=True, но REDIS_URL не задан. Масштабирование невозможно.")
+        sys.exit(1)
 
     bot = Bot(token=config.TOKEN)
     logger.info("✅ Экземпляр Bot создан")
@@ -53,6 +60,9 @@ try:
         storage = RedisStorage(redis=redis_client)
         logger.info("✅ Используется RedisStorage для FSM")
     else:
+        if scaling_enabled:
+            logger.critical("❌ Масштабирование требует RedisStorage.")
+            sys.exit(1)
         storage = MemoryStorage()
         logger.warning("⚠️ REDIS_URL не задан, используется MemoryStorage")
 
@@ -113,11 +123,10 @@ async def on_startup():
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации пула БД: {e}")
 
-    asyncio.create_task(cleanup_sold_periodically())
-    logger.info("✅ Фоновая задача очистки продаж запущена")
-
-    asyncio.create_task(webhook_healthcheck())
-    logger.info("✅ Фоновая задача проверки вебхука запущена (каждые 5 минут)")
+    # Запускаем фоновые задачи с блокировками (реализованы в background.py)
+    from bot.background import start_background_tasks
+    asyncio.create_task(start_background_tasks())
+    logger.info("✅ Фоновые задачи запущены (с блокировками Redis)")
 
     if bot and dp:
         logger.info("✅ Бот и диспетчер готовы")
@@ -174,8 +183,19 @@ async def webhook(request: Request) -> Response:
         return Response(status_code=500)
 
 
-async def health(_: Request) -> PlainTextResponse:
-    return PlainTextResponse("OK")
+async def health(_: Request) -> Response:
+    # Расширенная проверка здоровья
+    db_ok = await check_db_health()
+    redis_ok = await check_redis_health()
+    if db_ok and redis_ok:
+        return PlainTextResponse("OK")
+    else:
+        status = {}
+        if not db_ok:
+            status["database"] = "unhealthy"
+        if not redis_ok:
+            status["redis"] = "unhealthy"
+        return JSONResponse(status, status_code=503)
 
 
 app = Starlette(
@@ -203,7 +223,14 @@ if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
 else:
     logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
 
+# Обработка сигналов для graceful shutdown
+def handle_exit_signal(signum, frame):
+    logger.info(f"Получен сигнал {signum}, запускаем graceful shutdown...")
+    # Uvicorn сам обрабатывает сигналы, но мы можем вызвать shutdown
+    # Здесь просто для логирования
+
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
     logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    # Uvicorn с поддержкой graceful shutdown
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", timeout_graceful_shutdown=30)
