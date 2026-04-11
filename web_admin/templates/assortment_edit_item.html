@@ -58,7 +58,7 @@
         </div>
         <div class="mb-3">
             <label for="booking_phone" class="form-label">Номер телефона</label>
-            <input type="tel" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone or '+7' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Формат +7XXXXXXXXXX">
+            <input type="tel" class="form-control" id="booking_phone" name="booking_phone" value="{{ item.booking_phone or '' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Формат +7XXXXXXXXXX (необязательно)">
             <small class="form-text text-muted">Формат: +7 и 10 цифр (например, +79991234567)</small>
         </div>
     </div>
@@ -105,7 +105,7 @@
         </div>
         <div class="mb-3">
             <label for="sale_phone" class="form-label">Номер телефона</label>
-            <input type="tel" class="form-control" id="sale_phone" name="sale_phone" value="{{ item.sale_phone or '+7' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Формат +7XXXXXXXXXX">
+            <input type="tel" class="form-control" id="sale_phone" name="sale_phone" value="{{ item.sale_phone or '' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Формат +7XXXXXXXXXX (необязательно)">
             <small class="form-text text-muted">Формат: +7 и 10 цифр (например, +79991234567)</small>
         </div>
     </div>
@@ -115,43 +115,66 @@
 </form>
 
 <script>
-    // Управление видимостью блоков
+    // Управление видимостью блоков и атрибутом required
     const bookingDiv = document.getElementById('bookingFields');
     const isBookedCheckbox = document.getElementById('is_booked');
     const saleDiv = document.getElementById('saleFields');
     const isSoldCheckbox = document.getElementById('is_sold');
 
+    // Поля, которые становятся обязательными при включении брони/продажи
+    const bookingRequiredFields = ['booking_price'];
+    const saleRequiredFields = ['sale_price', 'sale_payment_amount'];
+
     function updateVisibility() {
-        bookingDiv.style.display = isBookedCheckbox.checked ? 'block' : 'none';
-        saleDiv.style.display = isSoldCheckbox.checked ? 'block' : 'none';
+        const bookingVisible = isBookedCheckbox.checked;
+        const saleVisible = isSoldCheckbox.checked;
+        
+        bookingDiv.style.display = bookingVisible ? 'block' : 'none';
+        saleDiv.style.display = saleVisible ? 'block' : 'none';
+        
+        // Управление required для брони
+        bookingRequiredFields.forEach(id => {
+            const field = document.getElementById(id);
+            if (field) field.required = bookingVisible;
+        });
+        
+        // Управление required для продажи
+        saleRequiredFields.forEach(id => {
+            const field = document.getElementById(id);
+            if (field) field.required = saleVisible;
+        });
+        
+        // Если бронь включена, снимаем продажу и наоборот
+        if (bookingVisible) {
+            isSoldCheckbox.checked = false;
+            // Скрываем блок продажи и снимаем required с его полей
+            saleDiv.style.display = 'none';
+            saleRequiredFields.forEach(id => {
+                const field = document.getElementById(id);
+                if (field) field.required = false;
+            });
+        }
+        if (saleVisible) {
+            isBookedCheckbox.checked = false;
+            bookingDiv.style.display = 'none';
+            bookingRequiredFields.forEach(id => {
+                const field = document.getElementById(id);
+                if (field) field.required = false;
+            });
+        }
     }
 
-    isBookedCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            isSoldCheckbox.checked = false;
-        }
-        updateVisibility();
-    });
+    isBookedCheckbox.addEventListener('change', updateVisibility);
+    isSoldCheckbox.addEventListener('change', updateVisibility);
 
-    isSoldCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            isBookedCheckbox.checked = false;
-        }
-        updateVisibility();
-    });
-
-    // При загрузке страницы синхронизируем видимость
+    // При загрузке устанавливаем правильное состояние required
     updateVisibility();
 
-    // Простая очистка числовых полей от лишних символов (только цифры, точка, минус)
+    // Очистка числовых полей от лишних символов
     function cleanNumberInput(event) {
         const input = event.target;
         let value = input.value;
-        // Разрешаем только цифры, точку и минус
-        value = value.replace(/[^\d.-]/g, '');
-        // Заменяем запятую на точку
-        value = value.replace(',', '.');
-        // Убираем лишние минусы и точки (оставляем только первый минус и первую точку)
+        value = value.replace(/[^\d.-]/g, '').replace(',', '.');
         const parts = value.split('.');
         if (parts.length > 2) {
             value = parts[0] + '.' + parts.slice(1).join('');
@@ -164,7 +187,6 @@
         input.value = value;
     }
 
-    // Применяем очистку ко всем числовым полям
     const numberFields = ['booking_price', 'booking_prepayment', 'sale_price', 'sale_prepayment', 'sale_payment_amount'];
     numberFields.forEach(id => {
         const field = document.getElementById(id);
@@ -173,14 +195,13 @@
         }
     });
 
-    // Перед отправкой формы дополнительно очищаем все числовые поля
+    // Дополнительная очистка перед отправкой
     document.getElementById('editForm').addEventListener('submit', function(e) {
         numberFields.forEach(id => {
             const field = document.getElementById(id);
             if (field) {
                 let value = field.value;
                 value = value.replace(/[^\d.-]/g, '').replace(',', '.');
-                // Убираем лишние символы
                 const parts = value.split('.');
                 if (parts.length > 2) {
                     value = parts[0] + '.' + parts.slice(1).join('');
@@ -193,8 +214,6 @@
                 field.value = value;
             }
         });
-        // Дополнительная проверка телефона оставлена на HTML5 (pattern)
-        // Серверная валидация также присутствует
     });
 </script>
 {% endblock %}
