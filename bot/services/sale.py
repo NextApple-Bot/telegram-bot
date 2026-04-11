@@ -1,9 +1,7 @@
 # Файл: bot/services/sale.py
 import logging
-from bot.repositories import ItemRepository, ClientRepository, StatsRepository
-from bot.models import ClientData
+from bot.repositories import ItemRepository, StatsRepository
 from bot.utils.validators import extract_serials
-from bot.utils.parser import parse_client_data, extract_payment_amounts
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
@@ -30,25 +28,21 @@ class SaleService:
             )
 
     @staticmethod
-    async def process_sale(content: str, chat_id: int, message_id: int) -> dict:
+    async def process_sale(content: str, chat_id: int, message_id: int, payments: dict) -> dict:
         """
-        Обрабатывает продажу:
-        - Если есть серийные номера и они найдены → удаляем товары, сохраняем статистику продаж и платежи.
-        - Если серийных номеров нет → это аксессуар → сохраняем только платежи (финансы), статистику продаж НЕ сохраняем.
-        - Если серийные номера указаны, но не найдены → ничего не сохраняем.
+        Обрабатывает продажу.
+        Принимает уже извлечённые платежи, чтобы избежать дублирования парсинга.
         """
         if await SaleService.is_message_processed(chat_id, message_id):
             logger.info(f"Сообщение {message_id} уже обработано, пропускаем.")
-            return {"sold_items": [], "not_found": [], "payments": {}, "skipped": True}
+            return {"sold_items": [], "not_found": [], "payments": payments, "skipped": True}
 
-        payments = extract_payment_amounts(content, ignore_prepay=True)
         serials = list(set(extract_serials(content)))
         is_accessory = (len(serials) == 0)
 
         # Если это аксессуар (нет серийников) – сохраняем только платежи, статистику продаж не трогаем
         if is_accessory:
             logger.info(f"Аксессуар: сохранение только платежей {payments}, продажа не регистрируется.")
-            # Сохраняем платежи в daily_payments (это делает вызывающий код, но для ясности вернём флаг)
             await SaleService.mark_message_processed(chat_id, message_id)
             return {
                 "sold_items": [],
