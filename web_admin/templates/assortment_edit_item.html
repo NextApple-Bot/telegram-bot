@@ -37,6 +37,18 @@
             <input type="number" step="0.01" class="form-control" id="booking_prepayment" name="booking_prepayment" value="{{ item.booking_prepayment or '' }}" oninput="calculateRemainder()">
         </div>
         <div class="mb-3">
+            <label for="booking_payment_type" class="form-label">Способ оплаты П/О</label>
+            <select name="booking_payment_type" id="booking_payment_type" class="form-select">
+                <option value="" {% if not item.booking_payment_type %}selected{% endif %}>Не указан</option>
+                <option value="cash" {% if item.booking_payment_type == 'cash' %}selected{% endif %}>Наличные</option>
+                <option value="terminal" {% if item.booking_payment_type == 'terminal' %}selected{% endif %}>Терминал</option>
+                <option value="qr" {% if item.booking_payment_type == 'qr' %}selected{% endif %}>QR-код</option>
+                <option value="transfer" {% if item.booking_payment_type == 'transfer' %}selected{% endif %}>Перевод</option>
+                <option value="invoice" {% if item.booking_payment_type == 'invoice' %}selected{% endif %}>Оплата по счету</option>
+                <option value="installment" {% if item.booking_payment_type == 'installment' %}selected{% endif %}>Рассрочка</option>
+            </select>
+        </div>
+        <div class="mb-3">
             <label for="booking_remainder" class="form-label">Остаток (₽)</label>
             <input type="text" class="form-control" id="booking_remainder" readonly>
         </div>
