@@ -41,17 +41,20 @@ _pool = None
 async def get_pool():
     global _pool
     if _pool is None:
+        # Настройки пула можно переопределить через переменные окружения
+        min_size = int(os.getenv("DB_POOL_MIN_SIZE", "1"))
+        max_size = int(os.getenv("DB_POOL_MAX_SIZE", "5"))
         last_exception = None
         for attempt in range(5):
             try:
                 _pool = await asyncpg.create_pool(
                     config.DATABASE_URL,
-                    min_size=2,
-                    max_size=10,
+                    min_size=min_size,
+                    max_size=max_size,
                     command_timeout=60,
                     max_inactive_connection_lifetime=300
                 )
-                logger.info("✅ Пул соединений создан")
+                logger.info(f"✅ Пул соединений создан (min={min_size}, max={max_size})")
                 break
             except Exception as e:
                 last_exception = e
