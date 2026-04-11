@@ -65,24 +65,27 @@ async def send_booking_notification(
             remainder = 0
             if price and prepayment:
                 remainder = price - prepayment
-            lines = ["БРОНЬ:\n", item_text]
-            lines.append("")
-            if price is not None:
-                lines.append(f"Стоимость – {format_number(price)}")
-            lines.append("")
-            lines.append("")
+
+            # Формируем строку с П/О и способом оплаты в скобках
+            prepayment_str = ""
             if prepayment is not None:
-                lines.append(f"П/О – {format_number(prepayment)}")
+                prepayment_str = f"П/О – {format_number(prepayment)}"
                 if payment_type:
                     payment_type_ru = {
                         'cash': 'Наличными', 'terminal': 'Терминал', 'qr': 'QR-код',
                         'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
                     }.get(payment_type, payment_type)
-                    lines.append(f"Способ оплаты П/О – {payment_type_ru}")
+                    prepayment_str += f" ({payment_type_ru})"
+
+            lines = ["БРОНЬ:\n", item_text]
+            if price is not None:
+                lines.append(f"Стоимость – {format_number(price)}")
+                lines.append("")  # пустая строка после стоимости
+            if prepayment_str:
+                lines.append(prepayment_str)
             if price is not None and prepayment is not None:
                 lines.append(f"Остаток – {format_number(remainder)}")
                 lines.append(f"Общая – {format_number(price)}")
-            lines.append("")
             lines.append("")
             if full_name:
                 lines.append(full_name)
@@ -91,7 +94,9 @@ async def send_booking_notification(
             lines.append("")
             if platform:
                 lines.append(f"Площадка – {platform}")
+
             message_text = "\n".join(lines)
+
         await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
