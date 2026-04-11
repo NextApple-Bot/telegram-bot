@@ -42,7 +42,8 @@ def validate_phone(phone: str) -> bool:
 
 
 def generate_sale_message_id() -> int:
-    return -int(time.time() * 1000)
+    # Возвращаем положительное число для совместимости с BIGINT
+    return int(time.time() * 1000)
 
 
 async def send_booking_notification(
@@ -367,7 +368,7 @@ async def edit_item_submit(
                 payment_amount=sale_payment_amount,
                 message_id=sale_message_id
             )
-            AssortmentService.invalidate_cache()
+            await AssortmentService.invalidate_cache()
             return RedirectResponse(url="/admin/assortment", status_code=303)
 
         # Обработка БРОНИ
@@ -423,7 +424,7 @@ async def edit_item_submit(
                     is_cancel=True
                 )
 
-    AssortmentService.invalidate_cache()
+    await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
 
@@ -439,7 +440,7 @@ async def delete_item(request: Request, item_id: int):
                     VALUES ($1, $2, $3, $4, 'admin_manual')
                 """, item_id, row["text"], row["serial"], row["category_id"])
                 await conn.execute("DELETE FROM items WHERE id = $1", item_id)
-    AssortmentService.invalidate_cache()
+    await AssortmentService.invalidate_cache()
     referer = request.headers.get("referer")
     if referer:
         return RedirectResponse(url=referer, status_code=303)
@@ -483,7 +484,7 @@ async def add_item(
                 phone=booking_phone,
                 is_cancel=False
             )
-    AssortmentService.invalidate_cache()
+    await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
 
@@ -492,5 +493,5 @@ async def add_category(request: Request, name: str = Form(...)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("INSERT INTO categories (name) VALUES ($1)", name)
-    AssortmentService.invalidate_cache()
+    await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
