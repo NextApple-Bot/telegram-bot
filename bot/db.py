@@ -228,6 +228,7 @@ async def init_db():
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_platform VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_full_name VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_phone VARCHAR')
+        await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_payment_type VARCHAR')
         
         # Колонки продажи
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_price FLOAT')
@@ -242,7 +243,7 @@ async def init_db():
         # Колонки для связи финансов и продажи
         await conn.execute('ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
         
-        # НОВАЯ КОЛОНКА ДЛЯ DELETED_ITEMS (ПРАВИЛЬНЫЙ ОТСТУП)
+        # НОВАЯ КОЛОНКА ДЛЯ DELETED_ITEMS
         await conn.execute('ALTER TABLE deleted_items ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
 
     logger.info("✅ Инициализация БД завершена (таблицы, индексы и колонки созданы)")
