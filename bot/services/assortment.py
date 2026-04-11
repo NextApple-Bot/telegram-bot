@@ -11,10 +11,9 @@ class AssortmentService:
     CACHE_TTL = 10  # секунд
 
     @classmethod
-    def invalidate_cache(cls):
+    async def invalidate_cache(cls):
         """Сбрасывает кэш ассортимента в Redis."""
-        import asyncio
-        asyncio.create_task(cache.delete(cls.CACHE_KEY))
+        await cache.delete(cls.CACHE_KEY)
         logger.debug("Кэш ассортимента инвалидирован (Redis)")
 
     @classmethod
@@ -37,7 +36,7 @@ class AssortmentService:
     async def save_inventory(cls, categories: List[Dict[str, List[str]]]):
         """Сохраняет ассортимент (заменяет текущий)."""
         await ItemRepository.bulk_replace_assortment(categories)
-        cls.invalidate_cache()
+        await cls.invalidate_cache()
         logger.info(f"Ассортимент сохранён: {len(categories)} категорий")
 
     @classmethod
@@ -74,5 +73,5 @@ class AssortmentService:
             removed_count = await ItemRepository.remove_item_by_serial(serial, conn=conn)
 
         if removed_count > 0:
-            cls.invalidate_cache()
+            await cls.invalidate_cache()
         return removed_count
