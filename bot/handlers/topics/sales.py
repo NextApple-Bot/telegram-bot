@@ -7,8 +7,8 @@ from aiogram.types import Message, ReactionTypeEmoji
 from bot import config
 from bot.services.sale import SaleService
 from bot.services.payment import PaymentService
-from bot.repositories import StatsRepository, ClientRepository
-from bot.utils.parser import extract_payment_amounts, parse_client_data
+from bot.repositories import ClientRepository
+from bot.utils.parser import parse_client_data, extract_payment_amounts
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
@@ -31,19 +31,6 @@ def remove_trade_in_lines(text: str) -> str:
     return '\n'.join(filtered)
 
 
-async def is_message_processed(chat_id: int, message_id: int) -> bool:
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow('SELECT 1 FROM processed_messages WHERE chat_id = $1 AND message_id = $2', chat_id, message_id)
-        return row is not None
-
-
-async def mark_message_processed(chat_id: int, message_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute('INSERT INTO processed_messages (chat_id, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', chat_id, message_id)
-
-
 @router.message(
     F.chat.id == config.MAIN_GROUP_ID,
     F.message_thread_id == config.THREAD_SALES,
@@ -54,13 +41,14 @@ async def handle_sales_message(message: Message):
     if not content:
         return
 
-    if await is_message_processed(message.chat.id, message.message_id):
+    if await SaleService.is_message_processed(message.chat.id, message.message_id):
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
     content = remove_trade_in_lines(content)
+    # Извлекаем платежи один раз
     payments = extract_payment_amounts(content, ignore_prepay=True)
-    result = await SaleService.process_sale(content, message.chat.id, message.message_id)
+    result = await SaleService.process_sale(content, message.chat.id, message.message_id, payments)
 
     # Сохранение клиента (только если есть данные)
     try:
@@ -101,4 +89,4 @@ async def handle_sales_message(message: Message):
         # Прочие случаи (например, дубль сообщения)
         logger.info("Сообщение уже обработано или нет действий.")
 
-    await mark_message_processed(message.chat.id, message.message_id)
+    await SaleService.mark_message_processed(message.chat.id, message.message_id)
