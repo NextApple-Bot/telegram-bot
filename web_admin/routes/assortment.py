@@ -54,6 +54,7 @@ async def send_booking_notification(
     platform: str = None,
     full_name: str = None,
     phone: str = None,
+    payment_type: str = None,
     is_cancel: bool = False
 ):
     try:
@@ -72,6 +73,12 @@ async def send_booking_notification(
             lines.append("")
             if prepayment is not None:
                 lines.append(f"П/О – {format_number(prepayment)}")
+                if payment_type:
+                    payment_type_ru = {
+                        'cash': 'Наличными', 'terminal': 'Терминал', 'qr': 'QR-код',
+                        'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
+                    }.get(payment_type, payment_type)
+                    lines.append(f"Способ оплаты П/О – {payment_type_ru}")
             if price is not None and prepayment is not None:
                 lines.append(f"Остаток – {format_number(remainder)}")
                 lines.append(f"Общая – {format_number(price)}")
@@ -274,7 +281,7 @@ async def edit_item_form(request: Request, item_id: int):
             SELECT i.id, i.text, i.serial, i.is_booked, i.created_at,
                    c.id as category_id, c.name as category_name,
                    i.booking_price, i.booking_prepayment, i.booking_platform,
-                   i.booking_full_name, i.booking_phone,
+                   i.booking_full_name, i.booking_phone, i.booking_payment_type,
                    i.sale_price, i.sale_prepayment, i.sale_payment_type,
                    i.sale_platform, i.sale_full_name, i.sale_phone, i.is_sold,
                    i.sale_payment_amount
@@ -307,6 +314,7 @@ async def edit_item_submit(
     booking_platform: Optional[str] = Form(None),
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
+    booking_payment_type: Optional[str] = Form(None),
     sale_price: Optional[float] = Form(None),
     sale_prepayment: Optional[float] = Form(None),
     sale_payment_amount: Optional[float] = Form(None),
@@ -381,14 +389,14 @@ async def edit_item_submit(
                 UPDATE items
                 SET text = $1, serial = $2, category_id = $3, is_booked = $4,
                     booking_price = $5, booking_prepayment = $6, booking_platform = $7,
-                    booking_full_name = $8, booking_phone = $9,
+                    booking_full_name = $8, booking_phone = $9, booking_payment_type = $10,
                     sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
                     sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
                     sale_payment_amount = NULL, is_sold = FALSE
-                WHERE id = $10
+                WHERE id = $11
             """, text, serial.strip().upper() if serial else None, category_id, is_booked,
                booking_price, booking_prepayment, booking_platform,
-               booking_full_name, booking_phone, item_id)
+               booking_full_name, booking_phone, booking_payment_type, item_id)
             
             # Отправляем уведомление о брони
             await send_booking_notification(
@@ -399,6 +407,7 @@ async def edit_item_submit(
                 platform=booking_platform,
                 full_name=booking_full_name,
                 phone=booking_phone,
+                payment_type=booking_payment_type,
                 is_cancel=False
             )
             logger.info(f"Бронь товара {item_id} успешно сохранена")
@@ -409,7 +418,7 @@ async def edit_item_submit(
                 UPDATE items
                 SET text = $1, serial = $2, category_id = $3, is_booked = $4,
                     booking_price = NULL, booking_prepayment = NULL, booking_platform = NULL,
-                    booking_full_name = NULL, booking_phone = NULL,
+                    booking_full_name = NULL, booking_phone = NULL, booking_payment_type = NULL,
                     sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
                     sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
                     sale_payment_amount = NULL, is_sold = FALSE
@@ -459,6 +468,7 @@ async def add_item(
     booking_platform: Optional[str] = Form(None),
     booking_full_name: Optional[str] = Form(None),
     booking_phone: Optional[str] = Form(None),
+    booking_payment_type: Optional[str] = Form(None),
 ):
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
@@ -468,11 +478,11 @@ async def add_item(
         await conn.execute("""
             INSERT INTO items (text, serial, category_id, is_booked,
                                booking_price, booking_prepayment, booking_platform,
-                               booking_full_name, booking_phone)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                               booking_full_name, booking_phone, booking_payment_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         """, text, serial.strip().upper() if serial else None, category_id, is_booked,
            booking_price, booking_prepayment, booking_platform,
-           booking_full_name, booking_phone)
+           booking_full_name, booking_phone, booking_payment_type)
         if is_booked:
             await send_booking_notification(
                 item_text=text,
@@ -482,6 +492,7 @@ async def add_item(
                 platform=booking_platform,
                 full_name=booking_full_name,
                 phone=booking_phone,
+                payment_type=booking_payment_type,
                 is_cancel=False
             )
     await AssortmentService.invalidate_cache()
