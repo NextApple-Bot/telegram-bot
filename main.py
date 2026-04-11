@@ -69,8 +69,12 @@ try:
     dp = Dispatcher(storage=storage)
     logger.info("✅ Диспетчер создан")
 
-    dp.include_router(router)
-    logger.info("✅ Роутер подключён")
+    # Защита от повторного подключения роутера
+    if router.parent_router is None:
+        dp.include_router(router)
+        logger.info("✅ Роутер подключён")
+    else:
+        logger.warning("⚠️ Роутер уже прикреплён к другому диспетчеру, пропускаем повторное включение")
 
 except Exception as e:
     logger.error(f"❌ Ошибка при инициализации бота: {e}")
