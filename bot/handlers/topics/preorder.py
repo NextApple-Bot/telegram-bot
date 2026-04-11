@@ -8,7 +8,7 @@ from bot import config
 from bot.services.booking import BookingService
 from bot.services.payment import PaymentService
 from bot.repositories import StatsRepository, ClientRepository
-from bot.utils.parser import extract_prepayments, parse_client_data
+from bot.utils.parser import extract_prepayments, parse_client_data, extract_payment_amounts
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,9 @@ async def handle_preorder(message: Message):
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
             booking_lines = lines[start:end]
-            result = await BookingService.process_booking(booking_lines)
+            # Извлекаем платежи для блока брони
+            booking_payments = extract_payment_amounts('\n'.join(booking_lines), ignore_prepay=False)
+            result = await BookingService.process_booking(booking_lines, booking_payments)
             if not result.get("success"):
                 if result.get("reason") == "no_items":
                     await message.react([ReactionTypeEmoji(emoji='👎')])
