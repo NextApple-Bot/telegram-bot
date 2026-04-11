@@ -276,3 +276,27 @@ async def cleanup_sold_periodically():
                 logger.info(f"Очистка продаж: удалено {deleted} записей старше 7 дней")
         except Exception as e:
             logger.exception(f"Ошибка при очистке продаж: {e}")
+
+
+# Функции проверки здоровья для healthcheck
+async def check_db_health() -> bool:
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute('SELECT 1')
+        return True
+    except Exception:
+        return False
+
+
+async def check_redis_health() -> bool:
+    if not config.REDIS_URL:
+        return True  # Redis не обязателен для работы, но если он настроен, проверяем
+    try:
+        import redis.asyncio as redis
+        r = redis.from_url(config.REDIS_URL, decode_responses=True)
+        await r.ping()
+        await r.aclose()
+        return True
+    except Exception:
+        return False
