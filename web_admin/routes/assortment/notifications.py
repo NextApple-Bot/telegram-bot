@@ -46,11 +46,14 @@ async def send_booking_notification(
             if price is not None:
                 lines.append(f"Стоимость – {format_number(price)}")
                 lines.append("")
+                lines.append("")   # две пустые строки после стоимости
             if prepayment_str:
                 lines.append(prepayment_str)
             if price is not None and prepayment is not None:
                 lines.append(f"Остаток – {format_number(remainder)}")
                 lines.append(f"Общая – {format_number(price)}")
+                lines.append("")
+                lines.append("")   # две пустые строки после блока оплаты
             lines.append("")
             if full_name:
                 lines.append(full_name)
@@ -92,20 +95,27 @@ async def send_sale_notification(
 
         lines = [item_text]
         lines.append(f"Стоимость – {format_number(price)}")
-        lines.append("")
+        lines.append("")   # первая пустая строка
+        lines.append("")   # вторая пустая строка (как в примере)
+
         paid_amount = payment_amount if payment_amount is not None else 0
         lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
-        lines.append("")
+        lines.append("")   # одна пустая строка после способа оплаты
+
         total_paid = (prepayment or 0) + paid_amount
         lines.append(f"Общая – {format_number(total_paid)}")
-        lines.append("")
+        lines.append("")   # первая пустая строка после "Общая"
+        lines.append("")   # вторая пустая строка
+
         if full_name:
             lines.append(full_name)
         if phone:
             lines.append(phone)
         lines.append("")
         if platform:
-            lines.append(f"Площадка – {platform}")
+            # Убираем возможную точку в конце (как в примере "инстаграм")
+            clean_platform = platform.rstrip('.')
+            lines.append(f"Площадка – {clean_platform}")
 
         message_text = "\n".join(lines)
         await bot.send_message(
