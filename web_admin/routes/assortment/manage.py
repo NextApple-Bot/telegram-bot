@@ -69,8 +69,8 @@ async def edit_item_submit(
     sale_platform: Optional[str] = Form(None),
     sale_full_name: Optional[str] = Form(None),
     sale_phone: Optional[str] = Form(None),
-    # Новые поля для аксессуаров
     accessory_name: List[str] = Form([]),
+    accessory_serial: List[str] = Form([]),
     accessory_price: List[float] = Form([]),
 ):
     logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}, is_booked={is_booked}")
@@ -96,11 +96,14 @@ async def edit_item_submit(
 
         # Обработка ПРОДАЖИ
         if is_sold:
-            # Формируем список аксессуаров: список словарей {name, price}
             accessories = []
-            for name, price in zip(accessory_name, accessory_price):
+            for name, acc_serial, price in zip(accessory_name, accessory_serial, accessory_price):
                 if name.strip() and price is not None and price > 0:
-                    accessories.append({"name": name.strip(), "price": price})
+                    accessories.append({
+                        "name": name.strip(),
+                        "serial": acc_serial.strip() if acc_serial and acc_serial.strip() else None,
+                        "price": price
+                    })
 
             from .sales import handle_sale_from_form
             await handle_sale_from_form(
@@ -109,11 +112,11 @@ async def edit_item_submit(
                 sale_price=sale_price, sale_prepayment=sale_prepayment,
                 sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
                 sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
-                accessories=accessories   # передаём аксессуары
+                accessories=accessories
             )
             return RedirectResponse(url="/admin/assortment", status_code=303)
 
-        # Обработка БРОНИ (без изменений)
+        # Обработка БРОНИ
         if is_booked:
             if not booking_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость брони")
