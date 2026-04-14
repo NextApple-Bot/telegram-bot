@@ -68,7 +68,7 @@ async def handle_sale_from_form(
     sale_platform: str,
     sale_full_name: str,
     sale_phone: str,
-    accessories: list = None   # список словарей {name, price}
+    accessories: list = None
 ):
     if not sale_price:
         raise ValueError("Укажите стоимость продажи")
@@ -77,12 +77,53 @@ async def handle_sale_from_form(
     if not sale_payment_type:
         sale_payment_type = "cash"
 
-    # Суммируем стоимость аксессуаров
-    accessories_total = sum(acc['price'] for acc in (accessories or []))
-    total_paid = (sale_prepayment or 0) + sale_payment_amount
-
     sale_message_id = generate_sale_message_id()
-    logger.info(f"Продажа товара {item_id}: цена={sale_price}, оплата={sale_payment_amount}, способ={sale_payment_type}, аксессуары={accessories_total}")
+
+    # Обработка дополнительных товаров
+    accessories_total = 0
+    processed_accessories = []
+
+    if accessories:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            for acc in accessories:
+                acc_price = acc['price']
+                accessories_total += acc_price
+
+                display_text = acc['name']
+                item_info = None
+
+                if acc.get('serial'):
+                    row = await conn.fetchrow("""
+                        SELECT id, text, category_id FROM items
+                        WHERE UPPER(serial) = $1
+                    """, acc['serial'].strip().upper())
+                    if row:
+                        item_info = dict(row)
+                        display_text = item_info['text']
+                        # Удаляем товар из ассортимента
+                        await conn.execute("""
+                            INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
+                            VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
+                        """, item_info['id'], item_info['text'], acc['serial'], item_info['category_id'], sale_message_id)
+                        await conn.execute("DELETE FROM items WHERE id = $1", item_info['id'])
+                        # Логируем продажу (без платежа)
+                        await StatsRepository.add_sale(
+                            count=1,
+                            cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0,
+                            is_accessory=False,
+                            message_id=sale_message_id,
+                            conn=conn
+                        )
+
+                processed_accessories.append({
+                    "text": display_text,
+                    "price": acc_price
+                })
+
+    total_item_price = sale_price + accessories_total
+
+    logger.info(f"Продажа товара {item_id}: цена={total_item_price}, оплата={sale_payment_amount}, способ={sale_payment_type}")
 
     from .notifications import send_sale_notification
     await send_sale_notification(
@@ -94,14 +135,15 @@ async def handle_sale_from_form(
         platform=sale_platform,
         full_name=sale_full_name,
         phone=sale_phone,
-        accessories=accessories   # передаём список
+        accessories=processed_accessories
     )
+
     await delete_item_and_log_sale(
         item_id=item_id,
         text=old_text,
         serial=old_serial,
         category_id=old_category_id,
-        price=sale_price + accessories_total,  # общая стоимость товара + аксессуаров
+        price=total_item_price,
         prepayment=sale_prepayment or 0,
         payment_type=sale_payment_type,
         payment_amount=sale_payment_amount,
