@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
+import re
 
 from bot.db import get_pool
 
@@ -106,9 +107,13 @@ async def search_items(q: str = Query(..., min_length=2)):
     return {"results": results}
 
 
-# Новый эндпоинт для автопоиска по серийному номеру (для дополнительных товаров)
 @router.get("/api/search_by_serial")
-async def search_by_serial(q: str = Query(..., min_length=3)):
+async def search_by_serial(q: str = Query(..., min_length=1)):
+    # Удаляем символ '№' и все пробелы из запроса
+    normalized_q = re.sub(r'[№\s]', '', q.strip())
+    if len(normalized_q) < 1:
+        return {"results": []}
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch('''
@@ -116,15 +121,15 @@ async def search_by_serial(q: str = Query(..., min_length=3)):
                    c.name as category_name
             FROM items i
             JOIN categories c ON i.category_id = c.id
-            WHERE i.serial ILIKE $1
+            WHERE regexp_replace(i.serial, '[№\\s]', '', 'g') ILIKE $1
             ORDER BY i.id
             LIMIT 10
-        ''', f'%{q}%')
+        ''', f'%{normalized_q}%')
+    
     results = []
     for r in rows:
         price = r['sale_price']
         if price is None:
-            import re
             match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб)', r['text'])
             if match:
                 price_str = match.group(1).replace(' ', '').replace(',', '.')
