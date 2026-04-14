@@ -118,7 +118,8 @@ async def handle_sale_from_form(
 
                 processed_accessories.append({
                     "text": display_text,
-                    "price": acc_price
+                    "price": acc_price,
+                    "payment_type": acc.get('payment_type')
                 })
 
     total_item_price = sale_price + accessories_total
