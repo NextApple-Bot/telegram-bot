@@ -86,7 +86,7 @@ async def send_sale_notification(
     platform: str = None,
     full_name: str = None,
     phone: str = None,
-    accessories: list = None   # список аксессуаров [{name, price}]
+    accessories: list = None
 ):
     try:
         bot = Bot(token=config.TOKEN)
@@ -98,15 +98,16 @@ async def send_sale_notification(
         lines = [item_text]
         lines.append(f"Стоимость – {format_number(price)}")
         lines.append("")
+        lines.append("")
 
-        # Добавляем аксессуары
+        # Добавляем дополнительные товары
         if accessories:
             for acc in accessories:
-                lines.append(acc['name'])
+                lines.append(acc['text'])
                 lines.append(f"Стоимость – {format_number(acc['price'])}")
                 lines.append("")
+                lines.append("")
 
-        lines.append("")
         paid_amount = payment_amount if payment_amount is not None else 0
         lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
         lines.append("")
