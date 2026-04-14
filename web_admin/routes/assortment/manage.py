@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Request, Form, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from typing import Optional
+from typing import Optional, List
 import logging
 
 from bot.services.assortment import AssortmentService
@@ -69,6 +69,9 @@ async def edit_item_submit(
     sale_platform: Optional[str] = Form(None),
     sale_full_name: Optional[str] = Form(None),
     sale_phone: Optional[str] = Form(None),
+    # Новые поля для аксессуаров
+    accessory_name: List[str] = Form([]),
+    accessory_price: List[float] = Form([]),
 ):
     logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}, is_booked={is_booked}")
 
@@ -91,19 +94,26 @@ async def edit_item_submit(
         if old_is_sold:
             raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
-        # Обработка ПРОДАЖИ (будет вынесена в отдельный модуль, но для простоты оставлена здесь)
+        # Обработка ПРОДАЖИ
         if is_sold:
+            # Формируем список аксессуаров: список словарей {name, price}
+            accessories = []
+            for name, price in zip(accessory_name, accessory_price):
+                if name.strip() and price is not None and price > 0:
+                    accessories.append({"name": name.strip(), "price": price})
+
             from .sales import handle_sale_from_form
             await handle_sale_from_form(
                 item_id=item_id, text=text, serial=serial, category_id=category_id,
                 old_text=old_text, old_serial=old_serial, old_category_id=old_category_id,
                 sale_price=sale_price, sale_prepayment=sale_prepayment,
                 sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
-                sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone
+                sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
+                accessories=accessories   # передаём аксессуары
             )
             return RedirectResponse(url="/admin/assortment", status_code=303)
 
-        # Обработка БРОНИ
+        # Обработка БРОНИ (без изменений)
         if is_booked:
             if not booking_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость брони")
