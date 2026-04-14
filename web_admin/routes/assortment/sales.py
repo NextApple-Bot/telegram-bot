@@ -22,7 +22,6 @@ async def delete_item_and_log_sale(
     payment_amount: float,
     message_id: int
 ):
-    # Проверка допустимого payment_type
     allowed_types = {'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'}
     if payment_type not in allowed_types:
         payment_type = 'cash'
@@ -68,7 +67,8 @@ async def handle_sale_from_form(
     sale_payment_type: str,
     sale_platform: str,
     sale_full_name: str,
-    sale_phone: str
+    sale_phone: str,
+    accessories: list = None   # список словарей {name, price}
 ):
     if not sale_price:
         raise ValueError("Укажите стоимость продажи")
@@ -77,8 +77,12 @@ async def handle_sale_from_form(
     if not sale_payment_type:
         sale_payment_type = "cash"
 
+    # Суммируем стоимость аксессуаров
+    accessories_total = sum(acc['price'] for acc in (accessories or []))
+    total_paid = (sale_prepayment or 0) + sale_payment_amount
+
     sale_message_id = generate_sale_message_id()
-    logger.info(f"Продажа товара {item_id}: цена={sale_price}, оплата={sale_payment_amount}, способ={sale_payment_type}")
+    logger.info(f"Продажа товара {item_id}: цена={sale_price}, оплата={sale_payment_amount}, способ={sale_payment_type}, аксессуары={accessories_total}")
 
     from .notifications import send_sale_notification
     await send_sale_notification(
@@ -89,14 +93,15 @@ async def handle_sale_from_form(
         payment_amount=sale_payment_amount,
         platform=sale_platform,
         full_name=sale_full_name,
-        phone=sale_phone
+        phone=sale_phone,
+        accessories=accessories   # передаём список
     )
     await delete_item_and_log_sale(
         item_id=item_id,
         text=old_text,
         serial=old_serial,
         category_id=old_category_id,
-        price=sale_price,
+        price=sale_price + accessories_total,  # общая стоимость товара + аксессуаров
         prepayment=sale_prepayment or 0,
         payment_type=sale_payment_type,
         payment_amount=sale_payment_amount,
