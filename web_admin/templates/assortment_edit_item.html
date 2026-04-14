@@ -108,10 +108,21 @@
             <input type="tel" class="form-control" id="sale_phone" name="sale_phone" value="{{ item.sale_phone or '' }}" placeholder="+7XXXXXXXXXX" pattern="^\+7\d{10}$" maxlength="12" minlength="12" title="Формат +7XXXXXXXXXX (необязательно)">
             <small class="form-text text-muted">Формат: +7 и 10 цифр (например, +79991234567)</small>
         </div>
+
+        <!-- НОВЫЙ БЛОК: Аксессуары -->
+        <div class="mt-4">
+            <h5>Аксессуары</h5>
+            <div id="accessories-container">
+                <!-- Динамически добавляемые строки аксессуаров -->
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-accessory-btn">
+                ➕ Добавить аксессуар
+            </button>
+        </div>
     </div>
 
-    <button type="submit" class="btn btn-primary">Сохранить</button>
-    <a href="/admin/assortment" class="btn btn-secondary">Отмена</a>
+    <button type="submit" class="btn btn-primary mt-3">Сохранить</button>
+    <a href="/admin/assortment" class="btn btn-secondary mt-3">Отмена</a>
 </form>
 
 <script>
@@ -121,7 +132,6 @@
     const saleDiv = document.getElementById('saleFields');
     const isSoldCheckbox = document.getElementById('is_sold');
 
-    // Поля, которые становятся обязательными при включении брони/продажи
     const bookingRequiredFields = ['booking_price'];
     const saleRequiredFields = ['sale_price', 'sale_payment_amount'];
 
@@ -132,22 +142,18 @@
         bookingDiv.style.display = bookingVisible ? 'block' : 'none';
         saleDiv.style.display = saleVisible ? 'block' : 'none';
         
-        // Управление required для брони
         bookingRequiredFields.forEach(id => {
             const field = document.getElementById(id);
             if (field) field.required = bookingVisible;
         });
         
-        // Управление required для продажи
         saleRequiredFields.forEach(id => {
             const field = document.getElementById(id);
             if (field) field.required = saleVisible;
         });
         
-        // Если бронь включена, снимаем продажу и наоборот
         if (bookingVisible) {
             isSoldCheckbox.checked = false;
-            // Скрываем блок продажи и снимаем required с его полей
             saleDiv.style.display = 'none';
             saleRequiredFields.forEach(id => {
                 const field = document.getElementById(id);
@@ -166,11 +172,9 @@
 
     isBookedCheckbox.addEventListener('change', updateVisibility);
     isSoldCheckbox.addEventListener('change', updateVisibility);
-
-    // При загрузке устанавливаем правильное состояние required
     updateVisibility();
 
-    // Очистка числовых полей от лишних символов
+    // Очистка числовых полей
     function cleanNumberInput(event) {
         const input = event.target;
         let value = input.value;
@@ -195,7 +199,40 @@
         }
     });
 
-    // Дополнительная очистка перед отправкой
+    // Динамическое добавление аксессуаров
+    const container = document.getElementById('accessories-container');
+    const addBtn = document.getElementById('add-accessory-btn');
+
+    function createAccessoryRow() {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 align-items-end';
+        row.innerHTML = `
+            <div class="col-md-5">
+                <label class="form-label">Наименование</label>
+                <input type="text" class="form-control" name="accessory_name" placeholder="Например: Пленка Apple Watch">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Стоимость (₽)</label>
+                <input type="number" step="0.01" class="form-control accessory-price" name="accessory_price" placeholder="1490">
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-accessory-btn">Удалить</button>
+            </div>
+        `;
+        // Очистка ввода для поля стоимости
+        const priceInput = row.querySelector('.accessory-price');
+        priceInput.addEventListener('input', cleanNumberInput);
+        row.querySelector('.remove-accessory-btn').addEventListener('click', function() {
+            row.remove();
+        });
+        return row;
+    }
+
+    addBtn.addEventListener('click', function() {
+        container.appendChild(createAccessoryRow());
+    });
+
+    // При отправке формы очищаем все числовые поля (включая динамические)
     document.getElementById('editForm').addEventListener('submit', function(e) {
         numberFields.forEach(id => {
             const field = document.getElementById(id);
@@ -213,6 +250,20 @@
                 }
                 field.value = value;
             }
+        });
+        document.querySelectorAll('.accessory-price').forEach(field => {
+            let value = field.value;
+            value = value.replace(/[^\d.-]/g, '').replace(',', '.');
+            const parts = value.split('.');
+            if (parts.length > 2) {
+                value = parts[0] + '.' + parts.slice(1).join('');
+            }
+            if (value.startsWith('-')) {
+                value = '-' + value.slice(1).replace(/-/g, '');
+            } else {
+                value = value.replace(/-/g, '');
+            }
+            field.value = value;
         });
     });
 </script>
