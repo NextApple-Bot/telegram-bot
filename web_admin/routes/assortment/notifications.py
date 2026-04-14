@@ -93,14 +93,15 @@ async def send_sale_notification(
         payment_type_ru = {
             'cash': 'Наличными', 'terminal': 'Терминал', 'qr': 'QR-код',
             'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
-        }.get(payment_type, payment_type)
+        }
 
+        # 1. Основной товар
         lines = [item_text]
         lines.append(f"Стоимость – {format_number(price)}")
         lines.append("")
         lines.append("")
 
-        # Добавляем дополнительные товары
+        # 2. Дополнительные товары
         if accessories:
             for acc in accessories:
                 lines.append(acc['text'])
@@ -108,13 +109,31 @@ async def send_sale_notification(
                 lines.append("")
                 lines.append("")
 
-        paid_amount = payment_amount if payment_amount is not None else 0
-        lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
-        lines.append("")
-        total_paid = (prepayment or 0) + paid_amount
+        # 3. Собираем суммы по способам оплаты
+        payments = {}
+        # основной платёж
+        if payment_amount and payment_amount > 0 and payment_type:
+            payments[payment_type] = payments.get(payment_type, 0) + payment_amount
+
+        # аксессуары
+        if accessories:
+            for acc in accessories:
+                if acc.get('payment_type') and acc['price'] > 0:
+                    payments[acc['payment_type']] = payments.get(acc['payment_type'], 0) + acc['price']
+
+        # 4. Выводим строки оплаты (только те, где сумма > 0)
+        for pt, amount in payments.items():
+            if amount > 0:
+                lines.append(f"{payment_type_ru.get(pt, pt)} – {format_number(amount)}")
+                lines.append("")
+
+        # 5. Общая сумма
+        total_paid = (prepayment or 0) + sum(payments.values())
         lines.append(f"Общая – {format_number(total_paid)}")
         lines.append("")
         lines.append("")
+
+        # 6. Клиент и площадка
         if full_name:
             lines.append(full_name)
         if phone:
