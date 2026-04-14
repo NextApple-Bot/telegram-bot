@@ -118,7 +118,7 @@
             <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-accessory-btn">
                 ➕ Добавить позицию
             </button>
-            <small class="form-text text-muted">Если указан серийный номер, товар будет удалён из ассортимента.</small>
+            <small class="form-text text-muted">При вводе серийного номера (от 3 символов) происходит автопоиск. Если найден один товар, поля заполнятся автоматически.</small>
         </div>
     </div>
 
@@ -200,21 +200,23 @@
         }
     });
 
-    // Динамическое добавление дополнительных позиций
+    // Динамическое добавление дополнительных позиций с автопоиском
     const container = document.getElementById('accessories-container');
     const addBtn = document.getElementById('add-accessory-btn');
+    let searchTimeout = null;
 
     function createAccessoryRow() {
         const row = document.createElement('div');
-        row.className = 'row g-2 mb-2 align-items-end';
+        row.className = 'row g-2 mb-2 align-items-end accessory-row';
         row.innerHTML = `
-            <div class="col-md-4">
+            <div class="col-md-4 position-relative">
                 <label class="form-label">Наименование</label>
-                <input type="text" class="form-control" name="accessory_name" placeholder="Например: Apple Pencil USB-C">
+                <input type="text" class="form-control accessory-name" name="accessory_name" placeholder="Например: Apple Pencil USB-C">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-3 position-relative">
                 <label class="form-label">Серийный номер (если есть)</label>
-                <input type="text" class="form-control" name="accessory_serial" placeholder="J90N90D041">
+                <input type="text" class="form-control accessory-serial" name="accessory_serial" placeholder="J90N90D041" autocomplete="off">
+                <div class="serial-suggestions dropdown-menu" style="display: none; position: absolute; width: 100%; max-height: 200px; overflow-y: auto;"></div>
             </div>
             <div class="col-md-3">
                 <label class="form-label">Стоимость (₽)</label>
@@ -224,11 +226,92 @@
                 <button type="button" class="btn btn-sm btn-outline-danger remove-accessory-btn">Удалить</button>
             </div>
         `;
+
+        const nameInput = row.querySelector('.accessory-name');
+        const serialInput = row.querySelector('.accessory-serial');
         const priceInput = row.querySelector('.accessory-price');
+        const suggestionsDiv = row.querySelector('.serial-suggestions');
+
+        // Очистка поля стоимости
         priceInput.addEventListener('input', cleanNumberInput);
+
+        // Удаление строки
         row.querySelector('.remove-accessory-btn').addEventListener('click', function() {
             row.remove();
         });
+
+        // Автопоиск по серийному номеру
+        serialInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            if (query.length < 3) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/admin/assortment/api/search_by_serial?q=${encodeURIComponent(query)}`);
+                    const data = await response.json();
+                    
+                    if (data.results.length === 0) {
+                        suggestionsDiv.style.display = 'none';
+                        return;
+                    }
+                    
+                    if (data.results.length === 1) {
+                        // Автозаполнение
+                        const item = data.results[0];
+                        nameInput.value = item.text;
+                        if (item.price !== null) {
+                            priceInput.value = item.price;
+                        }
+                        suggestionsDiv.style.display = 'none';
+                        return;
+                    }
+                    
+                    // Несколько результатов — показать выпадающий список
+                    suggestionsDiv.innerHTML = '';
+                    data.results.forEach(item => {
+                        const option = document.createElement('button');
+                        option.className = 'dropdown-item';
+                        option.type = 'button';
+                        option.textContent = `${item.text} (${item.serial})`;
+                        option.addEventListener('click', () => {
+                            nameInput.value = item.text;
+                            serialInput.value = item.serial;
+                            if (item.price !== null) {
+                                priceInput.value = item.price;
+                            }
+                            suggestionsDiv.style.display = 'none';
+                        });
+                        suggestionsDiv.appendChild(option);
+                    });
+                    suggestionsDiv.style.display = 'block';
+                    
+                    // Скрыть список при клике вне поля
+                    const hideSuggestions = (e) => {
+                        if (!serialInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+                            suggestionsDiv.style.display = 'none';
+                            document.removeEventListener('click', hideSuggestions);
+                        }
+                    };
+                    document.addEventListener('click', hideSuggestions);
+                    
+                } catch (error) {
+                    console.error('Ошибка поиска:', error);
+                }
+            }, 300);
+        });
+
+        // Скрыть подсказки при потере фокуса (с небольшой задержкой, чтобы успел сработать клик)
+        serialInput.addEventListener('blur', () => {
+            setTimeout(() => {
+                if (!suggestionsDiv.matches(':hover')) {
+                    suggestionsDiv.style.display = 'none';
+                }
+            }, 100);
+        });
+
         return row;
     }
 
