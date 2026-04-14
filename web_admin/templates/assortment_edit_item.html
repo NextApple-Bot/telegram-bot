@@ -109,15 +109,16 @@
             <small class="form-text text-muted">Формат: +7 и 10 цифр (например, +79991234567)</small>
         </div>
 
-        <!-- НОВЫЙ БЛОК: Аксессуары -->
+        <!-- Дополнительные товары / аксессуары -->
         <div class="mt-4">
-            <h5>Аксессуары</h5>
+            <h5>Дополнительные товары / аксессуары</h5>
             <div id="accessories-container">
-                <!-- Динамически добавляемые строки аксессуаров -->
+                <!-- динамически добавляемые строки -->
             </div>
             <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-accessory-btn">
-                ➕ Добавить аксессуар
+                ➕ Добавить позицию
             </button>
+            <small class="form-text text-muted">Если указан серийный номер, товар будет удалён из ассортимента.</small>
         </div>
     </div>
 
@@ -199,7 +200,7 @@
         }
     });
 
-    // Динамическое добавление аксессуаров
+    // Динамическое добавление дополнительных позиций
     const container = document.getElementById('accessories-container');
     const addBtn = document.getElementById('add-accessory-btn');
 
@@ -207,19 +208,22 @@
         const row = document.createElement('div');
         row.className = 'row g-2 mb-2 align-items-end';
         row.innerHTML = `
-            <div class="col-md-5">
+            <div class="col-md-4">
                 <label class="form-label">Наименование</label>
-                <input type="text" class="form-control" name="accessory_name" placeholder="Например: Пленка Apple Watch">
+                <input type="text" class="form-control" name="accessory_name" placeholder="Например: Apple Pencil USB-C">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Серийный номер (если есть)</label>
+                <input type="text" class="form-control" name="accessory_serial" placeholder="J90N90D041">
             </div>
             <div class="col-md-3">
                 <label class="form-label">Стоимость (₽)</label>
-                <input type="number" step="0.01" class="form-control accessory-price" name="accessory_price" placeholder="1490">
+                <input type="number" step="0.01" class="form-control accessory-price" name="accessory_price" placeholder="10490">
             </div>
             <div class="col-md-2">
                 <button type="button" class="btn btn-sm btn-outline-danger remove-accessory-btn">Удалить</button>
             </div>
         `;
-        // Очистка ввода для поля стоимости
         const priceInput = row.querySelector('.accessory-price');
         priceInput.addEventListener('input', cleanNumberInput);
         row.querySelector('.remove-accessory-btn').addEventListener('click', function() {
