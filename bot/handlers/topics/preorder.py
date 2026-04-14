@@ -3,6 +3,7 @@ import re
 import logging
 from aiogram import F, Router
 from aiogram.types import Message, ReactionTypeEmoji
+from aiogram.exceptions import TelegramBadRequest
 
 from bot import config
 from bot.services.booking import BookingService
@@ -13,6 +14,17 @@ from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+async def safe_react(message: Message, emoji: str):
+    """Безопасно ставит реакцию, игнорируя ошибки прав."""
+    try:
+        await message.react([ReactionTypeEmoji(emoji=emoji)])
+    except TelegramBadRequest as e:
+        if "REACTION_INVALID" in str(e) or "MESSAGE_REACTIONS_FORBIDDEN" in str(e):
+            logger.warning(f"Не удалось поставить реакцию {emoji}: {e}")
+        else:
+            raise
 
 
 async def is_message_processed(chat_id: int, message_id: int) -> bool:
@@ -68,7 +80,7 @@ async def handle_preorder(message: Message):
 
                 await StatsRepository.add_preorder(**payments)
                 await PaymentService.add_payments_batch(payments, source_type='preorder')
-                await message.react([ReactionTypeEmoji(emoji='👌')])
+                await safe_react(message, '👌')
 
         # Обработка блоков брони
         for idx in booking_indices:
@@ -80,10 +92,10 @@ async def handle_preorder(message: Message):
             result = await BookingService.process_booking(booking_lines, booking_payments)
             if not result.get("success"):
                 if result.get("reason") == "no_items":
-                    await message.react([ReactionTypeEmoji(emoji='👎')])
+                    await safe_react(message, '👎')
                     await message.reply("❌ В блоке брони нет товаров с серийными номерами.")
                 continue
-            await message.react([ReactionTypeEmoji(emoji='👍')])
+            await safe_react(message, '👍')
             booked_count = len(result.get("results", []))
             await message.reply(f"✅ Добавлена бронь на {booked_count} товаров.")
     else:
@@ -106,6 +118,6 @@ async def handle_preorder(message: Message):
 
             await StatsRepository.add_preorder(**payments)
             await PaymentService.add_payments_batch(payments, source_type='preorder')
-            await message.react([ReactionTypeEmoji(emoji='👌')])
+            await safe_react(message, '👌')
 
     await mark_message_processed(message.chat.id, message.message_id)
