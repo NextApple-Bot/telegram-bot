@@ -95,45 +95,46 @@ async def send_sale_notification(
             'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
         }
 
-        # 1. Основной товар
         lines = [item_text]
         lines.append(f"Стоимость – {format_number(price)}")
-        lines.append("")
-        lines.append("")
+        lines.append("")   # одна пустая строка перед аксессуарами или оплатой
 
-        # 2. Дополнительные товары
+        # Дополнительные товары
         if accessories:
             for acc in accessories:
                 lines.append(acc['text'])
                 lines.append(f"Стоимость – {format_number(acc['price'])}")
-                lines.append("")
-                lines.append("")
+                lines.append("")   # одна пустая строка после каждого аксессуара
+            lines.append("")       # дополнительная пустая строка, чтобы получить две перед оплатой
+        else:
+            lines.append("")       # вторая пустая строка перед оплатой
 
-        # 3. Собираем суммы по способам оплаты
+        # Сбор сумм по способам оплаты
         payments = {}
-        # основной платёж
         if payment_amount and payment_amount > 0 and payment_type:
             payments[payment_type] = payments.get(payment_type, 0) + payment_amount
 
-        # аксессуары
         if accessories:
             for acc in accessories:
                 if acc.get('payment_type') and acc['price'] > 0:
                     payments[acc['payment_type']] = payments.get(acc['payment_type'], 0) + acc['price']
 
-        # 4. Выводим строки оплаты (только те, где сумма > 0)
+        # Строки оплаты
         for pt, amount in payments.items():
             if amount > 0:
                 lines.append(f"{payment_type_ru.get(pt, pt)} – {format_number(amount)}")
-                lines.append("")
+                lines.append("")   # одна пустая строка после каждого способа оплаты
 
-        # 5. Общая сумма
+        # Удаляем последнюю пустую строку (если она есть) и добавляем одну перед "Общая"
+        if lines and lines[-1] == "":
+            lines.pop()
+        lines.append("")   # одна пустая строка перед "Общая"
+
         total_paid = (prepayment or 0) + sum(payments.values())
         lines.append(f"Общая – {format_number(total_paid)}")
         lines.append("")
-        lines.append("")
+        lines.append("")   # две пустые строки перед ФИО
 
-        # 6. Клиент и площадка
         if full_name:
             lines.append(full_name)
         if phone:
