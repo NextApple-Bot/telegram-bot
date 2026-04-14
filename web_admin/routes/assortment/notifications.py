@@ -46,12 +46,14 @@ async def send_booking_notification(
             if price is not None:
                 lines.append(f"Стоимость – {format_number(price)}")
                 lines.append("")
+                lines.append("")
             if prepayment_str:
                 lines.append(prepayment_str)
             if price is not None and prepayment is not None:
                 lines.append(f"Остаток – {format_number(remainder)}")
                 lines.append(f"Общая – {format_number(price)}")
-            # Убрана пустая строка перед ФИО и телефоном
+                lines.append("")
+                lines.append("")
             if full_name:
                 lines.append(full_name)
             if phone:
@@ -93,8 +95,10 @@ async def send_sale_notification(
         lines = [item_text]
         lines.append(f"Стоимость – {format_number(price)}")
         lines.append("")
+        lines.append("")
         paid_amount = payment_amount if payment_amount is not None else 0
         lines.append(f"{payment_type_ru} – {format_number(paid_amount)}")
+        lines.append("")
         lines.append("")
         total_paid = (prepayment or 0) + paid_amount
         lines.append(f"Общая – {format_number(total_paid)}")
