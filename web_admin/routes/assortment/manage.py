@@ -72,6 +72,7 @@ async def edit_item_submit(
     accessory_name: List[str] = Form([]),
     accessory_serial: List[str] = Form([]),
     accessory_price: List[float] = Form([]),
+    accessory_payment_type: List[str] = Form([]),
 ):
     logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}, is_booked={is_booked}")
 
@@ -97,12 +98,15 @@ async def edit_item_submit(
         # Обработка ПРОДАЖИ
         if is_sold:
             accessories = []
-            for name, acc_serial, price in zip(accessory_name, accessory_serial, accessory_price):
+            for name, acc_serial, price, pay_type in zip(
+                accessory_name, accessory_serial, accessory_price, accessory_payment_type
+            ):
                 if name.strip() and price is not None and price > 0:
                     accessories.append({
                         "name": name.strip(),
                         "serial": acc_serial.strip() if acc_serial and acc_serial.strip() else None,
-                        "price": price
+                        "price": price,
+                        "payment_type": pay_type if pay_type else None
                     })
 
             from .sales import handle_sale_from_form
