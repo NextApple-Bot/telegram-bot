@@ -3,6 +3,7 @@ import re
 import logging
 from aiogram import F, Router
 from aiogram.types import Message, ReactionTypeEmoji
+from aiogram.exceptions import TelegramBadRequest
 
 from bot import config
 from bot.services.sale import SaleService
@@ -19,6 +20,17 @@ TRADE_IN_PATTERNS = [
     r'трейд\s*ин',
     r'trade\-in',
 ]
+
+
+async def safe_react(message: Message, emoji: str):
+    """Безопасно ставит реакцию, игнорируя ошибки прав."""
+    try:
+        await message.react([ReactionTypeEmoji(emoji=emoji)])
+    except TelegramBadRequest as e:
+        if "REACTION_INVALID" in str(e) or "MESSAGE_REACTIONS_FORBIDDEN" in str(e):
+            logger.warning(f"Не удалось поставить реакцию {emoji}: {e}")
+        else:
+            raise
 
 
 def remove_trade_in_lines(text: str) -> str:
@@ -73,15 +85,15 @@ async def handle_sales_message(message: Message):
     # Реакция и сообщения об ошибках
     if result.get("is_accessory"):
         # Аксессуар – только платежи сохранены, статистики продаж нет
-        await message.react([ReactionTypeEmoji(emoji='💸')])
+        await safe_react(message, '💸')
         logger.info("Аксессуар: платежи сохранены, статистика продаж не изменена.")
     elif result.get("sold_items"):
         # Продажа товаров с серийниками
-        await message.react([ReactionTypeEmoji(emoji='🔥')])
+        await safe_react(message, '🔥')
         logger.info(f"✅ Продажа: {len(result['sold_items'])} товаров, статистика и платежи сохранены.")
     elif result.get("not_found"):
         # Серийные номера указаны, но не найдены
-        await message.react([ReactionTypeEmoji(emoji='❌')])
+        await safe_react(message, '❌')
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(result["not_found"])
         await message.reply(text)
         logger.info("Серийные номера не найдены – ничего не сохранено.")
