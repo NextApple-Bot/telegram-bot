@@ -104,3 +104,39 @@ async def search_items(q: str = Query(..., min_length=2)):
         ''', f'%{q}%')
     results = [{"id": r["id"], "text": r["text"], "serial": r["serial"], "category": r["category_name"]} for r in rows]
     return {"results": results}
+
+
+# Новый эндпоинт для автопоиска по серийному номеру (для дополнительных товаров)
+@router.get("/api/search_by_serial")
+async def search_by_serial(q: str = Query(..., min_length=3)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch('''
+            SELECT i.id, i.text, i.serial, i.sale_price,
+                   c.name as category_name
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            WHERE i.serial ILIKE $1
+            ORDER BY i.id
+            LIMIT 10
+        ''', f'%{q}%')
+    results = []
+    for r in rows:
+        price = r['sale_price']
+        if price is None:
+            import re
+            match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб)', r['text'])
+            if match:
+                price_str = match.group(1).replace(' ', '').replace(',', '.')
+                try:
+                    price = float(price_str)
+                except ValueError:
+                    price = None
+        results.append({
+            "id": r['id'],
+            "text": r['text'],
+            "serial": r['serial'],
+            "price": price,
+            "category": r['category_name']
+        })
+    return {"results": results}
