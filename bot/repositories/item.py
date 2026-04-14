@@ -247,4 +247,4 @@ class ItemRepository:
                     query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
                     await conn.execute(query, *params)
 
-        AssortmentService.invalidate_cache()
+        await AssortmentService.invalidate_cache()   # <-- ИСПРАВЛЕНО: добавлен await
