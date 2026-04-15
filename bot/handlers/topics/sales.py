@@ -2,8 +2,7 @@
 import re
 import logging
 from aiogram import F, Router
-from aiogram.types import Message, ReactionTypeEmoji
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Message
 
 from bot import config
 from bot.services.sale import SaleService
@@ -11,6 +10,7 @@ from bot.services.payment import PaymentService
 from bot.repositories import ClientRepository
 from bot.utils.parser import parse_client_data, extract_payment_amounts
 from bot.utils.helpers import send_and_clean
+from bot.services.message_service import is_message_processed, mark_message_processed, safe_react
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -20,17 +20,6 @@ TRADE_IN_PATTERNS = [
     r'трейд\s*ин',
     r'trade\-in',
 ]
-
-
-async def safe_react(message: Message, emoji: str):
-    """Безопасно ставит реакцию, игнорируя ошибки прав."""
-    try:
-        await message.react([ReactionTypeEmoji(emoji=emoji)])
-    except TelegramBadRequest as e:
-        if "REACTION_INVALID" in str(e) or "MESSAGE_REACTIONS_FORBIDDEN" in str(e):
-            logger.warning(f"Не удалось поставить реакцию {emoji}: {e}")
-        else:
-            raise
 
 
 def remove_trade_in_lines(text: str) -> str:
@@ -53,7 +42,7 @@ async def handle_sales_message(message: Message):
     if not content:
         return
 
-    if await SaleService.is_message_processed(message.chat.id, message.message_id):
+    if await is_message_processed(message.chat.id, message.message_id):
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
@@ -101,4 +90,4 @@ async def handle_sales_message(message: Message):
     else:
         logger.info("Сообщение уже обработано или нет действий.")
 
-    await SaleService.mark_message_processed(message.chat.id, message.message_id)
+    await mark_message_processed(message.chat.id, message.message_id)
