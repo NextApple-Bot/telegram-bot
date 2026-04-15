@@ -2,7 +2,7 @@
 import logging
 from aiogram import Bot
 from bot import config
-from bot.utils.helpers import send_and_clean   # <-- импорт
+from bot.utils.helpers import send_and_clean
 
 logger = logging.getLogger(__name__)
 
