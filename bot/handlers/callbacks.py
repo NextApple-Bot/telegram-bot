@@ -21,7 +21,6 @@ from bot.utils.helpers import send_and_clean
 
 router = Router()
 
-# Кэши с TTL
 last_stats_message = TTLCache(maxsize=1000, ttl=3600)
 last_inventory_message = TTLCache(maxsize=1000, ttl=3600)
 last_remains_message = TTLCache(maxsize=1000, ttl=3600)
@@ -331,7 +330,7 @@ async def process_confirm_clear(callback: CallbackQuery, bot):
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
-    await send_and_clean(bot=callback.bot, chat_id=chat_id, text="Главное меню:", reply_markup=get_main_menu_keyboard(), message_thread_id=callback.message.message_thread_id, delete_after60)
+    await send_and_clean(bot=callback.bot, chat_id=chat_id, text="Главное меню:", reply_markup=get_main_menu_keyboard(), message_thread_id=callback.message.message_thread_id, delete_after=60)
 
 
 @router.callback_query(F.data.startswith("menu:"))
