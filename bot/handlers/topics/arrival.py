@@ -248,7 +248,7 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
                     logger.exception(error_msg)
                     errors.append(error_msg)
 
-        AssortmentService.invalidate_cache()
+        await AssortmentService.invalidate_cache()
         await callback.message.edit_text(f"✅ Добавлено {total_inserted} новых товаров. Ошибок: {len(errors)}")
         if errors:
             await send_and_clean(
