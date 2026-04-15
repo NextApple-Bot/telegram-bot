@@ -38,10 +38,10 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
 
 _pool = None
 
+
 async def get_pool():
     global _pool
     if _pool is None:
-        # Настройки пула можно переопределить через переменные окружения
         min_size = int(os.getenv("DB_POOL_MIN_SIZE", "1"))
         max_size = int(os.getenv("DB_POOL_MAX_SIZE", "5"))
         last_exception = None
@@ -172,7 +172,8 @@ async def init_db():
                 category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
                 deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 restored BOOLEAN DEFAULT FALSE,
-                reason TEXT
+                reason TEXT,
+                sale_message_id BIGINT
             )
         ''')
         # Таблица обработанных сообщений
@@ -193,6 +194,7 @@ async def init_db():
                 payment_type TEXT NOT NULL,
                 amount REAL NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sale_message_id BIGINT,
                 CHECK (type IN ('sale', 'preorder')),
                 CHECK (payment_type IN ('cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'))
             )
@@ -211,11 +213,11 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_created_at ON daily_payments(created_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_processed_messages_processed_at ON processed_messages(processed_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_sales_item_id ON sales(item_id)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_updated_at ON clients(updated_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_type ON daily_payments(type)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_processed_messages_chat_processed ON processed_messages(chat_id, processed_at)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_items_category_booked_created ON items(category_id, is_booked, created_at)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_daily_payments_sale_message_id ON daily_payments(sale_message_id)')
 
         # Добавление новых колонок (совместимость)
         await conn.execute('ALTER TABLE preorders ADD COLUMN IF NOT EXISTS transfer REAL DEFAULT 0')
@@ -245,8 +247,6 @@ async def init_db():
         
         # Колонки для связи финансов и продажи
         await conn.execute('ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
-        
-        # НОВАЯ КОЛОНКА ДЛЯ DELETED_ITEMS
         await conn.execute('ALTER TABLE deleted_items ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
 
     logger.info("✅ Инициализация БД завершена (таблицы, индексы и колонки созданы)")
@@ -282,8 +282,8 @@ async def cleanup_sold_periodically():
             logger.exception(f"Ошибка при очистке продаж: {e}")
 
 
-# Функции проверки здоровья для healthcheck
 async def check_db_health() -> bool:
+    """Проверяет доступность базы данных."""
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -294,8 +294,9 @@ async def check_db_health() -> bool:
 
 
 async def check_redis_health() -> bool:
+    """Проверяет доступность Redis (если настроен)."""
     if not config.REDIS_URL:
-        return True  # Redis не обязателен для работы, но если он настроен, проверяем
+        return True
     try:
         import redis.asyncio as redis
         r = redis.from_url(config.REDIS_URL, decode_responses=True)
