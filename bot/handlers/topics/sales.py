@@ -10,7 +10,7 @@ from bot.services.sale import SaleService
 from bot.services.payment import PaymentService
 from bot.repositories import ClientRepository
 from bot.utils.parser import parse_client_data, extract_payment_amounts
-from bot.db import get_pool
+from bot.utils.helpers import send_and_clean
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -58,11 +58,10 @@ async def handle_sales_message(message: Message):
         return
 
     content = remove_trade_in_lines(content)
-    # Извлекаем платежи один раз
     payments = extract_payment_amounts(content, ignore_prepay=True)
     result = await SaleService.process_sale(content, message.chat.id, message.message_id, payments)
 
-    # Сохранение клиента (только если есть данные)
+    # Сохранение клиента
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
@@ -77,28 +76,29 @@ async def handle_sales_message(message: Message):
     except Exception as e:
         logger.exception(f"Ошибка при сохранении клиента: {e}")
 
-    # Сохраняем платежи, если это не запрещено (skip_payments = True только при ненайденных серийниках)
     if not result.get("skip_payments", False):
         await PaymentService.add_payments_batch(payments, source_type='sale')
         logger.info(f"💰 Платежи сохранены: {payments}")
 
-    # Реакция и сообщения об ошибках
     if result.get("is_accessory"):
-        # Аксессуар – только платежи сохранены, статистики продаж нет
         await safe_react(message, '💸')
         logger.info("Аксессуар: платежи сохранены, статистика продаж не изменена.")
     elif result.get("sold_items"):
-        # Продажа товаров с серийниками
         await safe_react(message, '🔥')
         logger.info(f"✅ Продажа: {len(result['sold_items'])} товаров, статистика и платежи сохранены.")
     elif result.get("not_found"):
-        # Серийные номера указаны, но не найдены
         await safe_react(message, '❌')
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(result["not_found"])
-        await message.reply(text)
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=text,
+            reply_to_message_id=message.message_id,
+            message_thread_id=config.THREAD_SALES,
+            delete_after=60
+        )
         logger.info("Серийные номера не найдены – ничего не сохранено.")
     else:
-        # Прочие случаи (например, дубль сообщения)
         logger.info("Сообщение уже обработано или нет действий.")
 
     await SaleService.mark_message_processed(message.chat.id, message.message_id)
