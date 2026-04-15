@@ -20,6 +20,8 @@ services:
         sync: false
       - key: THREAD_PREORDER
         sync: false
+      - key: THREAD_SERVICE
+        value: 0
       - key: DATABASE_URL
         sync: false
       - key: ADMIN_PASSWORD
