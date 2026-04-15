@@ -23,7 +23,6 @@ async def send_and_clean(
     Отправляет сообщение и автоматически удаляет его через delete_after секунд,
     если топик не является топиком ассортимента.
     """
-    # Отправляем сообщение
     msg = await bot.send_message(
         chat_id=chat_id,
         text=text,
@@ -34,8 +33,6 @@ async def send_and_clean(
         **kwargs
     )
 
-    # Проверяем, нужно ли удалять
-    # Не удаляем только в топике ассортимента (или если это служебный топик, удаляем)
     if message_thread_id != config.THREAD_ASSORTMENT:
         async def delete_later():
             await asyncio.sleep(delete_after)
