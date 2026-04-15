@@ -2,7 +2,6 @@
 import logging
 from aiogram import Bot
 from bot import config
-from bot.utils.helpers import send_and_clean   # оставлен для других сообщений
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,6 @@ async def send_booking_notification(
 
             message_text = "\n".join(lines)
 
-        # Критическое уведомление – не удаляем
         await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
@@ -94,7 +92,8 @@ async def send_sale_notification(
         bot = Bot(token=config.TOKEN)
         payment_type_ru = {
             'cash': 'Наличными', 'terminal': 'Терминал', 'qr': 'QR-код',
-            'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка'
+            'transfer': 'Перевод', 'invoice': 'Оплата по счету', 'installment': 'Рассрочка',
+            'paid': 'Оплачен'
         }
 
         lines = [item_text]
@@ -110,19 +109,26 @@ async def send_sale_notification(
         else:
             lines.append("")
 
+        # Собираем платежи (кроме paid) для расчёта общей суммы
         payments = {}
-        if payment_amount and payment_amount > 0 and payment_type:
+        if payment_type != "paid" and payment_amount and payment_amount > 0:
             payments[payment_type] = payments.get(payment_type, 0) + payment_amount
 
         if accessories:
             for acc in accessories:
-                if acc.get('payment_type') and acc['price'] > 0:
-                    payments[acc['payment_type']] = payments.get(acc['payment_type'], 0) + acc['price']
+                pay_type = acc.get('payment_type')
+                if pay_type and pay_type != "paid" and acc['price'] > 0:
+                    payments[pay_type] = payments.get(pay_type, 0) + acc['price']
 
-        for pt, amount in payments.items():
-            if amount > 0:
-                lines.append(f"{payment_type_ru.get(pt, pt)} – {format_number(amount)}")
-                lines.append("")
+        # Строки оплаты
+        if payment_type == "paid":
+            lines.append("Оплачен")
+            lines.append("")
+        else:
+            for pt, amount in payments.items():
+                if amount > 0:
+                    lines.append(f"{payment_type_ru.get(pt, pt)} – {format_number(amount)}")
+                    lines.append("")
 
         if lines and lines[-1] == "":
             lines.pop()
@@ -142,7 +148,6 @@ async def send_sale_notification(
             lines.append(f"Площадка – {platform}")
 
         message_text = "\n".join(lines)
-        # Критическое уведомление – не удаляем
         await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
