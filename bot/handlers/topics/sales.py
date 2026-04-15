@@ -10,7 +10,7 @@ from bot.services.payment import PaymentService
 from bot.repositories import ClientRepository
 from bot.utils.parser import parse_client_data, extract_payment_amounts
 from bot.utils.helpers import send_and_clean
-from bot.services.message_service import is_message_processed, mark_message_processed, safe_react
+from bot.services.message_service import mark_message_processed, safe_react
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -42,7 +42,9 @@ async def handle_sales_message(message: Message):
     if not content:
         return
 
-    if await is_message_processed(message.chat.id, message.message_id):
+    # Атомарная проверка и пометка обработанности
+    is_first_time = await mark_message_processed(message.chat.id, message.message_id)
+    if not is_first_time:
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
@@ -89,5 +91,3 @@ async def handle_sales_message(message: Message):
         logger.info("Серийные номера не найдены – ничего не сохранено.")
     else:
         logger.info("Сообщение уже обработано или нет действий.")
-
-    await mark_message_processed(message.chat.id, message.message_id)
