@@ -93,6 +93,7 @@
                 <option value="transfer" {% if item.sale_payment_type == 'transfer' %}selected{% endif %}>Перевод</option>
                 <option value="invoice" {% if item.sale_payment_type == 'invoice' %}selected{% endif %}>Оплата по счету</option>
                 <option value="installment" {% if item.sale_payment_type == 'installment' %}selected{% endif %}>Рассрочка</option>
+                <option value="paid" {% if item.sale_payment_type == 'paid' %}selected{% endif %}>Оплачен</option>
             </select>
         </div>
         <div class="mb-3">
@@ -232,6 +233,7 @@
                     <option value="transfer">Перевод</option>
                     <option value="invoice">Оплата по счету</option>
                     <option value="installment">Рассрочка</option>
+                    <option value="paid">Оплачен</option>
                 </select>
             </div>
             <div class="col-md-2">
@@ -242,18 +244,14 @@
         const nameInput = row.querySelector('.accessory-name');
         const serialInput = row.querySelector('.accessory-serial');
         const priceInput = row.querySelector('.accessory-price');
-        const paymentSelect = row.querySelector('.accessory-payment');
         const suggestionsDiv = row.querySelector('.serial-suggestions');
 
-        // Очистка поля стоимости
         priceInput.addEventListener('input', cleanNumberInput);
 
-        // Удаление строки
         row.querySelector('.remove-accessory-btn').addEventListener('click', function() {
             row.remove();
         });
 
-        // Автопоиск по серийному номеру
         serialInput.addEventListener('input', function() {
             clearTimeout(searchTimeout);
             const query = this.value.trim();
@@ -272,7 +270,6 @@
                     }
                     
                     if (data.results.length === 1) {
-                        // Автозаполнение
                         const item = data.results[0];
                         nameInput.value = item.text;
                         serialInput.value = item.serial;
@@ -283,7 +280,6 @@
                         return;
                     }
                     
-                    // Несколько результатов — показать выпадающий список
                     suggestionsDiv.innerHTML = '';
                     data.results.forEach(item => {
                         const option = document.createElement('button');
@@ -302,7 +298,6 @@
                     });
                     suggestionsDiv.style.display = 'block';
                     
-                    // Скрыть список при клике вне поля
                     const hideSuggestions = (e) => {
                         if (!serialInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
                             suggestionsDiv.style.display = 'none';
@@ -317,7 +312,6 @@
             }, 300);
         });
 
-        // Скрыть подсказки при потере фокуса (с небольшой задержкой, чтобы успел сработать клик)
         serialInput.addEventListener('blur', () => {
             setTimeout(() => {
                 if (!suggestionsDiv.matches(':hover')) {
