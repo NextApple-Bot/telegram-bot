@@ -5,17 +5,16 @@ from datetime import datetime, timedelta
 from bot.db import get_pool
 from bot.services.cache import cache
 from bot import config
+from bot.webhook_utils import check_and_set_webhook
 
 logger = logging.getLogger(__name__)
 
-# Константы для блокировок в Redis
 CLEANUP_LOCK_KEY = "background:cleanup_old_records:lock"
 CLEANUP_SOLD_LOCK_KEY = "background:cleanup_sold:lock"
-LOCK_TTL = 86400 * 2  # 2 дня, чтобы точно пережить сутки
+LOCK_TTL = 86400 * 2
 
 
 async def cleanup_old_records():
-    """Удаляет старые записи из processed_messages и daily_payments."""
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -27,7 +26,6 @@ async def cleanup_old_records():
 
 
 async def cleanup_sold_periodically():
-    """Удаляет записи о проданных товарах старше 7 дней."""
     try:
         pool = await get_pool()
         cutoff = datetime.now() - timedelta(days=7)
@@ -40,17 +38,11 @@ async def cleanup_sold_periodically():
 
 
 async def run_with_lock(lock_key: str, task_func, ttl: int = LOCK_TTL):
-    """
-    Выполняет задачу только если удалось захватить блокировку в Redis.
-    Если блокировка не захвачена, значит задача уже выполняется на другой реплике.
-    """
     if not config.REDIS_URL:
-        # Если Redis не настроен, выполняем задачу без блокировки (риск дублирования при масштабировании)
         logger.warning(f"Redis не настроен, выполняем {task_func.__name__} без блокировки")
         await task_func()
         return
 
-    # Пытаемся установить блокировку с помощью SET NX
     redis_client = cache._redis
     acquired = await redis_client.set(lock_key, "locked", nx=True, ex=ttl)
     if acquired:
@@ -65,30 +57,27 @@ async def run_with_lock(lock_key: str, task_func, ttl: int = LOCK_TTL):
 
 
 async def background_cleanup_loop():
-    """Цикл очистки старых записей (раз в сутки)."""
     while True:
         await asyncio.sleep(86400)
         await run_with_lock(CLEANUP_LOCK_KEY, cleanup_old_records)
 
 
 async def background_sold_cleanup_loop():
-    """Цикл очистки проданных товаров (раз в сутки)."""
     while True:
         await asyncio.sleep(86400)
         await run_with_lock(CLEANUP_SOLD_LOCK_KEY, cleanup_sold_periodically)
 
 
-async def webhook_healthcheck_loop():
-    """Проверка вебхука каждые 5 минут (без блокировки, т.к. не критично дублирование)."""
-    from bot.webhook_utils import check_and_set_webhook
+async def webhook_healthcheck_loop(bot):
+    """Проверка вебхука каждые 5 минут."""
     while True:
         await asyncio.sleep(300)
-        await check_and_set_webhook()
+        await check_and_set_webhook(bot)
 
 
-async def start_background_tasks():
-    """Запускает все фоновые задачи."""
+async def start_background_tasks(bot):
+    """Запускает все фоновые задачи, принимая объект бота."""
     asyncio.create_task(background_cleanup_loop())
     asyncio.create_task(background_sold_cleanup_loop())
-    asyncio.create_task(webhook_healthcheck_loop())
+    asyncio.create_task(webhook_healthcheck_loop(bot))
     logger.info("Все фоновые задачи запущены")
