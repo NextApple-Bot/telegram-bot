@@ -1,3 +1,4 @@
+# Файл: bot/handlers/topics/arrival.py
 import re
 import tempfile
 import os
@@ -14,6 +15,7 @@ from bot.handlers.states import ArrivalConfirmState
 from bot.utils.validators import extract_serials
 from bot.utils.sort import extract_base_name, normalize_name
 from bot.db import get_pool
+from bot.utils.helpers import send_and_clean
 
 logger = logging.getLogger(__name__)
 
@@ -71,17 +73,38 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
 async def handle_arrival(message: Message, bot, state: FSMContext):
     current_state = await state.get_state()
     if current_state == ArrivalConfirmState.waiting_for_confirm.state:
-        await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки).")
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text="⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки).",
+            reply_to_message_id=message.message_id,
+            message_thread_id=config.THREAD_ARRIVAL,
+            delete_after=60
+        )
         return
 
     lines = []
     if message.document:
         document = message.document
         if document.file_size > MAX_FILE_SIZE:
-            await message.reply("❌ Файл слишком большой (макс. 10 МБ).")
+            await send_and_clean(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text="❌ Файл слишком большой (макс. 10 МБ).",
+                reply_to_message_id=message.message_id,
+                message_thread_id=config.THREAD_ARRIVAL,
+                delete_after=60
+            )
             return
         if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
-            await message.reply("⚠️ Отправьте текстовый файл .txt")
+            await send_and_clean(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text="⚠️ Отправьте текстовый файл .txt",
+                reply_to_message_id=message.message_id,
+                message_thread_id=config.THREAD_ARRIVAL,
+                delete_after=60
+            )
             return
         file_path = f"/tmp/{document.file_name}"
         await bot.download(document, destination=file_path)
@@ -95,7 +118,14 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     else:
         content = message.text or message.caption
         if not content:
-            await message.reply("⚠️ Отправьте текст, файл или фото с подписью.")
+            await send_and_clean(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text="⚠️ Отправьте текст, файл или фото с подписью.",
+                reply_to_message_id=message.message_id,
+                message_thread_id=config.THREAD_ARRIVAL,
+                delete_after=60
+            )
             return
         lines = [line.strip() for line in content.splitlines() if line.strip()]
 
@@ -112,7 +142,14 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             logger.info(f"Пропущена строка без серийного номера: {line}")
 
     if not filtered_lines:
-        await message.reply("❌ Нет ни одной строки с серийным номером. Добавление отменено.")
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text="❌ Нет ни одной строки с серийным номером. Добавление отменено.",
+            reply_to_message_id=message.message_id,
+            message_thread_id=config.THREAD_ARRIVAL,
+            delete_after=60
+        )
         return
 
     existing_items = await ItemRepository.get_all_items_serials()
@@ -133,6 +170,8 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             continue
 
         serials = extract_serials(line)
+        if not serials:
+            continue
         serial = serials[0].strip().upper() if serials else None
         if serial and serial in existing_serials:
             skipped_duplicates.append(f"[Дубликат серийного номера {serial}] {line}")
@@ -143,7 +182,14 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         cat_to_items.setdefault(category_name, []).append((line, serial))
 
     if not cat_to_items:
-        await message.reply("❌ Нет новых позиций для добавления (все дубликаты).")
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text="❌ Нет новых позиций для добавления (все дубликаты).",
+            reply_to_message_id=message.message_id,
+            message_thread_id=config.THREAD_ARRIVAL,
+            delete_after=60
+        )
         return
 
     await state.set_state(ArrivalConfirmState.waiting_for_confirm)
@@ -192,7 +238,6 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
                 is_booked = 'Бронь от' in text
                 try:
                     async with pool.acquire() as conn:
-                        # Убираем ON CONFLICT — дубликаты уже отсечены в коде
                         await conn.execute('''
                             INSERT INTO items (text, serial, category_id, is_booked)
                             VALUES ($1, $2, $3, $4)
@@ -206,7 +251,13 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
         AssortmentService.invalidate_cache()
         await callback.message.edit_text(f"✅ Добавлено {total_inserted} новых товаров. Ошибок: {len(errors)}")
         if errors:
-            await callback.message.answer("\n".join(errors[:5]))
+            await send_and_clean(
+                bot=callback.bot,
+                chat_id=callback.message.chat.id,
+                text="\n".join(errors[:5]),
+                message_thread_id=config.THREAD_ARRIVAL,
+                delete_after=60
+            )
     elif action == "no":
         await callback.message.edit_text("❌ Добавление отменено.")
     else:
@@ -218,9 +269,23 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
 @router.message(ArrivalConfirmState.waiting_for_confirm, F.text.lower() == "отмена")
 async def cancel_arrival_confirm_by_text(message: Message, state: FSMContext):
     await state.clear()
-    await message.reply("❌ Добавление отменено.")
+    await send_and_clean(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        text="❌ Добавление отменено.",
+        reply_to_message_id=message.message_id,
+        message_thread_id=config.THREAD_ARRIVAL,
+        delete_after=60
+    )
 
 
 @router.message(ArrivalConfirmState.waiting_for_confirm)
 async def unexpected_message_in_arrival_confirm(message: Message, state: FSMContext):
-    await message.reply("⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите 'отмена').")
+    await send_and_clean(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        text="⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите 'отмена').",
+        reply_to_message_id=message.message_id,
+        message_thread_id=config.THREAD_ARRIVAL,
+        delete_after=60
+    )
