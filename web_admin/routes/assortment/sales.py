@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_sale_message_id() -> int:
+    """Генерирует уникальный ID сообщения о продаже (на основе времени)."""
     return int(time.time() * 1000)
 
 
@@ -16,12 +17,16 @@ async def delete_item_and_log_sale(
     text: str,
     serial: str,
     category_id: int,
-    price: float,
+    price: float,                # общая стоимость всех товаров в продаже
     prepayment: float,
-    payment_type: str,
-    payment_amount: float,
+    payment_type: str,           # НЕ ИСПОЛЬЗУЕТСЯ для daily_payments (оставлен для совместимости)
+    payment_amount: float,       # НЕ ИСПОЛЬЗУЕТСЯ для daily_payments
     message_id: int
 ):
+    """
+    Удаляет основной товар из ассортимента и создаёт запись в sales.
+    Платежи в daily_payments теперь обрабатываются отдельно в handle_sale_from_form.
+    """
     allowed_types = {'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'}
     if payment_type not in allowed_types:
         payment_type = 'cash'
@@ -30,27 +35,29 @@ async def delete_item_and_log_sale(
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            # Архивируем удаляемый товар
             await conn.execute("""
                 INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
                 VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
             """, item_id, text, serial, category_id, message_id)
+            # Удаляем товар из активного ассортимента
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
+
+            # Записываем факт продажи в статистику (общая стоимость всех товаров)
             await StatsRepository.add_sale(
                 count=1,
-                cash=payment_type == 'cash' and payment_amount or 0,
-                terminal=payment_type == 'terminal' and payment_amount or 0,
-                qr=payment_type == 'qr' and payment_amount or 0,
-                transfer=payment_type == 'transfer' and payment_amount or 0,
-                invoice=payment_type == 'invoice' and payment_amount or 0,
-                installment=payment_type == 'installment' and payment_amount or 0,
+                cash=0,          # платежи будут учтены отдельно в daily_payments
+                terminal=0,
+                qr=0,
+                transfer=0,
+                invoice=0,
+                installment=0,
                 is_accessory=False,
                 message_id=message_id,
                 conn=conn
             )
-            await conn.execute("""
-                INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
-                VALUES ('sale', $1, $2, $3)
-            """, payment_type, payment_amount, message_id)
+            # ВАЖНО: больше НЕ вставляем запись в daily_payments здесь.
+            # Это будет сделано в handle_sale_from_form с учётом аксессуаров.
 
 
 async def handle_sale_from_form(
@@ -70,6 +77,9 @@ async def handle_sale_from_form(
     sale_phone: str,
     accessories: list = None
 ):
+    """
+    Основная логика продажи из веб-админки.
+    """
     if not sale_price:
         raise ValueError("Укажите стоимость продажи")
     if not sale_payment_amount or sale_payment_amount <= 0:
@@ -79,9 +89,12 @@ async def handle_sale_from_form(
 
     sale_message_id = generate_sale_message_id()
 
-    # Обработка дополнительных товаров
+    # ----------------------------------------------------------------------
+    # 1. Обработка дополнительных товаров (аксессуаров)
+    # ----------------------------------------------------------------------
     accessories_total = 0
-    processed_accessories = []
+    processed_accessories = []   # для уведомления
+    accessories_payments = {}    # {payment_type: сумма}
 
     if accessories:
         pool = await get_pool()
@@ -93,6 +106,7 @@ async def handle_sale_from_form(
                 display_text = acc['name']
                 item_info = None
 
+                # Если указан серийный номер, ищем товар в БД
                 if acc.get('serial'):
                     row = await conn.fetchrow("""
                         SELECT id, text, category_id FROM items
@@ -107,7 +121,7 @@ async def handle_sale_from_form(
                             VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
                         """, item_info['id'], item_info['text'], acc['serial'], item_info['category_id'], sale_message_id)
                         await conn.execute("DELETE FROM items WHERE id = $1", item_info['id'])
-                        # Логируем продажу (без платежа)
+                        # Фиксируем продажу дополнительного товара (без учёта платежа здесь)
                         await StatsRepository.add_sale(
                             count=1,
                             cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0,
@@ -116,16 +130,50 @@ async def handle_sale_from_form(
                             conn=conn
                         )
 
+                # Сохраняем для уведомления
                 processed_accessories.append({
                     "text": display_text,
                     "price": acc_price,
                     "payment_type": acc.get('payment_type')
                 })
 
+                # Суммируем платежи аксессуаров по типам
+                pay_type = acc.get('payment_type')
+                if pay_type and acc_price > 0:
+                    accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
+
+    # ----------------------------------------------------------------------
+    # 2. Суммируем все платежи (основной + аксессуары)
+    # ----------------------------------------------------------------------
+    all_payments = dict(accessories_payments)  # копируем
+    if sale_payment_amount > 0 and sale_payment_type:
+        all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
+
+    # ----------------------------------------------------------------------
+    # 3. Сохраняем платежи в daily_payments
+    # ----------------------------------------------------------------------
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        for pay_type, amount in all_payments.items():
+            if amount > 0:
+                await conn.execute("""
+                    INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
+                    VALUES ('sale', $1, $2, $3)
+                """, pay_type, amount, sale_message_id)
+
+    # ----------------------------------------------------------------------
+    # 4. Общая стоимость всех товаров
+    # ----------------------------------------------------------------------
     total_item_price = sale_price + accessories_total
 
-    logger.info(f"Продажа товара {item_id}: цена={total_item_price}, оплата={sale_payment_amount}, способ={sale_payment_type}")
+    logger.info(
+        f"Продажа товара {item_id}: цена={total_item_price}, "
+        f"платежи={all_payments}, аксессуары={accessories_total}"
+    )
 
+    # ----------------------------------------------------------------------
+    # 5. Отправляем уведомление в Telegram
+    # ----------------------------------------------------------------------
     from .notifications import send_sale_notification
     await send_sale_notification(
         item_text=text,
@@ -139,6 +187,9 @@ async def handle_sale_from_form(
         accessories=processed_accessories
     )
 
+    # ----------------------------------------------------------------------
+    # 6. Удаляем основной товар и пишем статистику продажи
+    # ----------------------------------------------------------------------
     await delete_item_and_log_sale(
         item_id=item_id,
         text=old_text,
