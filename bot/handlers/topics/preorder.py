@@ -11,13 +11,13 @@ from bot.services.payment import PaymentService
 from bot.repositories import StatsRepository, ClientRepository
 from bot.utils.parser import extract_prepayments, parse_client_data, extract_payment_amounts
 from bot.db import get_pool
+from bot.utils.helpers import send_and_clean
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
 async def safe_react(message: Message, emoji: str):
-    """Безопасно ставит реакцию, игнорируя ошибки прав."""
     try:
         await message.react([ReactionTypeEmoji(emoji=emoji)])
     except TelegramBadRequest as e:
@@ -58,12 +58,10 @@ async def handle_preorder(message: Message):
     booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
 
     if booking_indices:
-        # Часть до первой брони как предзаказ
         preorder_lines = lines[:booking_indices[0]]
         if preorder_lines:
             payments = extract_prepayments('\n'.join(preorder_lines))
             if any(payments.values()):
-                # Сохраняем клиента
                 try:
                     data = parse_client_data('\n'.join(preorder_lines))
                     if data['phones'] or data['full_name']:
@@ -82,24 +80,35 @@ async def handle_preorder(message: Message):
                 await PaymentService.add_payments_batch(payments, source_type='preorder')
                 await safe_react(message, '👌')
 
-        # Обработка блоков брони
         for idx in booking_indices:
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
             booking_lines = lines[start:end]
-            # Извлекаем платежи для блока брони
             booking_payments = extract_payment_amounts('\n'.join(booking_lines), ignore_prepay=False)
             result = await BookingService.process_booking(booking_lines, booking_payments)
             if not result.get("success"):
                 if result.get("reason") == "no_items":
                     await safe_react(message, '👎')
-                    await message.reply("❌ В блоке брони нет товаров с серийными номерами.")
+                    await send_and_clean(
+                        bot=message.bot,
+                        chat_id=message.chat.id,
+                        text="❌ В блоке брони нет товаров с серийными номерами.",
+                        reply_to_message_id=message.message_id,
+                        message_thread_id=config.THREAD_PREORDER,
+                        delete_after=60
+                    )
                 continue
             await safe_react(message, '👍')
             booked_count = len(result.get("results", []))
-            await message.reply(f"✅ Добавлена бронь на {booked_count} товаров.")
+            await send_and_clean(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text=f"✅ Добавлена бронь на {booked_count} товаров.",
+                reply_to_message_id=message.message_id,
+                message_thread_id=config.THREAD_PREORDER,
+                delete_after=60
+            )
     else:
-        # Обычный предзаказ без броней
         payments = extract_prepayments(content)
         if any(payments.values()):
             try:
