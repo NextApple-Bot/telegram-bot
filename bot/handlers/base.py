@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from bot.services.assortment import AssortmentService
 from bot.utils.sort import build_output_text
 from bot.utils.markdown import escape_markdown_v1
+from bot.utils.helpers import send_and_clean
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ router = Router()
 async def show_inventory(bot: Bot, chat_id: int) -> Message | None:
     categories = await AssortmentService.load_inventory()
     if not categories:
-        return await bot.send_message(chat_id, "📭 Ассортимент пуст.")
+        return await send_and_clean(bot=bot, chat_id=chat_id, text="📭 Ассортимент пуст.", delete_after=60)
     text = build_output_text(categories)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write(text)
@@ -63,11 +64,11 @@ async def show_help(bot: Bot, chat_id: int):
 • «Остатки» – остатки товаров (без брони и Б/У/NS)
 • «Клиенты по месяцам» – скачать данные за месяц
 """
-    await bot.send_message(chat_id, help_text, parse_mode='Markdown')
+    await send_and_clean(bot=bot, chat_id=chat_id, text=help_text, parse_mode='Markdown', delete_after=60)
 
 async def cancel_action(bot: Bot, chat_id: int, state: FSMContext):
     await state.clear()
-    await bot.send_message(chat_id, "✅ Действие отменено.")
+    await send_and_clean(bot=bot, chat_id=chat_id, text="✅ Действие отменено.", delete_after=60)
 
 def get_main_menu_keyboard():
     """Возвращает inline-клавиатуру главного меню (без кнопки «Финансы»)."""
