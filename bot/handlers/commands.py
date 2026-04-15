@@ -15,6 +15,7 @@ from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.markdown import escape_markdown_v1
 from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
+from bot.utils.helpers import send_and_clean
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -27,9 +28,13 @@ async def cmd_start(message: Message):
     logger.info(f"🔥 Команда /start получена от {message.from_user.id}")
     try:
         keyboard = get_main_menu_keyboard()
-        await message.answer(
-            "👋 Добро пожаловать! Используйте кнопки ниже для управления.",
-            reply_markup=keyboard
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text="👋 Добро пожаловать! Используйте кнопки ниже для управления.",
+            reply_markup=keyboard,
+            message_thread_id=message.message_thread_id,
+            delete_after=60
         )
     except Exception as e:
         logger.exception(f"❌ Ошибка при обработке /start: {e}")
@@ -41,7 +46,14 @@ async def cmd_inventory(message: Message, bot):
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, bot, state):
     await cancel_action(bot, message.chat.id, state)
-    await message.answer("Главное меню:", reply_markup=get_main_menu_keyboard())
+    await send_and_clean(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        text="Главное меню:",
+        reply_markup=get_main_menu_keyboard(),
+        message_thread_id=message.message_thread_id,
+        delete_after=60
+    )
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, bot):
@@ -51,7 +63,7 @@ async def cmd_help(message: Message, bot):
 @router.message(Command("export_clients"))
 async def cmd_export_clients(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
@@ -82,7 +94,7 @@ async def cmd_export_clients(message: Message):
 @router.message(Command("export_purchases"))
 async def cmd_export_purchases(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
@@ -112,17 +124,17 @@ async def cmd_export_purchases(message: Message):
 @router.message(Command("client_info"))
 async def cmd_client_info(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     args = message.text.replace('/client_info', '').strip()
     if not args:
-        await message.answer("Укажите телефон или имя клиента")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="Укажите телефон или имя клиента", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     clients = await ClientRepository.search_clients(args)
     if not clients:
-        await message.answer("Клиент не найден")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="Клиент не найден", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     for client in clients:
@@ -159,12 +171,12 @@ async def cmd_client_info(message: Message):
                 text += f"  🏷️ Тип: {p['purchase_type']}\n\n"
         else:
             text += "Нет покупок\n"
-        await message.answer(text, parse_mode='Markdown')
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text, parse_mode='Markdown', message_thread_id=message.message_thread_id, delete_after=60)
 
 @router.message(Command("export_full_report"))
 async def cmd_export_full_report(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
@@ -204,7 +216,7 @@ async def cmd_export_full_report(message: Message):
 @router.message(Command("show_categories"))
 async def cmd_show_categories(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
@@ -217,18 +229,18 @@ async def cmd_show_categories(message: Message):
             ORDER BY c.id
         ''')
         if not rows:
-            await message.answer("📭 В базе нет категорий.")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="📭 В базе нет категорий.", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         text = "📋 **Список категорий:**\n\n"
         for r in rows:
             text += f"🆔 `{r['id']}` — **{escape_markdown_v1(r['name'])}** (товаров: {r['item_count']})\n"
-        await message.answer(text, parse_mode='Markdown')
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text, parse_mode='Markdown', message_thread_id=message.message_thread_id, delete_after=60)
 
 @router.message(Command("clean_empty"))
 async def cmd_clean_empty(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
@@ -240,7 +252,7 @@ async def cmd_clean_empty(message: Message):
             WHERE i.id IS NULL
         ''')
         if not rows:
-            await message.answer("✅ Пустых категорий нет.")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="✅ Пустых категорий нет.", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         categories_list = "\n".join([f"• {escape_markdown_v1(r['name'])} (ID {r['id']})" for r in rows])
@@ -248,67 +260,75 @@ async def cmd_clean_empty(message: Message):
             [InlineKeyboardButton(text="✅ Да, удалить все", callback_data="clean_empty:confirm")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
         ])
-        await message.answer(
-            f"⚠️ Найдены пустые категории:\n{categories_list}\n\nУдалить их?",
-            reply_markup=keyboard
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"⚠️ Найдены пустые категории:\n{categories_list}\n\nУдалить их?",
+            reply_markup=keyboard,
+            message_thread_id=message.message_thread_id,
+            delete_after=60
         )
 
 @router.message(Command("delete_category"))
 async def cmd_delete_category(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     args = message.text.split()
     if len(args) != 2:
-        await message.answer("❌ Используйте: /delete_category <ID>")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /delete_category <ID>", message_thread_id=message.message_thread_id, delete_after=60)
         return
     try:
         cat_id = int(args[1])
     except ValueError:
-        await message.answer("❌ ID должен быть числом")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должен быть числом", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
     async with pool.acquire() as conn:
         cat = await conn.fetchrow('SELECT name FROM categories WHERE id = $1', cat_id)
         if not cat:
-            await message.answer(f"❌ Категория с ID {cat_id} не найдена.")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"❌ Категория с ID {cat_id} не найдена.", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', cat_id)
         if count > 0:
-            await message.answer(f"❌ Категория «{escape_markdown_v1(cat['name'])}» содержит {count} товаров. Удаление невозможно.")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"❌ Категория «{escape_markdown_v1(cat['name'])}» содержит {count} товаров. Удаление невозможно.", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_cat:{cat_id}")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
         ])
-        await message.answer(
-            f"⚠️ Точно удалить пустую категорию «{escape_markdown_v1(cat['name'])}» (ID {cat_id})?",
-            reply_markup=keyboard
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"⚠️ Точно удалить пустую категорию «{escape_markdown_v1(cat['name'])}» (ID {cat_id})?",
+            reply_markup=keyboard,
+            message_thread_id=message.message_thread_id,
+            delete_after=60
         )
 
 @router.message(Command("merge_categories"))
 async def cmd_merge_categories(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     args = message.text.split()
     if len(args) != 3:
-        await message.answer("❌ Используйте: /merge_categories <from_id> <to_id>")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /merge_categories <from_id> <to_id>", message_thread_id=message.message_thread_id, delete_after=60)
         return
     try:
         from_id = int(args[1])
         to_id = int(args[2])
     except ValueError:
-        await message.answer("❌ ID должны быть числами")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должны быть числами", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     if from_id == to_id:
-        await message.answer("❌ ID должны быть разными")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должны быть разными", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
@@ -316,64 +336,69 @@ async def cmd_merge_categories(message: Message):
         from_cat = await conn.fetchrow('SELECT name FROM categories WHERE id = $1', from_id)
         to_cat = await conn.fetchrow('SELECT name FROM categories WHERE id = $1', to_id)
         if not from_cat or not to_cat:
-            await message.answer("❌ Одна из категорий не найдена")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Одна из категорий не найдена", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         count = await conn.fetchval('SELECT COUNT(*) FROM items WHERE category_id = $1', from_id)
         if count == 0:
-            await message.answer(f"❌ В категории «{escape_markdown_v1(from_cat['name'])}» нет товаров. Удалите её через /delete_category.")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"❌ В категории «{escape_markdown_v1(from_cat['name'])}» нет товаров. Удалите её через /delete_category.", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, перенести и удалить", callback_data=f"merge:{from_id}:{to_id}")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
         ])
-        await message.answer(
-            f"⚠️ Перенести {count} товаров из «{escape_markdown_v1(from_cat['name'])}» (ID {from_id}) в «{escape_markdown_v1(to_cat['name'])}» (ID {to_id})?\n"
-            f"После этого категория {from_id} будет удалена.",
-            reply_markup=keyboard
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"⚠️ Перенести {count} товаров из «{escape_markdown_v1(from_cat['name'])}» (ID {from_id}) в «{escape_markdown_v1(to_cat['name'])}» (ID {to_id})?\nПосле этого категория {from_id} будет удалена.",
+            reply_markup=keyboard,
+            message_thread_id=message.message_thread_id,
+            delete_after=60
         )
 
 @router.message(Command("reset_assortment"))
 async def cmd_reset_assortment(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚠️ ДА, УДАЛИТЬ ВСЁ", callback_data="reset_assortment:confirm")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
     ])
-    await message.answer(
-        "⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит** все товары и категории из ассортимента.\n"
-        "Данные о клиентах, покупках, статистике и бронях сохранятся.\n\n"
-        "Вы уверены?",
+    await send_and_clean(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        text="⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит** все товары и категории из ассортимента.\nДанные о клиентах, покупках, статистике и бронях сохранятся.\n\nВы уверены?",
         reply_markup=keyboard,
-        parse_mode='Markdown'
+        parse_mode='Markdown',
+        message_thread_id=message.message_thread_id,
+        delete_after=60
     )
 
 # ---------- Удаление по ID ----------
 @router.message(Command("delete_client"))
 async def cmd_delete_client(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     args = message.text.split()
     if len(args) != 2:
-        await message.answer("❌ Используйте: /delete_client <ID>")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /delete_client <ID>", message_thread_id=message.message_thread_id, delete_after=60)
         return
     try:
         client_id = int(args[1])
     except ValueError:
-        await message.answer("❌ ID должен быть числом")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должен быть числом", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
     async with pool.acquire() as conn:
         client = await conn.fetchrow('SELECT full_name FROM clients WHERE id = $1', client_id)
         if not client:
-            await message.answer(f"❌ Клиент с ID {client_id} не найден.")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"❌ Клиент с ID {client_id} не найден.", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         purchases = await conn.fetchval('SELECT COUNT(*) FROM purchases WHERE client_id = $1', client_id)
@@ -383,53 +408,61 @@ async def cmd_delete_client(message: Message):
             [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_client:{client_id}")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
         ])
-        await message.answer(
-            f"⚠️ Удалить клиента «{escape_markdown_v1(client['full_name'] or 'Без имени')}» (ID {client_id})?{warning}",
-            reply_markup=keyboard
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"⚠️ Удалить клиента «{escape_markdown_v1(client['full_name'] or 'Без имени')}» (ID {client_id})?{warning}",
+            reply_markup=keyboard,
+            message_thread_id=message.message_thread_id,
+            delete_after=60
         )
 
 @router.message(Command("delete_purchase"))
 async def cmd_delete_purchase(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     args = message.text.split()
     if len(args) != 2:
-        await message.answer("❌ Используйте: /delete_purchase <ID>")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /delete_purchase <ID>", message_thread_id=message.message_thread_id, delete_after=60)
         return
     try:
         purchase_id = int(args[1])
     except ValueError:
-        await message.answer("❌ ID должен быть числом")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должен быть числом", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
     async with pool.acquire() as conn:
         purchase = await conn.fetchrow('SELECT id, total_amount FROM purchases WHERE id = $1', purchase_id)
         if not purchase:
-            await message.answer(f"❌ Покупка с ID {purchase_id} не найдена.")
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"❌ Покупка с ID {purchase_id} не найдена.", message_thread_id=message.message_thread_id, delete_after=60)
             return
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_purchase:{purchase_id}")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
         ])
-        await message.answer(
-            f"⚠️ Удалить покупку ID {purchase_id} на сумму {purchase['total_amount']} ₽?",
-            reply_markup=keyboard
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"⚠️ Удалить покупку ID {purchase_id} на сумму {purchase['total_amount']} ₽?",
+            reply_markup=keyboard,
+            message_thread_id=message.message_thread_id,
+            delete_after=60
         )
 
 # ---------- Команда /undo ----------
 @router.message(Command("undo"))
 async def cmd_undo(message: Message):
     if not is_admin(message.from_user.id):
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     deleted = await ItemRepository.get_last_deleted_item()
     if not deleted:
-        await message.answer("📭 Нет удалённых товаров для восстановления.")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="📭 Нет удалённых товаров для восстановления.", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
@@ -447,7 +480,7 @@ async def cmd_undo(message: Message):
     )
     await ItemRepository.restore_deleted_item(deleted['id'])
 
-    await message.answer(f"✅ Товар восстановлен:\n{escape_markdown_v1(deleted['text'])}")
+    await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"✅ Товар восстановлен:\n{escape_markdown_v1(deleted['text'])}", message_thread_id=message.message_thread_id, delete_after=60)
 
 # ---------- Команда /chatid ----------
 @router.message(Command("chatid"))
@@ -459,69 +492,57 @@ async def cmd_chatid(message: Message):
         response += f"Thread ID: `{thread_id}`"
     else:
         response += "Thread ID: отсутствует (сообщение не в топике)"
-    await message.reply(response, parse_mode="Markdown")
+    await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=response, parse_mode="Markdown", message_thread_id=message.message_thread_id, delete_after=60)
 
 # ---------- Команда для исправления таблицы sales ----------
 @router.message(Command("fix_sales_unique"))
 async def cmd_fix_sales_unique(message: Message):
     """Добавляет уникальное ограничение на message_id в таблице sales (только для админов)."""
     if message.from_user.id not in config.ADMIN_IDS:
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # 1. Удаляем записи с NULL message_id
             result1 = await conn.execute('DELETE FROM sales WHERE message_id IS NULL')
             deleted_null = result1.split()[1] if result1.startswith('DELETE') else 0
 
-            # 2. Удаляем дубликаты (оставляем одну запись на message_id)
             result2 = await conn.execute('''
                 DELETE FROM sales a USING sales b 
                 WHERE a.id > b.id AND a.message_id = b.message_id
             ''')
             deleted_dups = result2.split()[1] if result2.startswith('DELETE') else 0
 
-            # 3. Добавляем уникальное ограничение, если его нет
             constraint_added = False
             try:
                 await conn.execute('ALTER TABLE sales ADD CONSTRAINT sales_message_id_key UNIQUE (message_id)')
                 constraint_added = True
             except asyncpg.exceptions.DuplicateTableError:
-                # Ограничение уже существует
                 pass
             except Exception as e:
                 logger.exception(f"Ошибка при добавлении ограничения: {e}")
 
-    msg = f"✅ Исправление таблицы sales:\n"
-    msg += f"• Удалено записей с NULL message_id: {deleted_null}\n"
-    msg += f"• Удалено дубликатов: {deleted_dups}\n"
-    msg += f"• Уникальное ограничение: {'добавлено' if constraint_added else 'уже существовало'}"
-    await message.answer(msg)
-
+    msg = f"✅ Исправление таблицы sales:\n• Удалено записей с NULL message_id: {deleted_null}\n• Удалено дубликатов: {deleted_dups}\n• Уникальное ограничение: {'добавлено' if constraint_added else 'уже существовало'}"
+    await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=msg, message_thread_id=message.message_thread_id, delete_after=60)
 
 # ---------- Команда для переустановки вебхука ----------
 @router.message(Command("set_webhook"))
 async def cmd_set_webhook(message: Message):
     """Переустанавливает вебхук (только для админов)."""
     if message.from_user.id not in config.ADMIN_IDS:
-        await message.answer("⛔ Доступ запрещён")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     if not config.RENDER_URL:
-        await message.answer("❌ RENDER_URL не задан в переменных окружения.")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ RENDER_URL не задан в переменных окружения.", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     webhook_url = f"{config.RENDER_URL}/webhook"
     webhook_secret = os.getenv("WEBHOOK_SECRET")
     if not webhook_secret:
         webhook_secret = secrets.token_urlsafe(32)
-        await message.answer(
-            f"⚠️ WEBHOOK_SECRET не задан, использован временный:\n`{webhook_secret}`\n"
-            "Рекомендуется добавить его в .env",
-            parse_mode='Markdown'
-        )
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"⚠️ WEBHOOK_SECRET не задан, использован временный:\n`{webhook_secret}`\nРекомендуется добавить его в .env", parse_mode='Markdown', message_thread_id=message.message_thread_id, delete_after=60)
 
     try:
         from aiogram import Bot
@@ -533,9 +554,6 @@ async def cmd_set_webhook(message: Message):
             allowed_updates=["message", "callback_query"]
         )
         await temp_bot.session.close()
-        await message.answer(
-            f"✅ Вебхук успешно установлен на:\n{webhook_url}\nСекретный токен: `{webhook_secret}`",
-            parse_mode='Markdown'
-        )
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"✅ Вебхук успешно установлен на:\n{webhook_url}\nСекретный токен: `{webhook_secret}`", parse_mode='Markdown', message_thread_id=message.message_thread_id, delete_after=60)
     except Exception as e:
-        await message.answer(f"❌ Ошибка при установке вебхука:\n{str(e)}")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=f"❌ Ошибка при установке вебхука:\n{str(e)}", message_thread_id=message.message_thread_id, delete_after=60)
