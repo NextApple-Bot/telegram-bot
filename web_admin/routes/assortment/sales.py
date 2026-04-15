@@ -8,8 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 def generate_sale_message_id() -> int:
-    """Генерирует уникальный положительный ID для продажи."""
-    # Используем 63 бита UUID4, чтобы избежать коллизий и отрицательных чисел
     return uuid.uuid4().int & 0x7FFFFFFFFFFFFFFF
 
 
@@ -24,7 +22,7 @@ async def delete_item_and_log_sale(
     payment_amount: float,
     message_id: int
 ):
-    allowed_types = {'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'}
+    allowed_types = {'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment', 'paid'}
     if payment_type not in allowed_types:
         payment_type = 'cash'
         logger.warning(f"Некорректный payment_type, заменён на 'cash': {payment_type}")
@@ -39,20 +37,22 @@ async def delete_item_and_log_sale(
             await conn.execute("DELETE FROM items WHERE id = $1", item_id)
             await StatsRepository.add_sale(
                 count=1,
-                cash=payment_type == 'cash' and payment_amount or 0,
-                terminal=payment_type == 'terminal' and payment_amount or 0,
-                qr=payment_type == 'qr' and payment_amount or 0,
-                transfer=payment_type == 'transfer' and payment_amount or 0,
-                invoice=payment_type == 'invoice' and payment_amount or 0,
-                installment=payment_type == 'installment' and payment_amount or 0,
+                cash=0,
+                terminal=0,
+                qr=0,
+                transfer=0,
+                invoice=0,
+                installment=0,
                 is_accessory=False,
                 message_id=message_id,
                 conn=conn
             )
-            await conn.execute("""
-                INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
-                VALUES ('sale', $1, $2, $3)
-            """, payment_type, payment_amount, message_id)
+            # daily_payments добавляется только для обычных типов оплаты (не "paid")
+            if payment_type != "paid" and payment_amount > 0:
+                await conn.execute("""
+                    INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
+                    VALUES ('sale', $1, $2, $3)
+                """, payment_type, payment_amount, message_id)
 
 
 async def handle_sale_from_form(
@@ -74,7 +74,7 @@ async def handle_sale_from_form(
 ):
     if not sale_price:
         raise ValueError("Укажите стоимость продажи")
-    if not sale_payment_amount or sale_payment_amount <= 0:
+    if sale_payment_type != "paid" and (not sale_payment_amount or sale_payment_amount <= 0):
         raise ValueError("Укажите сумму оплаты")
     if not sale_payment_type:
         sale_payment_type = "cash"
@@ -123,13 +123,15 @@ async def handle_sale_from_form(
                 })
 
                 pay_type = acc.get('payment_type')
-                if pay_type and acc_price > 0:
+                if pay_type and pay_type != "paid" and acc_price > 0:
                     accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
 
+    # Собираем все платежи (кроме paid)
     all_payments = dict(accessories_payments)
-    if sale_payment_amount > 0 and sale_payment_type:
+    if sale_payment_type != "paid" and sale_payment_amount > 0:
         all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
 
+    # Сохраняем обычные платежи в daily_payments
     pool = await get_pool()
     async with pool.acquire() as conn:
         for pay_type, amount in all_payments.items():
@@ -152,7 +154,7 @@ async def handle_sale_from_form(
         price=sale_price,
         payment_type=sale_payment_type,
         prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
-        payment_amount=sale_payment_amount,
+        payment_amount=sale_payment_amount if sale_payment_type != "paid" else None,
         platform=sale_platform,
         full_name=sale_full_name,
         phone=sale_phone,
@@ -167,6 +169,6 @@ async def handle_sale_from_form(
         price=total_item_price,
         prepayment=sale_prepayment or 0,
         payment_type=sale_payment_type,
-        payment_amount=sale_payment_amount,
+        payment_amount=sale_payment_amount if sale_payment_type != "paid" else 0,
         message_id=sale_message_id
     )
