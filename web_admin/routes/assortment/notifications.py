@@ -2,6 +2,7 @@
 import logging
 from aiogram import Bot
 from bot import config
+from bot.utils.helpers import send_and_clean   # <-- импорт
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +67,12 @@ async def send_booking_notification(
 
             message_text = "\n".join(lines)
 
-        await bot.send_message(
+        await send_and_clean(
+            bot=bot,
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
-            message_thread_id=config.THREAD_PREORDER
+            message_thread_id=config.THREAD_PREORDER,
+            delete_after=60
         )
         await bot.session.close()
         logger.info(f"✅ Уведомление о брони отправлено: {item_text}")
@@ -97,19 +100,17 @@ async def send_sale_notification(
 
         lines = [item_text]
         lines.append(f"Стоимость – {format_number(price)}")
-        lines.append("")   # одна пустая строка перед аксессуарами или оплатой
+        lines.append("")
 
-        # Дополнительные товары
         if accessories:
             for acc in accessories:
                 lines.append(acc['text'])
                 lines.append(f"Стоимость – {format_number(acc['price'])}")
-                lines.append("")   # одна пустая строка после каждого аксессуара
-            lines.append("")       # дополнительная пустая строка, чтобы получить две перед оплатой
+                lines.append("")
+            lines.append("")
         else:
-            lines.append("")       # вторая пустая строка перед оплатой
+            lines.append("")
 
-        # Сбор сумм по способам оплаты
         payments = {}
         if payment_amount and payment_amount > 0 and payment_type:
             payments[payment_type] = payments.get(payment_type, 0) + payment_amount
@@ -119,21 +120,19 @@ async def send_sale_notification(
                 if acc.get('payment_type') and acc['price'] > 0:
                     payments[acc['payment_type']] = payments.get(acc['payment_type'], 0) + acc['price']
 
-        # Строки оплаты
         for pt, amount in payments.items():
             if amount > 0:
                 lines.append(f"{payment_type_ru.get(pt, pt)} – {format_number(amount)}")
-                lines.append("")   # одна пустая строка после каждого способа оплаты
+                lines.append("")
 
-        # Удаляем последнюю пустую строку (если она есть) и добавляем одну перед "Общая"
         if lines and lines[-1] == "":
             lines.pop()
-        lines.append("")   # одна пустая строка перед "Общая"
+        lines.append("")
 
         total_paid = (prepayment or 0) + sum(payments.values())
         lines.append(f"Общая – {format_number(total_paid)}")
         lines.append("")
-        lines.append("")   # две пустые строки перед ФИО
+        lines.append("")
 
         if full_name:
             lines.append(full_name)
@@ -144,10 +143,12 @@ async def send_sale_notification(
             lines.append(f"Площадка – {platform}")
 
         message_text = "\n".join(lines)
-        await bot.send_message(
+        await send_and_clean(
+            bot=bot,
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
-            message_thread_id=config.THREAD_SALES
+            message_thread_id=config.THREAD_SALES,
+            delete_after=60
         )
         await bot.session.close()
         logger.info(f"✅ Уведомление о продаже отправлено: {item_text}")
