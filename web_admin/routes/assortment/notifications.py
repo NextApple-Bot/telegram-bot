@@ -2,7 +2,7 @@
 import logging
 from aiogram import Bot
 from bot import config
-from bot.utils.helpers import send_and_clean
+from bot.utils.helpers import send_and_clean   # оставлен для других сообщений
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +67,11 @@ async def send_booking_notification(
 
             message_text = "\n".join(lines)
 
-        await send_and_clean(
-            bot=bot,
+        # Критическое уведомление – не удаляем
+        await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
-            message_thread_id=config.THREAD_PREORDER,
-            delete_after=60
+            message_thread_id=config.THREAD_PREORDER
         )
         await bot.session.close()
         logger.info(f"✅ Уведомление о брони отправлено: {item_text}")
@@ -143,12 +142,11 @@ async def send_sale_notification(
             lines.append(f"Площадка – {platform}")
 
         message_text = "\n".join(lines)
-        await send_and_clean(
-            bot=bot,
+        # Критическое уведомление – не удаляем
+        await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
             text=message_text,
-            message_thread_id=config.THREAD_SALES,
-            delete_after=60
+            message_thread_id=config.THREAD_SALES
         )
         await bot.session.close()
         logger.info(f"✅ Уведомление о продаже отправлено: {item_text}")
