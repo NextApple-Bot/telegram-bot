@@ -2,42 +2,18 @@
 import re
 import logging
 from aiogram import F, Router
-from aiogram.types import Message, ReactionTypeEmoji
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Message
 
 from bot import config
 from bot.services.booking import BookingService
 from bot.services.payment import PaymentService
 from bot.repositories import StatsRepository, ClientRepository
 from bot.utils.parser import extract_prepayments, parse_client_data, extract_payment_amounts
-from bot.db import get_pool
 from bot.utils.helpers import send_and_clean
+from bot.services.message_service import is_message_processed, mark_message_processed, safe_react
 
 logger = logging.getLogger(__name__)
 router = Router()
-
-
-async def safe_react(message: Message, emoji: str):
-    try:
-        await message.react([ReactionTypeEmoji(emoji=emoji)])
-    except TelegramBadRequest as e:
-        if "REACTION_INVALID" in str(e) or "MESSAGE_REACTIONS_FORBIDDEN" in str(e):
-            logger.warning(f"Не удалось поставить реакцию {emoji}: {e}")
-        else:
-            raise
-
-
-async def is_message_processed(chat_id: int, message_id: int) -> bool:
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow('SELECT 1 FROM processed_messages WHERE chat_id = $1 AND message_id = $2', chat_id, message_id)
-        return row is not None
-
-
-async def mark_message_processed(chat_id: int, message_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute('INSERT INTO processed_messages (chat_id, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', chat_id, message_id)
 
 
 @router.message(
