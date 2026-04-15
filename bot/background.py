@@ -69,14 +69,12 @@ async def background_sold_cleanup_loop():
 
 
 async def webhook_healthcheck_loop(bot):
-    """Проверка вебхука каждые 5 минут."""
     while True:
         await asyncio.sleep(300)
         await check_and_set_webhook(bot)
 
 
 async def start_background_tasks(bot):
-    """Запускает все фоновые задачи, принимая объект бота."""
     asyncio.create_task(background_cleanup_loop())
     asyncio.create_task(background_sold_cleanup_loop())
     asyncio.create_task(webhook_healthcheck_loop(bot))
