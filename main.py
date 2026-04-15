@@ -46,7 +46,6 @@ try:
     config = bot_config
     logger.info("✅ Конфигурация загружена")
 
-    # Проверка обязательных переменных для масштабирования
     scaling_enabled = os.getenv("SCALING_ENABLED", "false").lower() == "true"
     if scaling_enabled and not config.REDIS_URL:
         logger.critical("❌ SCALING_ENABLED=True, но REDIS_URL не задан. Масштабирование невозможно.")
@@ -69,7 +68,6 @@ try:
     dp = Dispatcher(storage=storage)
     logger.info("✅ Диспетчер создан")
 
-    # Защита от повторного подключения роутера
     if router.parent_router is None:
         dp.include_router(router)
         logger.info("✅ Роутер подключён")
@@ -91,9 +89,8 @@ async def on_startup():
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации пула БД: {e}")
 
-    # Запускаем фоновые задачи с блокировками (реализованы в background.py)
     from bot.background import start_background_tasks
-    asyncio.create_task(start_background_tasks())
+    asyncio.create_task(start_background_tasks(bot))   # Передаём объект bot
     logger.info("✅ Фоновые задачи запущены (с блокировками Redis)")
 
     if bot and dp:
@@ -152,7 +149,6 @@ async def webhook(request: Request) -> Response:
 
 
 async def health(_: Request) -> Response:
-    # Расширенная проверка здоровья
     db_ok = await check_db_health()
     redis_ok = await check_redis_health()
     telegram_ok = True
@@ -201,10 +197,8 @@ if config and config.ADMIN_PASSWORD and config.SECRET_KEY:
 else:
     logger.info("ℹ️ Веб-админка не настроена (отсутствуют ADMIN_PASSWORD или SECRET_KEY)")
 
-# Обработка сигналов для graceful shutdown
 def handle_exit_signal(signum, frame):
     logger.info(f"Получен сигнал {signum}, запускаем graceful shutdown...")
-    # Uvicorn сам обрабатывает сигналы, но мы логируем для уверенности
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_exit_signal)
@@ -213,7 +207,6 @@ signal.signal(signal.SIGINT, handle_exit_signal)
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 8000))
     logger.info(f"🚀 Запуск сервера на порту {PORT}, интерфейс 0.0.0.0")
-    # Uvicorn с поддержкой graceful shutdown
     uvicorn.run(
         app,
         host="0.0.0.0",
