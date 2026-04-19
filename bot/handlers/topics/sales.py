@@ -42,7 +42,6 @@ async def handle_sales_message(message: Message):
     if not content:
         return
 
-    # Атомарная проверка и пометка обработанности
     is_first_time = await mark_message_processed(message.chat.id, message.message_id)
     if not is_first_time:
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
@@ -52,12 +51,10 @@ async def handle_sales_message(message: Message):
     payments = extract_payment_amounts(content, ignore_prepay=True)
     result = await SaleService.process_sale(content, message.chat.id, message.message_id, payments)
 
-    # Если продажа пропущена (например, дубликат), выходим
     if result.get("skipped"):
         logger.info(f"Сообщение {message.message_id} было пропущено.")
         return
 
-    # Сохранение клиента
     try:
         data = parse_client_data(content)
         if data['phones'] or data['full_name']:
@@ -77,13 +74,13 @@ async def handle_sales_message(message: Message):
         logger.info(f"💰 Платежи сохранены: {payments}")
 
     if result.get("is_accessory"):
-        await safe_react(message, '💸')
+        await safe_react(message, '⚡️')
         logger.info("Аксессуар: платежи сохранены, статистика продаж не изменена.")
     elif result.get("sold_items"):
         await safe_react(message, '🔥')
         logger.info(f"✅ Продажа: {len(result['sold_items'])} товаров, статистика и платежи сохранены.")
     elif result.get("not_found"):
-        await safe_react(message, '❌')
+        await safe_react(message, '‼️')
         text = "❌ Серийные номера не найдены в ассортименте:\n" + "\n".join(result["not_found"])
         await send_and_clean(
             bot=message.bot,
