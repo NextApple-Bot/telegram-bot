@@ -199,7 +199,7 @@ async def init_db():
                 CHECK (payment_type IN ('cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'))
             )
         ''')
-        
+
         # Индексы
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_purchases_client ON purchases(client_id)')
@@ -226,7 +226,7 @@ async def init_db():
         await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice REAL DEFAULT 0')
         await conn.execute('ALTER TABLE sales ADD COLUMN IF NOT EXISTS message_id BIGINT UNIQUE')
         await conn.execute('ALTER TABLE purchases ALTER COLUMN payment_details TYPE JSONB USING payment_details::jsonb')
-        
+
         # Колонки брони
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_price FLOAT')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_prepayment FLOAT')
@@ -234,7 +234,7 @@ async def init_db():
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_full_name VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_phone VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS booking_payment_type VARCHAR')
-        
+
         # Колонки продажи
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_price FLOAT')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_prepayment FLOAT')
@@ -244,10 +244,21 @@ async def init_db():
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_phone VARCHAR')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS sale_payment_amount FLOAT')
         await conn.execute('ALTER TABLE items ADD COLUMN IF NOT EXISTS is_sold BOOLEAN DEFAULT FALSE')
-        
+
         # Колонки для связи финансов и продажи
         await conn.execute('ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
         await conn.execute('ALTER TABLE deleted_items ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
+
+        # Создаём служебную категорию и товар для статистики броней (id=0)
+        await conn.execute('''
+            INSERT INTO categories (id, name) VALUES (0, '__SYSTEM__')
+            ON CONFLICT (id) DO NOTHING
+        ''')
+        await conn.execute('''
+            INSERT INTO items (id, text, category_id, is_booked)
+            VALUES (0, '__SYSTEM_STATS__', 0, FALSE)
+            ON CONFLICT (id) DO NOTHING
+        ''')
 
     logger.info("✅ Инициализация БД завершена (таблицы, индексы и колонки созданы)")
 
