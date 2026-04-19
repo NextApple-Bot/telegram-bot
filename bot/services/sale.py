@@ -33,17 +33,14 @@ class SaleService:
         Обрабатывает продажу.
         Принимает уже извлечённые платежи, чтобы избежать дублирования парсинга.
         """
-        if await SaleService.is_message_processed(chat_id, message_id):
-            logger.info(f"Сообщение {message_id} уже обработано, пропускаем.")
-            return {"sold_items": [], "not_found": [], "payments": payments, "skipped": True}
-
+        # Проверка дублирования теперь выполняется в хендлере атомарно,
+        # поэтому здесь мы не проверяем и не помечаем.
         serials = list(set(extract_serials(content)))
         is_accessory = (len(serials) == 0)
 
         # Если это аксессуар (нет серийников) – сохраняем только платежи, статистику продаж не трогаем
         if is_accessory:
             logger.info(f"Аксессуар: сохранение только платежей {payments}, продажа не регистрируется.")
-            await SaleService.mark_message_processed(chat_id, message_id)
             return {
                 "sold_items": [],
                 "not_found": [],
@@ -65,7 +62,6 @@ class SaleService:
                 # Если ни один серийник не найден – не сохраняем ничего
                 if not sold_items:
                     logger.info(f"Серийные номера не найдены: {serials}. Статистика и платежи не сохранены.")
-                    await SaleService.mark_message_processed(chat_id, message_id)
                     return {
                         "sold_items": [],
                         "not_found": serials,
@@ -95,7 +91,6 @@ class SaleService:
                 )
 
                 not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
-                await SaleService.mark_message_processed(chat_id, message_id)
 
                 return {
                     "sold_items": sold_items,
