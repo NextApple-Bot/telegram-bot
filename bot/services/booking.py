@@ -1,3 +1,4 @@
+# Файл: bot/services/booking.py
 import logging
 from datetime import datetime
 from bot.repositories import ItemRepository, StatsRepository
