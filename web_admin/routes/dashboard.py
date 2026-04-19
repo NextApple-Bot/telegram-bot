@@ -255,19 +255,23 @@ class UpdateTodayStatsRequest(BaseModel):
 
 
 @router.post("/update_today_stats")
+@router.post("/update_today_stats")
 async def update_today_stats(data: UpdateTodayStatsRequest):
     pool = await get_pool()
     today = date.today()
     try:
+        # Если есть платежи, но количество продаж не указано, ставим 1
+        total_payments = data.cash + data.terminal + data.qr + data.transfer + data.invoice + data.installment
+        if total_payments > 0 and data.sales_count == 0:
+            data.sales_count = 1
+
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Удаляем старые записи за сегодня
                 await conn.execute("DELETE FROM daily_payments WHERE DATE(created_at) = $1", today)
                 await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = $1", today)
                 await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = $1", today)
                 await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", today)
 
-                # Вставляем новые платежи
                 payment_types = ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']
                 for pt in payment_types:
                     amount = getattr(data, pt)
@@ -277,7 +281,6 @@ async def update_today_stats(data: UpdateTodayStatsRequest):
                             VALUES ('sale', $1, $2, $3)
                         """, pt, amount, today)
 
-                # Вставляем продажи (одна запись с суммами)
                 if data.sales_count > 0:
                     await conn.execute("""
                         INSERT INTO sales (count, cash, terminal, qr, transfer, invoice, installment, sold_at)
@@ -285,14 +288,12 @@ async def update_today_stats(data: UpdateTodayStatsRequest):
                     """, data.sales_count, data.cash, data.terminal, data.qr,
                         data.transfer, data.invoice, data.installment, today)
 
-                # Предзаказы (считаем только количество)
                 if data.preorders_count > 0:
                     await conn.execute("""
                         INSERT INTO preorders (cash, terminal, qr, transfer, invoice, installment, created_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
                     """, 0, 0, 0, 0, 0, 0, today)
 
-                # Брони (используем служебный товар с id=0)
                 if data.bookings_count > 0:
                     for _ in range(data.bookings_count):
                         await conn.execute("""
@@ -300,7 +301,6 @@ async def update_today_stats(data: UpdateTodayStatsRequest):
                             VALUES (0, 0, $1)
                         """, today)
 
-        # Инвалидируем кэш дашборда
         await cache.delete(f"dashboard:summary:{today.isoformat()}")
         return JSONResponse({"success": True})
     except Exception as e:
