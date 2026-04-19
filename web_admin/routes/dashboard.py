@@ -290,15 +290,15 @@ async def update_today_stats(data: UpdateTodayStatsRequest):
                     await conn.execute("""
                         INSERT INTO preorders (cash, terminal, qr, transfer, invoice, installment, created_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    """, 0, 0, 0, 0, 0, 0, today)  # сумма не важна, только количество
+                    """, 0, 0, 0, 0, 0, 0, today)
 
-                # Брони (сумма не важна, только количество)
+                # Брони (используем служебный товар с id=0)
                 if data.bookings_count > 0:
                     for _ in range(data.bookings_count):
                         await conn.execute("""
-                            INSERT INTO bookings (total_amount, booked_at)
-                            VALUES ($1, $2)
-                        """, 0, today)
+                            INSERT INTO bookings (item_id, total_amount, booked_at)
+                            VALUES (0, 0, $1)
+                        """, today)
 
         # Инвалидируем кэш дашборда
         await cache.delete(f"dashboard:summary:{today.isoformat()}")
