@@ -26,7 +26,6 @@ async def handle_preorder(message: Message):
     if not content:
         return
 
-    # Атомарная проверка
     is_first_time = await mark_message_processed(message.chat.id, message.message_id)
     if not is_first_time:
         logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
@@ -66,7 +65,7 @@ async def handle_preorder(message: Message):
             result = await BookingService.process_booking(booking_lines, booking_payments)
             if not result.get("success"):
                 if result.get("reason") == "no_items":
-                    await safe_react(message, '👎')
+                    await safe_react(message, '‼️')
                     await send_and_clean(
                         bot=message.bot,
                         chat_id=message.chat.id,
