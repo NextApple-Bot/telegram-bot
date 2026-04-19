@@ -3,6 +3,8 @@ import uuid
 import logging
 from bot.repositories import StatsRepository
 from bot.db import get_pool
+from bot.services.cache import cache
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,10 @@ async def delete_item_and_log_sale(
     payment_amount: float,
     message_id: int
 ):
+    """
+    Удаляет товар из ассортимента и создаёт запись в sales.
+    Платежи в daily_payments уже обработаны в handle_sale_from_form.
+    """
     allowed_types = {'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment', 'paid'}
     if payment_type not in allowed_types:
         payment_type = 'cash'
@@ -47,12 +53,7 @@ async def delete_item_and_log_sale(
                 message_id=message_id,
                 conn=conn
             )
-            # daily_payments добавляется только для обычных типов оплаты (не "paid")
-            if payment_type != "paid" and payment_amount > 0:
-                await conn.execute("""
-                    INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
-                    VALUES ('sale', $1, $2, $3)
-                """, payment_type, payment_amount, message_id)
+            # Платежи уже добавлены в handle_sale_from_form, здесь не дублируем
 
 
 async def handle_sale_from_form(
@@ -172,3 +173,6 @@ async def handle_sale_from_form(
         payment_amount=sale_payment_amount if sale_payment_type != "paid" else 0,
         message_id=sale_message_id
     )
+
+    # Инвалидируем кэш дашборда за сегодня
+    await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
