@@ -39,7 +39,12 @@
 <div class="row">
     <div class="col-md-12">
         <div class="card">
-            <div class="card-header">Финансы за сегодня</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Финансы за сегодня</span>
+                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
+                    ✏️ Редактировать статистику
+                </button>
+            </div>
             <div class="card-body">
                 <table class="table table-sm">
                     <tr><th>Наличные</th><td>{{ payments.cash|round(0) }} ₽</td></tr>
@@ -91,6 +96,71 @@
             </div>
             <div class="card-body">
                 <canvas id="topModelsChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования статистики -->
+<div class="modal fade" id="editStatsModal" tabindex="-1" aria-labelledby="editStatsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editStatsModalLabel">Редактировать статистику за сегодня</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editStatsForm">
+                    <h6>Платежи</h6>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="edit_cash" class="form-label">Наличные (₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_cash" name="cash" value="{{ payments.cash }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="edit_terminal" class="form-label">Терминал (₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_terminal" name="terminal" value="{{ payments.terminal }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="edit_qr" class="form-label">QR-код (₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_qr" name="qr" value="{{ payments.qr }}">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="edit_transfer" class="form-label">Перевод (₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_transfer" name="transfer" value="{{ payments.transfer }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="edit_invoice" class="form-label">Оплата по счету (₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_invoice" name="invoice" value="{{ payments.invoice }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="edit_installment" class="form-label">Рассрочка (₽)</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_installment" name="installment" value="{{ payments.installment }}">
+                        </div>
+                    </div>
+
+                    <h6>Количество</h6>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="edit_sales_count" class="form-label">Продажи</label>
+                            <input type="number" step="1" class="form-control" id="edit_sales_count" name="sales_count" value="{{ stats.sales_count }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="edit_preorders_count" class="form-label">Предзаказы</label>
+                            <input type="number" step="1" class="form-control" id="edit_preorders_count" name="preorders_count" value="{{ stats.preorders_count }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="edit_bookings_count" class="form-label">Брони</label>
+                            <input type="number" step="1" class="form-control" id="edit_bookings_count" name="bookings_count" value="{{ stats.bookings_count }}">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveStatsBtn">Сохранить</button>
             </div>
         </div>
     </div>
@@ -158,5 +228,37 @@
     pieCtx.font = '16px Arial';
     pieCtx.fillText('Нет данных за период', 120, 100);
     {% endif %}
+
+    // Логика сохранения статистики
+    document.getElementById('saveStatsBtn').addEventListener('click', async () => {
+        const form = document.getElementById('editStatsForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+
+        // Преобразование строк в числа
+        for (let key in data) {
+            data[key] = parseFloat(data[key]) || 0;
+        }
+
+        try {
+            const response = await fetch('/admin/dashboard/update_today_stats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            if (result.success) {
+                // Закрываем модалку и перезагружаем страницу
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editStatsModal'));
+                modal.hide();
+                window.location.reload();
+            } else {
+                alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+            console.error(e);
+        }
+    });
 </script>
 {% endblock %}
