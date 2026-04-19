@@ -256,7 +256,7 @@
                 alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
             }
         } catch (e) {
-            alert('Ошибка сети');
+            alert('Ошибка сети: ' + e.message);
             console.error(e);
         }
     });
