@@ -52,6 +52,11 @@ async def handle_sales_message(message: Message):
     payments = extract_payment_amounts(content, ignore_prepay=True)
     result = await SaleService.process_sale(content, message.chat.id, message.message_id, payments)
 
+    # Если продажа пропущена (например, дубликат), выходим
+    if result.get("skipped"):
+        logger.info(f"Сообщение {message.message_id} было пропущено.")
+        return
+
     # Сохранение клиента
     try:
         data = parse_client_data(content)
