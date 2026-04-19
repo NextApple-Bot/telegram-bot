@@ -1,11 +1,13 @@
 # Файл: web_admin/routes/dashboard.py
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from datetime import date, timedelta
 from collections import Counter
 import re
 import logging
+from pydantic import BaseModel
+from typing import Optional
 
 from bot.repositories import StatsRepository
 from bot.db import get_pool
@@ -34,25 +36,20 @@ def extract_base_model(full_text: str) -> str:
 
 
 async def get_previous_period_stats():
-    """Возвращает продажи и выручку за вчера и за прошлую неделю."""
     today = date.today()
     yesterday = today - timedelta(days=1)
     last_week_start = today - timedelta(days=7)
     last_week_end = today - timedelta(days=1)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Продажи за вчера
         sales_yesterday = await conn.fetchval('SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1', yesterday)
-        # Выручка за вчера
         revenue_yesterday_rows = await conn.fetch('''
             SELECT COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
                    COALESCE(SUM(transfer),0) + COALESCE(SUM(invoice),0) + COALESCE(SUM(installment),0) as total
             FROM sales WHERE DATE(sold_at) = $1
         ''', yesterday)
         revenue_yesterday = revenue_yesterday_rows[0]['total'] if revenue_yesterday_rows else 0
-        # Продажи за прошлую неделю (7 дней)
         sales_last_week = await conn.fetchval('SELECT COUNT(*) FROM sales WHERE sold_at >= $1 AND sold_at < $2', last_week_start, today)
-        # Выручка за прошлую неделю
         revenue_last_week_rows = await conn.fetch('''
             SELECT COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
                    COALESCE(SUM(transfer),0) + COALESCE(SUM(invoice),0) + COALESCE(SUM(installment),0) as total
@@ -72,10 +69,9 @@ async def dashboard(
     request: Request,
     days: int = Query(7, ge=7, le=90)
 ):
-    # Пытаемся получить кэшированные данные дашборда на сегодня
     cache_key = f"dashboard:summary:{date.today().isoformat()}"
     cached_data = await cache.get(cache_key)
-    
+
     if cached_data:
         stats = cached_data.get('stats')
         payments = cached_data.get('payments')
@@ -88,7 +84,7 @@ async def dashboard(
         prev_stats = await get_previous_period_stats()
         sales_today = stats['sales_count']
         revenue_today = total_revenue
-        
+
         sales_change_yesterday = 0
         if prev_stats['sales_yesterday']:
             sales_change_yesterday = (sales_today - prev_stats['sales_yesterday']) / prev_stats['sales_yesterday'] * 100
@@ -105,7 +101,6 @@ async def dashboard(
         stats = await StatsRepository.get_today_stats()
         pool = await get_pool()
 
-        # Финансы за сегодня
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT payment_type, SUM(amount) as total
@@ -118,7 +113,6 @@ async def dashboard(
             payments.setdefault(pt, 0.0)
         total_revenue = sum(payments.values())
 
-        # График продаж (количество) за 7 дней
         end_date = date.today()
         start_date = end_date - timedelta(days=6)
         async with pool.acquire() as conn:
@@ -133,7 +127,6 @@ async def dashboard(
         dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
         sales_counts = [sales_dict.get(d, 0) for d in dates]
 
-        # График выручки (деньги) за 7 дней
         async with pool.acquire() as conn:
             revenue_rows = await conn.fetch('''
                 SELECT DATE(sold_at) as day,
@@ -147,7 +140,6 @@ async def dashboard(
         revenue_dict = {row['day'].isoformat(): float(row['revenue']) for row in revenue_rows}
         revenue_counts = [revenue_dict.get(d, 0) for d in dates]
 
-        # Топ-5 моделей (кэш)
         top_cache_key = f"dashboard:top_models:{days}"
         cached_top = await cache.get(top_cache_key)
         if cached_top:
@@ -171,7 +163,6 @@ async def dashboard(
             top_counts = [item[1] for item in top_5]
             await cache.set(top_cache_key, (top_labels, top_counts), ttl=3600)
 
-        # Динамика по сравнению с предыдущим периодом
         prev_stats = await get_previous_period_stats()
         sales_today = stats['sales_count']
         revenue_today = total_revenue
@@ -190,7 +181,6 @@ async def dashboard(
         if prev_stats['revenue_last_week']:
             revenue_change_week = (revenue_today - prev_stats['revenue_last_week'] / 7) / (prev_stats['revenue_last_week'] / 7) * 100
 
-        # Сохраняем кэш дашборда (кроме top_models, у которых свой TTL)
         cache_payload = {
             'stats': stats,
             'payments': payments,
@@ -201,7 +191,7 @@ async def dashboard(
             'top_labels': top_labels,
             'top_counts': top_counts,
         }
-        await cache.set(cache_key, cache_payload, ttl=60)  # 1 минута
+        await cache.set(cache_key, cache_payload, ttl=60)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -250,3 +240,69 @@ async def top_models_data(days: int = Query(7, ge=7, le=90)):
     counts = [item[1] for item in top_5]
     await cache.set(cache_key, (labels, counts), ttl=3600)
     return JSONResponse(content={"labels": labels, "counts": counts})
+
+
+class UpdateTodayStatsRequest(BaseModel):
+    cash: float = 0.0
+    terminal: float = 0.0
+    qr: float = 0.0
+    transfer: float = 0.0
+    invoice: float = 0.0
+    installment: float = 0.0
+    sales_count: int = 0
+    preorders_count: int = 0
+    bookings_count: int = 0
+
+
+@router.post("/update_today_stats")
+async def update_today_stats(data: UpdateTodayStatsRequest):
+    pool = await get_pool()
+    today = date.today()
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # Удаляем старые записи за сегодня
+                await conn.execute("DELETE FROM daily_payments WHERE DATE(created_at) = $1", today)
+                await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = $1", today)
+                await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = $1", today)
+                await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", today)
+
+                # Вставляем новые платежи
+                payment_types = ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']
+                for pt in payment_types:
+                    amount = getattr(data, pt)
+                    if amount > 0:
+                        await conn.execute("""
+                            INSERT INTO daily_payments (type, payment_type, amount, created_at)
+                            VALUES ('sale', $1, $2, $3)
+                        """, pt, amount, today)
+
+                # Вставляем продажи (одна запись с суммами)
+                if data.sales_count > 0:
+                    await conn.execute("""
+                        INSERT INTO sales (count, cash, terminal, qr, transfer, invoice, installment, sold_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    """, data.sales_count, data.cash, data.terminal, data.qr,
+                        data.transfer, data.invoice, data.installment, today)
+
+                # Предзаказы (считаем только количество)
+                if data.preorders_count > 0:
+                    await conn.execute("""
+                        INSERT INTO preorders (cash, terminal, qr, transfer, invoice, installment, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """, 0, 0, 0, 0, 0, 0, today)  # сумма не важна, только количество
+
+                # Брони (сумма не важна, только количество)
+                if data.bookings_count > 0:
+                    for _ in range(data.bookings_count):
+                        await conn.execute("""
+                            INSERT INTO bookings (total_amount, booked_at)
+                            VALUES ($1, $2)
+                        """, 0, today)
+
+        # Инвалидируем кэш дашборда
+        await cache.delete(f"dashboard:summary:{today.isoformat()}")
+        return JSONResponse({"success": True})
+    except Exception as e:
+        logger.exception("Ошибка при обновлении статистики")
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
