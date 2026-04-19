@@ -136,7 +136,14 @@ async def edit_item_submit(
             """, text, serial.strip().upper() if serial else None, category_id, is_booked,
                booking_price, booking_prepayment, booking_platform,
                booking_full_name, booking_phone, booking_payment_type, item_id)
-            
+
+            # Сохраняем предоплату в daily_payments
+            if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
+                await conn.execute("""
+                    INSERT INTO daily_payments (type, payment_type, amount)
+                    VALUES ('preorder', $1, $2)
+                """, booking_payment_type, booking_prepayment)
+
             from .notifications import send_booking_notification
             await send_booking_notification(
                 item_text=text,
@@ -161,7 +168,7 @@ async def edit_item_submit(
                     sale_payment_amount = NULL, is_sold = FALSE
                 WHERE id = $5
             """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
-            
+
             if old_is_booked and not is_booked:
                 from .notifications import send_booking_notification
                 await send_booking_notification(
@@ -221,6 +228,13 @@ async def add_item(
            booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone, booking_payment_type)
         if is_booked:
+            # Сохраняем предоплату в daily_payments
+            if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
+                await conn.execute("""
+                    INSERT INTO daily_payments (type, payment_type, amount)
+                    VALUES ('preorder', $1, $2)
+                """, booking_payment_type, booking_prepayment)
+
             from .notifications import send_booking_notification
             await send_booking_notification(
                 item_text=text,
