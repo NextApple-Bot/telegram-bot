@@ -18,7 +18,6 @@ async def test_process_booking_success():
         result = await BookingService.process_booking(booking_lines, payments)
 
         assert result['success'] is True
-        # Только строка с серийным номером обрабатывается как товар
         assert len(result['results']) == 1
         assert result['results'][0]['status'] == 'booked'
 
