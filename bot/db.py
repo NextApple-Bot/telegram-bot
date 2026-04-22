@@ -250,15 +250,18 @@ async def init_db():
         await conn.execute('ALTER TABLE deleted_items ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
 
         # Создаём служебную категорию и товар для статистики броней (id=0)
+        # ИСПРАВЛЕНИЕ: сначала гарантируем наличие категории с name='__SYSTEM__', не фиксируя id
         await conn.execute('''
-            INSERT INTO categories (id, name) VALUES (0, '__SYSTEM__')
-            ON CONFLICT (id) DO NOTHING
+            INSERT INTO categories (name) VALUES ('__SYSTEM__')
+            ON CONFLICT (name) DO NOTHING
         ''')
+        sys_cat_id = await conn.fetchval("SELECT id FROM categories WHERE name = '__SYSTEM__'")
+        # Вставляем служебный товар с id=0, используя полученный category_id
         await conn.execute('''
             INSERT INTO items (id, text, category_id, is_booked)
-            VALUES (0, '__SYSTEM_STATS__', 0, FALSE)
+            VALUES (0, '__SYSTEM_STATS__', $1, FALSE)
             ON CONFLICT (id) DO NOTHING
-        ''')
+        ''', sys_cat_id)
 
     logger.info("✅ Инициализация БД завершена (таблицы, индексы и колонки созданы)")
 
