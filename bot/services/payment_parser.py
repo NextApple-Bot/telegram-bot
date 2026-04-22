@@ -5,18 +5,18 @@ from typing import Dict
 
 logger = logging.getLogger(__name__)
 
-# Приоритеты: специфичные типы должны иметь преимущество над общим "cash"
+# Приоритет важен: специфичные типы должны проверяться раньше cash.
+# Используем границы слова \b для cash, чтобы не срабатывать на "нал" внутри "Терминал".
 PAYMENT_KEYWORDS = {
     'terminal': re.compile(r'Терминал|Терминалом|терминал|терминалом|Terminal|terminal|Терм\.?', re.IGNORECASE),
     'qr': re.compile(r'QR[- ]?код|QRCode|QrCode|QR\s*код|Qrкод|QRCODE|Qrcode|Qrcod|Qr-код|Qr-Код|Qr-code|QR-code', re.IGNORECASE),
     'transfer': re.compile(r'Перевод|перевод|Переводом|переводом|Пер\.?', re.IGNORECASE),
     'invoice': re.compile(r'Оплата по счету|Оплата По Счету|по счету|По счёту|Счёт|Счет|Инвойс', re.IGNORECASE),
     'installment': re.compile(r'Рассрочка|рассрочка|Рассрочкой|рассрочкой|Расср\.?', re.IGNORECASE),
-    'cash': re.compile(r'Наличными|Наличные|наличными|нал\.?|нал\b|Нал\b|Наличка', re.IGNORECASE),  # \b чтобы не цеплять "нал" внутри слов
+    'cash': re.compile(r'\bНаличными\b|\bНаличные\b|\bналичными\b|\bнал\.?\b|\bнал\b|\bНал\b|\bНаличка\b', re.IGNORECASE),
 }
 PREPAY_PATTERN = re.compile(r'П[/\\]О|предоплата', re.IGNORECASE)
 NUMBER_PATTERN = re.compile(r'(\d[\d\s]*(?:[.,]\d+)?)')
-BRACKET_PAYMENT_PATTERN = re.compile(r'\(([^)]+)\)')
 
 
 def is_likely_phone_or_serial(num_str: str) -> bool:
@@ -37,7 +37,15 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         text = '\n'.join(lines)
 
     lines = text.splitlines()
-    results = {key: 0.0 for key in PAYMENT_KEYWORDS}
+    # Инициализируем результаты с правильным порядком ключей (специфичные сначала)
+    results = {
+        'terminal': 0.0,
+        'qr': 0.0,
+        'transfer': 0.0,
+        'invoice': 0.0,
+        'installment': 0.0,
+        'cash': 0.0,
+    }
 
     for line in lines:
         # Находим все типы оплаты, упомянутые в строке
@@ -47,10 +55,9 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         if not line_pay_types:
             continue
 
-        # Если в строке есть специфичные типы (не cash), исключаем cash
+        # Если есть хотя бы один специфичный тип (не cash), исключаем cash из рассмотрения для этой строки
         specific_types = [pt for pt in line_pay_types if pt != 'cash']
         if specific_types:
-            # Оставляем только специфичные типы
             line_pay_types = specific_types
 
         # Извлекаем все числа из строки
@@ -83,7 +90,14 @@ def extract_prepayments(text: str) -> Dict[str, float]:
     """Извлекает суммы предоплаты (строки с П/О или предоплата)."""
     lines = [line for line in text.splitlines() if PREPAY_PATTERN.search(line)]
     if not lines:
-        return {key: 0.0 for key in PAYMENT_KEYWORDS}
+        return {
+            'terminal': 0.0,
+            'qr': 0.0,
+            'transfer': 0.0,
+            'invoice': 0.0,
+            'installment': 0.0,
+            'cash': 0.0,
+        }
 
     prepay_text = '\n'.join(lines)
     return extract_payment_amounts(prepay_text, ignore_prepay=False)
