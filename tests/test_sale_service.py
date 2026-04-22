@@ -9,19 +9,20 @@ async def test_process_sale_with_serial():
     content = "iPhone 15 Pro (ABC123) - 1000₽\nНаличные - 1000"
     payments = {'cash': 1000.0, 'terminal': 0.0, 'qr': 0.0, 'transfer': 0.0, 'invoice': 0.0, 'installment': 0.0}
 
-    # Мокаем всё необходимое внутри функции process_sale
     with patch('bot.services.sale.extract_serials', return_value=["ABC123"]), \
          patch('bot.services.sale.ItemRepository.get_item_id_by_serial', new=AsyncMock(return_value=789)), \
-         patch('bot.services.sale.AssortmentService.remove_by_serial', new=AsyncMock()) as mock_remove, \
+         patch('bot.services.sale.AssortmentService') as mock_assortment, \
          patch('bot.services.sale.StatsRepository.add_sale', new=AsyncMock()), \
-         patch('bot.services.sale.get_pool', new=AsyncMock()) as mock_pool:
+         patch('bot.services.sale.get_pool') as mock_get_pool:
 
-        # Настраиваем пул: pool.acquire() возвращает AsyncMock с __aenter__ и __aexit__
+        mock_assortment.remove_by_serial = AsyncMock()
         mock_conn = AsyncMock()
         mock_acquire = AsyncMock()
         mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_acquire.__aexit__ = AsyncMock(return_value=None)
-        mock_pool.return_value.acquire.return_value = mock_acquire
+        mock_pool = AsyncMock()
+        mock_pool.acquire.return_value = mock_acquire
+        mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
 
@@ -30,7 +31,7 @@ async def test_process_sale_with_serial():
         assert result["is_accessory"] is False
         assert result.get("skip_sale_stats") is False
         assert result.get("skip_payments") is False
-        mock_remove.assert_called_once_with("ABC123", reason='sale', conn=mock_conn)
+        mock_assortment.remove_by_serial.assert_called_once_with("ABC123", reason='sale', conn=mock_conn)
 
 
 @pytest.mark.asyncio
@@ -44,7 +45,7 @@ async def test_process_sale_without_serial():
         assert result["sold_items"] == []
         assert result["is_accessory"] is True
         assert result.get("skip_sale_stats") is True
-        # skip_payments отсутствует в ответе для аксессуаров
+        # У аксессуаров нет ключа skip_payments
         assert "skip_payments" not in result
 
 
@@ -55,13 +56,15 @@ async def test_process_sale_not_found():
 
     with patch('bot.services.sale.extract_serials', return_value=["XYZ999"]), \
          patch('bot.services.sale.ItemRepository.get_item_id_by_serial', new=AsyncMock(return_value=None)), \
-         patch('bot.services.sale.get_pool', new=AsyncMock()) as mock_pool:
+         patch('bot.services.sale.get_pool') as mock_get_pool:
 
         mock_conn = AsyncMock()
         mock_acquire = AsyncMock()
         mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_acquire.__aexit__ = AsyncMock(return_value=None)
-        mock_pool.return_value.acquire.return_value = mock_acquire
+        mock_pool = AsyncMock()
+        mock_pool.acquire.return_value = mock_acquire
+        mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
 
