@@ -1,4 +1,4 @@
-# Файл: tests/test_utils/test_parser.py
+# Файл: tests/test_utils/test_parser.py (исправлен тест extract_prepayments)
 import pytest
 from bot.services.payment_parser import extract_payment_amounts, extract_prepayments
 
@@ -13,13 +13,14 @@ def test_extract_payment_amounts_basic():
 def test_extract_payment_amounts_multiple_numbers_same_type():
     text = "Наличные - 1000 и еще 200"
     payments = extract_payment_amounts(text)
-    # Должен взять только первое число, привязанное к ключевому слову
+    # Парсер берёт первое число для наличных
     assert payments['cash'] == 1000.0
 
 
 def test_extract_prepayments():
     text = "П/О 2000 (нал)"
     payments = extract_prepayments(text)
+    # П/О с нал -> наличные
     assert payments['cash'] == 2000.0
 
 
