@@ -9,12 +9,14 @@ async def test_process_sale_with_serial():
     content = "iPhone 15 Pro (ABC123) - 1000₽\nНаличные - 1000"
     payments = {'cash': 1000.0, 'terminal': 0.0, 'qr': 0.0, 'transfer': 0.0, 'invoice': 0.0, 'installment': 0.0}
 
+    # Мокаем всё, что используется внутри process_sale
     with patch('bot.services.sale.extract_serials', return_value=["ABC123"]), \
          patch('bot.services.sale.ItemRepository.get_item_id_by_serial', new=AsyncMock(return_value=789)), \
          patch('bot.services.assortment.AssortmentService.remove_by_serial', new=AsyncMock()) as mock_remove, \
          patch('bot.services.sale.StatsRepository.add_sale', new=AsyncMock()), \
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
+        # Создаём мок соединения и пула
         mock_conn = AsyncMock()
         mock_acquire = AsyncMock()
         mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -44,6 +46,7 @@ async def test_process_sale_without_serial():
         assert result["sold_items"] == []
         assert result["is_accessory"] is True
         assert result.get("skip_sale_stats") is True
+        # У аксессуаров ключ skip_payments отсутствует
         assert "skip_payments" not in result
 
 
