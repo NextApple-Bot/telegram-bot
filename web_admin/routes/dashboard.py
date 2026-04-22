@@ -151,7 +151,8 @@ async def dashboard(request: Request, days: int = Query(7, ge=7, le=90)):
         top_5 = model_counter.most_common(5)
         top_labels = [item[0] for item in top_5]
         top_counts = [item[1] for item in top_5]
-        await cache.set(top_cache_key, (top_labels, top_counts), ttl=3600)
+        # УЛУЧШЕНИЕ 4: увеличиваем TTL с 3600 до 43200 секунд (12 часов)
+        await cache.set(top_cache_key, (top_labels, top_counts), ttl=43200)
 
     prev_stats = await get_previous_period_stats()
     sales_today = sales_count
@@ -225,7 +226,8 @@ async def top_models_data(days: int = Query(7, ge=7, le=90)):
     top_5 = model_counter.most_common(5)
     labels = [item[0] for item in top_5]
     counts = [item[1] for item in top_5]
-    await cache.set(cache_key, (labels, counts), ttl=3600)
+    # УЛУЧШЕНИЕ 4: увеличиваем TTL до 12 часов
+    await cache.set(cache_key, (labels, counts), ttl=43200)
     return JSONResponse(content={"labels": labels, "counts": counts})
 
 
