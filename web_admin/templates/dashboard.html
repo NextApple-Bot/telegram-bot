@@ -5,75 +5,101 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
     .stats-card {
-        background: linear-gradient(145deg, #1e293b, #0f172a);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 1.5rem;
-        box-shadow: 0 20px 30px -10px rgba(0,0,0,0.5);
+        border-left: 4px solid var(--primary);
         transition: all 0.2s;
     }
     .stats-card:hover {
-        box-shadow: 0 25px 40px -12px #00000080;
+        box-shadow: var(--shadow-lg);
     }
-    .glass-panel {
-        background: rgba(15, 23, 36, 0.5);
-        backdrop-filter: blur(16px);
-        border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 1.5rem;
-        padding: 1.5rem;
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        line-height: 1.2;
     }
-    .gradient-text {
-        background: linear-gradient(135deg, #c084fc, #60a5fa);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+    .trend-badge {
+        font-size: 0.85rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        background-color: var(--bg-light);
+        display: inline-block;
     }
 </style>
 {% endblock %}
 {% block content %}
-<div class="glass-panel mb-4">
-    <h1 class="gradient-text" style="font-weight: 700;">Дашборд</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 style="font-weight: 600; font-size: 1.8rem; color: var(--text-dark);">Дашборд</h1>
+    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
+        <i class="bi bi-pencil-square me-1"></i> Редактировать статистику
+    </button>
 </div>
 
-<div class="row mt-4 g-4">
+<div class="row g-4 mb-4">
     <div class="col-md-6">
-        <div class="card stats-card text-white h-100">
-            <div class="card-header d-flex align-items-center">
-                <i class="bi bi-cart-check-fill me-2" style="color: #60a5fa;"></i> Продажи сегодня
-            </div>
+        <div class="card stats-card h-100">
             <div class="card-body">
-                <h2 class="card-title display-5 fw-bold" style="color: #a78bfa;">{{ sales_today }}</h2>
-                <p class="card-text opacity-75">
-                    {% if sales_change_yesterday > 0 %}📈 +{{ sales_change_yesterday }}% ко вчера{% elif sales_change_yesterday < 0 %}📉 {{ sales_change_yesterday }}% ко вчера{% else %}➡️ без изменений{% endif %}
-                    <br>
-                    {% if sales_change_week > 0 %}📈 +{{ sales_change_week }}% к среднему за неделю{% elif sales_change_week < 0 %}📉 {{ sales_change_week }}% к среднему за неделю{% else %}➡️ без изменений{% endif %}
-                </p>
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-cart-check-fill me-2 fs-4" style="color: var(--primary);"></i>
+                    <h5 class="card-title mb-0 fw-semibold">Продажи сегодня</h5>
+                </div>
+                <div class="kpi-value">{{ sales_today }}</div>
+                <div class="mt-2">
+                    {% if sales_change_yesterday > 0 %}
+                    <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ sales_change_yesterday }}% ко вчера</span>
+                    {% elif sales_change_yesterday < 0 %}
+                    <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ sales_change_yesterday }}% ко вчера</span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">➡️ без изменений</span>
+                    {% endif %}
+                    <span class="ms-2">
+                        {% if sales_change_week > 0 %}
+                        <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ sales_change_week }}% к нед.</span>
+                        {% elif sales_change_week < 0 %}
+                        <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ sales_change_week }}% к нед.</span>
+                        {% else %}
+                        <span class="trend-badge text-secondary">➡️ к нед.</span>
+                        {% endif %}
+                    </span>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card stats-card text-white h-100">
-            <div class="card-header d-flex align-items-center">
-                <i class="bi bi-currency-dollar me-2" style="color: #34d399;"></i> Выручка сегодня
-            </div>
+        <div class="card stats-card h-100">
             <div class="card-body">
-                <h2 class="card-title display-5 fw-bold" style="color: #fbbf24;">{{ "{:,.0f}".format(revenue_today) }} ₽</h2>
-                <p class="card-text opacity-75">
-                    {% if revenue_change_yesterday > 0 %}📈 +{{ revenue_change_yesterday }}% ко вчера{% elif revenue_change_yesterday < 0 %}📉 {{ revenue_change_yesterday }}% ко вчера{% else %}➡️ без изменений{% endif %}
-                    <br>
-                    {% if revenue_change_week > 0 %}📈 +{{ revenue_change_week }}% к среднему за неделю{% elif revenue_change_week < 0 %}📉 {{ revenue_change_week }}% к среднему за неделю{% else %}➡️ без изменений{% endif %}
-                </p>
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-currency-dollar me-2 fs-4" style="color: var(--success);"></i>
+                    <h5 class="card-title mb-0 fw-semibold">Выручка сегодня</h5>
+                </div>
+                <div class="kpi-value">{{ "{:,.0f}".format(revenue_today) }} ₽</div>
+                <div class="mt-2">
+                    {% if revenue_change_yesterday > 0 %}
+                    <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ revenue_change_yesterday }}% ко вчера</span>
+                    {% elif revenue_change_yesterday < 0 %}
+                    <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ revenue_change_yesterday }}% ко вчера</span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">➡️ без изменений</span>
+                    {% endif %}
+                    <span class="ms-2">
+                        {% if revenue_change_week > 0 %}
+                        <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ revenue_change_week }}% к нед.</span>
+                        {% elif revenue_change_week < 0 %}
+                        <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ revenue_change_week }}% к нед.</span>
+                        {% else %}
+                        <span class="trend-badge text-secondary">➡️ к нед.</span>
+                        {% endif %}
+                    </span>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row mt-4">
+<div class="row mb-4">
     <div class="col-12">
-        <div class="card stats-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-coin me-2"></i>Финансы за сегодня</span>
-                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
-                    <i class="bi bi-pencil-square me-1"></i> Редактировать
-                </button>
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-coin me-2"></i> Финансы за сегодня
             </div>
             <div class="card-body p-0">
                 <table class="table table-borderless mb-0">
@@ -83,7 +109,7 @@
                     <tr><th class="ps-4">Перевод</th><td class="text-end pe-4">{{ payments.transfer|round(0) }} ₽</td></tr>
                     <tr><th class="ps-4">Оплата по счету</th><td class="text-end pe-4">{{ payments.invoice|round(0) }} ₽</td></tr>
                     <tr><th class="ps-4">Рассрочка</th><td class="text-end pe-4">{{ payments.installment|round(0) }} ₽</td></tr>
-                    <tr class="border-top border-light"><th class="ps-4 fw-bold">Итого</th><td class="text-end pe-4 fw-bold fs-5">{{ total_revenue|round(0) }} ₽</td></tr>
+                    <tr class="border-top"><th class="ps-4 fw-bold">Итого</th><td class="text-end pe-4 fw-bold fs-5">{{ total_revenue|round(0) }} ₽</td></tr>
                     <tr><th class="ps-4">План</th><td class="text-end pe-4">{{ plan_amount|round(0) }} ₽</td></tr>
                     <tr><th class="ps-4">Выполнение</th><td class="text-end pe-4">{{ (total_revenue / plan_amount * 100)|round(1) }}%</td></tr>
                 </table>
@@ -92,18 +118,22 @@
     </div>
 </div>
 
-<div class="row mt-4 g-4">
+<div class="row g-4 mb-4">
     <div class="col-md-6">
-        <div class="card stats-card h-100">
-            <div class="card-header"><i class="bi bi-graph-up me-2"></i>Динамика продаж (7 дней)</div>
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up me-2"></i>Динамика продаж (7 дней)
+            </div>
             <div class="card-body">
                 <canvas id="salesChart" width="400" height="200"></canvas>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card stats-card h-100">
-            <div class="card-header"><i class="bi bi-graph-up-arrow me-2"></i>Динамика выручки (7 дней)</div>
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up-arrow me-2"></i>Динамика выручки (7 дней)
+            </div>
             <div class="card-body">
                 <canvas id="revenueChart" width="400" height="200"></canvas>
             </div>
@@ -111,12 +141,12 @@
     </div>
 </div>
 
-<div class="row mt-4">
+<div class="row">
     <div class="col-md-6">
-        <div class="card stats-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center fw-semibold">
                 <span><i class="bi bi-trophy me-2"></i>Топ-5 моделей</span>
-                <select id="periodSelect" class="form-select form-select-sm w-auto bg-dark text-white border-secondary">
+                <select id="periodSelect" class="form-select form-select-sm w-auto">
                     <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
                     <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
                     <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
@@ -134,13 +164,13 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Редактировать статистику за сегодня</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title fw-semibold">Редактировать статистику за сегодня</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="editStatsForm">
-                    <h6 class="gradient-text">Платежи</h6>
-                    <div class="row mb-3 g-3">
+                    <h6 class="fw-semibold mb-3">Платежи</h6>
+                    <div class="row g-3 mb-4">
                         <div class="col-md-4">
                             <label class="form-label">Наличные (₽)</label>
                             <input type="number" step="0.01" class="form-control" name="cash" value="{{ payments.cash }}">
@@ -153,8 +183,6 @@
                             <label class="form-label">QR-код (₽)</label>
                             <input type="number" step="0.01" class="form-control" name="qr" value="{{ payments.qr }}">
                         </div>
-                    </div>
-                    <div class="row mb-3 g-3">
                         <div class="col-md-4">
                             <label class="form-label">Перевод (₽)</label>
                             <input type="number" step="0.01" class="form-control" name="transfer" value="{{ payments.transfer }}">
@@ -168,8 +196,8 @@
                             <input type="number" step="0.01" class="form-control" name="installment" value="{{ payments.installment }}">
                         </div>
                     </div>
-                    <h6 class="gradient-text mt-4">Количество</h6>
-                    <div class="row mb-3 g-3">
+                    <h6 class="fw-semibold mb-3">Количество</h6>
+                    <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label">Продажи</label>
                             <input type="number" step="1" class="form-control" name="sales_count" value="{{ stats.sales_count }}">
@@ -186,7 +214,7 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="saveStatsBtn">Сохранить</button>
             </div>
         </div>
@@ -194,75 +222,66 @@
 </div>
 
 <script>
-    // Градиентные цвета для графиков
-    const gradientCtx = document.createElement('canvas').getContext('2d');
-    const gradient1 = (ctx, color1, color2) => {
-        const grad = ctx.createLinearGradient(0, 0, 0, 400);
-        grad.addColorStop(0, color1);
-        grad.addColorStop(1, color2);
-        return grad;
-    };
-
-    // График продаж
-    const salesCtx = document.getElementById('salesChart').getContext('2d');
-    new Chart(salesCtx, {
+    // Продажи
+    new Chart(document.getElementById('salesChart'), {
         type: 'line',
         data: {
             labels: {{ chart_dates|tojson }},
             datasets: [{
-                label: 'Количество продаж',
+                label: 'Продажи',
                 data: {{ chart_sales|tojson }},
-                borderColor: '#a78bfa',
-                backgroundColor: gradient1(salesCtx, 'rgba(167, 139, 250, 0.3)', 'rgba(167, 139, 250, 0.02)'),
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.05)',
                 fill: true,
                 tension: 0.3,
-                pointBackgroundColor: '#c084fc',
-                pointBorderColor: '#fff',
-                borderWidth: 3
+                pointBackgroundColor: '#2563eb',
+                borderWidth: 2
             }]
         },
         options: {
             responsive: true,
-            plugins: { legend: { labels: { color: '#cbd5e1' } } },
+            plugins: { tooltip: { mode: 'index' } },
             scales: {
-                y: { beginAtZero: true, stepSize: 1, precision: 0, grid: { color: '#334155' }, ticks: { color: '#cbd5e1' } },
-                x: { ticks: { color: '#cbd5e1' } }
+                y: { beginAtZero: true, stepSize: 1, precision: 0, grid: { color: '#e2e8f0' } },
+                x: { grid: { display: false } }
             }
         }
     });
 
-    // График выручки
-    const revenueCtx = document.getElementById('revenueChart').getContext('2d');
-    new Chart(revenueCtx, {
+    // Выручка
+    new Chart(document.getElementById('revenueChart'), {
         type: 'line',
         data: {
             labels: {{ chart_dates|tojson }},
             datasets: [{
                 label: 'Выручка (₽)',
                 data: {{ chart_revenue|tojson }},
-                borderColor: '#34d399',
-                backgroundColor: gradient1(revenueCtx, 'rgba(52, 211, 153, 0.3)', 'rgba(52, 211, 153, 0.02)'),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.05)',
                 fill: true,
                 tension: 0.3,
-                pointBackgroundColor: '#6ee7b7',
-                pointBorderColor: '#fff',
-                borderWidth: 3
+                pointBackgroundColor: '#10b981',
+                borderWidth: 2
             }]
         },
         options: {
             responsive: true,
-            plugins: { legend: { labels: { color: '#cbd5e1' } }, tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toLocaleString()} ₽` } } },
+            plugins: {
+                tooltip: {
+                    callbacks: { label: (ctx) => `${ctx.raw.toLocaleString()} ₽` }
+                }
+            },
             scales: {
-                y: { beginAtZero: true, grid: { color: '#334155' }, ticks: { color: '#cbd5e1', callback: (v) => v.toLocaleString() + ' ₽' } },
-                x: { ticks: { color: '#cbd5e1' } }
+                y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { callback: (v) => v.toLocaleString() + ' ₽' } },
+                x: { grid: { display: false } }
             }
         }
     });
 
-    // Топ-моделей (круговая с неоновыми цветами)
+    // Топ-моделей
     let pieChart = null;
     const pieCtx = document.getElementById('topModelsChart').getContext('2d');
-    const neonColors = ['#a78bfa', '#60a5fa', '#fbbf24', '#34d399', '#f472b6'];
+    const colors = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
     function updateTopModels(days) {
         fetch(`/admin/dashboard/top_models_data?days=${days}`)
@@ -271,11 +290,12 @@
                 if (pieChart) pieChart.destroy();
                 if (data.labels.length === 0) {
                     pieCtx.clearRect(0, 0, 400, 200);
-                    pieCtx.fillStyle = '#1e293b';
+                    pieCtx.fillStyle = '#f1f5f9';
                     pieCtx.fillRect(0, 0, 400, 200);
-                    pieCtx.fillStyle = '#94a3b8';
-                    pieCtx.font = '16px Inter';
-                    pieCtx.fillText('Нет данных за период', 120, 100);
+                    pieCtx.fillStyle = '#64748b';
+                    pieCtx.font = '14px Inter';
+                    pieCtx.textAlign = 'center';
+                    pieCtx.fillText('Нет данных за период', 200, 110);
                     return;
                 }
                 pieChart = new Chart(pieCtx, {
@@ -284,25 +304,25 @@
                         labels: data.labels,
                         datasets: [{
                             data: data.counts,
-                            backgroundColor: neonColors,
-                            borderColor: '#0f172a',
-                            borderWidth: 2,
-                            hoverOffset: 8
+                            backgroundColor: colors,
+                            borderWidth: 0,
+                            hoverOffset: 6
                         }]
                     },
                     options: {
                         responsive: true,
                         plugins: {
-                            legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 12 } } },
+                            legend: { position: 'right', labels: { boxWidth: 12, padding: 16 } },
                             tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } }
                         },
-                        cutout: '60%'
+                        cutout: '65%'
                     }
                 });
             });
     }
 
     document.getElementById('periodSelect').addEventListener('change', (e) => updateTopModels(e.target.value));
+
     {% if top_labels %}
     pieChart = new Chart(pieCtx, {
         type: 'doughnut',
@@ -310,27 +330,27 @@
             labels: {{ top_labels|tojson }},
             datasets: [{
                 data: {{ top_counts|tojson }},
-                backgroundColor: neonColors,
-                borderColor: '#0f172a',
-                borderWidth: 2,
-                hoverOffset: 8
+                backgroundColor: colors,
+                borderWidth: 0,
+                hoverOffset: 6
             }]
         },
         options: {
             responsive: true,
             plugins: {
-                legend: { position: 'right', labels: { color: '#cbd5e1' } },
+                legend: { position: 'right', labels: { boxWidth: 12, padding: 16 } },
                 tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } }
             },
-            cutout: '60%'
+            cutout: '65%'
         }
     });
     {% else %}
-    pieCtx.fillStyle = '#1e293b';
+    pieCtx.fillStyle = '#f1f5f9';
     pieCtx.fillRect(0, 0, 400, 200);
-    pieCtx.fillStyle = '#94a3b8';
-    pieCtx.font = '16px Inter';
-    pieCtx.fillText('Нет данных за период', 120, 100);
+    pieCtx.fillStyle = '#64748b';
+    pieCtx.font = '14px Inter';
+    pieCtx.textAlign = 'center';
+    pieCtx.fillText('Нет данных за период', 200, 110);
     {% endif %}
 
     // Сохранение статистики
