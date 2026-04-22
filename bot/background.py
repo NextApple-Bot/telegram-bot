@@ -68,14 +68,14 @@ async def background_sold_cleanup_loop():
         await run_with_lock(CLEANUP_SOLD_LOCK_KEY, cleanup_sold_periodically)
 
 
-async def webhook_healthcheck_loop(bot):
+async def webhook_healthcheck_loop(bot, dp):
     while True:
         await asyncio.sleep(300)
-        await check_and_set_webhook(bot)
+        await check_and_set_webhook(bot, dp)
 
 
-async def start_background_tasks(bot):
+async def start_background_tasks(bot, dp):
     asyncio.create_task(background_cleanup_loop())
     asyncio.create_task(background_sold_cleanup_loop())
-    asyncio.create_task(webhook_healthcheck_loop(bot))
+    asyncio.create_task(webhook_healthcheck_loop(bot, dp))
     logger.info("Все фоновые задачи запущены")
