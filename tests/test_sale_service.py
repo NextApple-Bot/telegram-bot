@@ -1,6 +1,6 @@
 # Файл: tests/test_sale_service.py
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from bot.services.sale import SaleService
 
 
@@ -15,14 +15,17 @@ async def test_process_sale_with_serial():
          patch('bot.services.sale.StatsRepository.add_sale', new=AsyncMock()), \
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
-        # Создаём мок соединения и пула
+        # Мок соединения (контекстный менеджер)
         mock_conn = AsyncMock()
-        mock_acquire = MagicMock()
-        mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_acquire.__aexit__ = AsyncMock(return_value=None)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
 
-        mock_pool = MagicMock()
-        mock_pool.acquire = MagicMock(return_value=mock_acquire)
+        # Мок acquire: асинхронная функция, возвращающая мок соединения
+        mock_acquire = AsyncMock(return_value=mock_conn)
+
+        # Мок пула
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
         mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
@@ -59,12 +62,13 @@ async def test_process_sale_not_found():
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
         mock_conn = AsyncMock()
-        mock_acquire = MagicMock()
-        mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_acquire.__aexit__ = AsyncMock(return_value=None)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=None)
 
-        mock_pool = MagicMock()
-        mock_pool.acquire = MagicMock(return_value=mock_acquire)
+        mock_acquire = AsyncMock(return_value=mock_conn)
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
         mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
