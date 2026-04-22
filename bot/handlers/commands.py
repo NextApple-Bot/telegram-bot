@@ -13,7 +13,7 @@ from bot import config
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
-from bot.utils.markdown import escape_markdown_v1
+from bot.utils.markdown import escape_markdown_v1   # ИСПРАВЛЕНИЕ #1
 from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
 from bot.utils.helpers import send_and_clean
 
