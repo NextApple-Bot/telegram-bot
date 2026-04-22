@@ -1,64 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Статистика{% endblock %}
-{% block extra_head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-{% endblock %}
+{% block page_title %}Статистика за {{ days }} дней{% endblock %}
+{% block extra_head %}<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>{% endblock %}
 {% block content %}
-<h1>Статистика за последние {{ days }} дней</h1>
-<form method="get" class="mb-3">
-    <div class="row">
-        <div class="col-auto">
-            <select name="days" class="form-select">
-                <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
-                <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
-                <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
-            </select>
-        </div>
-        <div class="col-auto">
-            <button type="submit" class="btn btn-primary">Показать</button>
-        </div>
-    </div>
-</form>
-
-<div class="row">
-    <div class="col-md-12">
-        <canvas id="statsChart" width="400" height="200"></canvas>
+<div class="card">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-auto"><select name="days" class="form-select"><option value="7" {% if days==7 %}selected{% endif %}>7 дней</option><option value="14" {% if days==14 %}selected{% endif %}>14 дней</option><option value="30" {% if days==30 %}selected{% endif %}>30 дней</option></select></div>
+            <div class="col-auto"><button type="submit" class="btn btn-primary">Показать</button></div>
+        </form>
     </div>
 </div>
-
-<div class="row mt-4">
-    <div class="col-md-12">
-        <h3>Итоги за период</h3>
-        <table class="table table-bordered">
-            <thead>
-                <tr><th>Тип</th><th>Количество</th><th>Выручка</th></tr>
-            </thead>
-            <tbody>
-                <tr><td>Продажи</td><td>{{ total_sales_count }}</td><td>{{ "{:,.0f}".format(total_sales_revenue) }} ₽</td></tr>
-                <tr><td>Предзаказы</td><td>{{ total_pre_count }}</td><td>{{ "{:,.0f}".format(total_pre_revenue) }} ₽</td></tr>
-                <tr><td>Брони</td><td>{{ total_book_count }}</td><td>{{ "{:,.0f}".format(total_book_revenue) }} ₽</td></tr>
-            </tbody>
-        </table>
-    </div>
+<div class="row g-4">
+    <div class="col-12"><div class="card"><div class="card-body"><canvas id="statsChart" width="400" height="200"></canvas></div></div></div>
+    <div class="col-12"><div class="card"><div class="card-body"><table class="table table-bordered"><thead><tr><th>Тип</th><th>Количество</th><th>Выручка</th></tr></thead><tbody><tr><td>Продажи</td><td>{{ total_sales_count }}</td><td>{{ "{:,.0f}".format(total_sales_revenue) }} ₽</td></tr><tr><td>Предзаказы</td><td>{{ total_pre_count }}</td><td>{{ "{:,.0f}".format(total_pre_revenue) }} ₽</td></tr><tr><td>Брони</td><td>{{ total_book_count }}</td><td>{{ "{:,.0f}".format(total_book_revenue) }} ₽</td></tr></tbody></table></div></div></div>
 </div>
-
 <script>
-    const ctx = document.getElementById('statsChart').getContext('2d');
-    const dates = {{ dates|tojson }};
-    const salesCounts = {{ sales_counts|tojson }};
-    const preCounts = {{ pre_counts|tojson }};
-    const bookCounts = {{ book_counts|tojson }};
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: dates,
-            datasets: [
-                { label: 'Продажи', data: salesCounts, borderColor: 'blue', fill: false },
-                { label: 'Предзаказы', data: preCounts, borderColor: 'green', fill: false },
-                { label: 'Брони', data: bookCounts, borderColor: 'orange', fill: false }
-            ]
-        },
-        options: { responsive: true }
-    });
+    new Chart(document.getElementById('statsChart'), { type: 'line', data: { labels: {{ dates|tojson }}, datasets: [ { label: 'Продажи', data: {{ sales_counts|tojson }}, borderColor: '#2563eb' }, { label: 'Предзаказы', data: {{ pre_counts|tojson }}, borderColor: '#10b981' }, { label: 'Брони', data: {{ book_counts|tojson }}, borderColor: '#f59e0b' } ] }, options: { responsive: true } });
 </script>
 {% endblock %}
