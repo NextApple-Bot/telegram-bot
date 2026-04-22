@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional, List
 import logging
+import asyncio
 
 from bot.services.assortment import AssortmentService
 from bot.db import get_pool
@@ -111,7 +112,6 @@ async def edit_item_submit(
                         })
 
                 from .sales import handle_sale_from_form
-                # ИСПРАВЛЕНИЕ #7: передаём текущее соединение для единой транзакции
                 await handle_sale_from_form(
                     item_id=item_id, text=text, serial=serial, category_id=category_id,
                     old_text=old_text, old_serial=old_serial, old_category_id=old_category_id,
@@ -121,7 +121,6 @@ async def edit_item_submit(
                     accessories=accessories,
                     conn=conn
                 )
-                # После успешной продажи не нужно дополнительно обновлять item, он уже удалён
                 await AssortmentService.invalidate_cache()
                 return RedirectResponse(url="/admin/assortment", status_code=303)
 
@@ -150,7 +149,8 @@ async def edit_item_submit(
                     """, booking_payment_type, booking_prepayment)
 
                 from .notifications import send_booking_notification
-                await send_booking_notification(
+                # УЛУЧШЕНИЕ 9: асинхронная отправка уведомления в фоне
+                asyncio.create_task(send_booking_notification(
                     item_text=text,
                     serial=serial.strip().upper() if serial else "без серийного номера",
                     price=booking_price,
@@ -160,7 +160,7 @@ async def edit_item_submit(
                     phone=booking_phone,
                     payment_type=booking_payment_type,
                     is_cancel=False
-                )
+                ))
                 logger.info(f"Бронь товара {item_id} успешно сохранена")
             else:
                 await conn.execute("""
@@ -176,11 +176,11 @@ async def edit_item_submit(
 
                 if old_is_booked and not is_booked:
                     from .notifications import send_booking_notification
-                    await send_booking_notification(
+                    asyncio.create_task(send_booking_notification(
                         item_text=old_text,
                         serial=old_serial,
                         is_cancel=True
-                    )
+                    ))
 
     await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
@@ -233,7 +233,6 @@ async def add_item(
            booking_price, booking_prepayment, booking_platform,
            booking_full_name, booking_phone, booking_payment_type)
         if is_booked:
-            # Сохраняем предоплату в daily_payments
             if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
                 await conn.execute("""
                     INSERT INTO daily_payments (type, payment_type, amount)
@@ -241,7 +240,7 @@ async def add_item(
                 """, booking_payment_type, booking_prepayment)
 
             from .notifications import send_booking_notification
-            await send_booking_notification(
+            asyncio.create_task(send_booking_notification(
                 item_text=text,
                 serial=serial.strip().upper() if serial else "без серийного номера",
                 price=booking_price,
@@ -251,7 +250,7 @@ async def add_item(
                 phone=booking_phone,
                 payment_type=booking_payment_type,
                 is_cancel=False
-            )
+            ))
     await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
