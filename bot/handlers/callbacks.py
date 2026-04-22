@@ -14,7 +14,7 @@ from bot.services.assortment import AssortmentService
 from bot.repositories import StatsRepository, ClientRepository, ItemRepository
 from bot.db import get_pool
 from bot.utils.sort import get_full_model_name, detect_sim_type
-from bot.utils.markdown import escape_markdown_v1
+from bot.utils.markdown import escape_markdown_v1   # ИСПРАВЛЕНИЕ #1
 from .base import logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
 from .topics.common import export_assortment_to_topic
 from bot.utils.helpers import send_and_clean
@@ -362,8 +362,7 @@ async def process_menu_callback(callback: CallbackQuery, bot, state):
                 pass
         pool = await get_pool()
         async with pool.acquire() as conn:
-            await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) < CURRENT_DATE')
-        async with pool.acquire() as conn:
+            # ИСПРАВЛЕНИЕ #3: убрано удаление исторических записей daily_payments
             rows = await conn.fetch('''
                 SELECT payment_type, SUM(amount) as total
                 FROM daily_payments
