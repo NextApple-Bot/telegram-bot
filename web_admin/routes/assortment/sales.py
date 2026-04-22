@@ -22,7 +22,8 @@ async def delete_item_and_log_sale(
     prepayment: float,
     payment_type: str,
     payment_amount: float,
-    message_id: int
+    message_id: int,
+    conn
 ):
     """
     Удаляет товар из ассортимента и создаёт запись в sales.
@@ -33,27 +34,23 @@ async def delete_item_and_log_sale(
         payment_type = 'cash'
         logger.warning(f"Некорректный payment_type, заменён на 'cash': {payment_type}")
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute("""
-                INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
-                VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
-            """, item_id, text, serial, category_id, message_id)
-            await conn.execute("DELETE FROM items WHERE id = $1", item_id)
-            await StatsRepository.add_sale(
-                count=1,
-                cash=0,
-                terminal=0,
-                qr=0,
-                transfer=0,
-                invoice=0,
-                installment=0,
-                is_accessory=False,
-                message_id=message_id,
-                conn=conn
-            )
-            # Платежи уже добавлены в handle_sale_from_form, здесь не дублируем
+    await conn.execute("""
+        INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
+        VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
+    """, item_id, text, serial, category_id, message_id)
+    await conn.execute("DELETE FROM items WHERE id = $1", item_id)
+    await StatsRepository.add_sale(
+        count=1,
+        cash=0,
+        terminal=0,
+        qr=0,
+        transfer=0,
+        invoice=0,
+        installment=0,
+        is_accessory=False,
+        message_id=message_id,
+        conn=conn
+    )
 
 
 async def handle_sale_from_form(
@@ -71,7 +68,8 @@ async def handle_sale_from_form(
     sale_platform: str,
     sale_full_name: str,
     sale_phone: str,
-    accessories: list = None
+    accessories: list = None,
+    conn = None   # ИСПРАВЛЕНИЕ #7: принимаем соединение для единой транзакции
 ):
     if not sale_price:
         raise ValueError("Укажите стоимость продажи")
@@ -86,9 +84,15 @@ async def handle_sale_from_form(
     processed_accessories = []
     accessories_payments = {}
 
-    if accessories:
+    # Если передано внешнее соединение, используем его, иначе создаём своё
+    own_conn = False
+    if conn is None:
         pool = await get_pool()
-        async with pool.acquire() as conn:
+        conn = await pool.acquire()
+        own_conn = True
+
+    try:
+        if accessories:
             for acc in accessories:
                 acc_price = acc['price']
                 accessories_total += acc_price
@@ -127,14 +131,12 @@ async def handle_sale_from_form(
                 if pay_type and pay_type != "paid" and acc_price > 0:
                     accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
 
-    # Собираем все платежи (кроме paid)
-    all_payments = dict(accessories_payments)
-    if sale_payment_type != "paid" and sale_payment_amount > 0:
-        all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
+        # Собираем все платежи (кроме paid)
+        all_payments = dict(accessories_payments)
+        if sale_payment_type != "paid" and sale_payment_amount > 0:
+            all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
 
-    # Сохраняем обычные платежи в daily_payments
-    pool = await get_pool()
-    async with pool.acquire() as conn:
+        # Сохраняем обычные платежи в daily_payments
         for pay_type, amount in all_payments.items():
             if amount > 0:
                 await conn.execute("""
@@ -142,37 +144,41 @@ async def handle_sale_from_form(
                     VALUES ('sale', $1, $2, $3)
                 """, pay_type, amount, sale_message_id)
 
-    total_item_price = sale_price + accessories_total
+        total_item_price = sale_price + accessories_total
 
-    logger.info(
-        f"Продажа товара {item_id}: цена={total_item_price}, "
-        f"платежи={all_payments}, аксессуары={accessories_total}"
-    )
+        logger.info(
+            f"Продажа товара {item_id}: цена={total_item_price}, "
+            f"платежи={all_payments}, аксессуары={accessories_total}"
+        )
 
-    from .notifications import send_sale_notification
-    await send_sale_notification(
-        item_text=text,
-        price=sale_price,
-        payment_type=sale_payment_type,
-        prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
-        payment_amount=sale_payment_amount if sale_payment_type != "paid" else None,
-        platform=sale_platform,
-        full_name=sale_full_name,
-        phone=sale_phone,
-        accessories=processed_accessories
-    )
+        from .notifications import send_sale_notification
+        await send_sale_notification(
+            item_text=text,
+            price=sale_price,
+            payment_type=sale_payment_type,
+            prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
+            payment_amount=sale_payment_amount if sale_payment_type != "paid" else None,
+            platform=sale_platform,
+            full_name=sale_full_name,
+            phone=sale_phone,
+            accessories=processed_accessories
+        )
 
-    await delete_item_and_log_sale(
-        item_id=item_id,
-        text=old_text,
-        serial=old_serial,
-        category_id=old_category_id,
-        price=total_item_price,
-        prepayment=sale_prepayment or 0,
-        payment_type=sale_payment_type,
-        payment_amount=sale_payment_amount if sale_payment_type != "paid" else 0,
-        message_id=sale_message_id
-    )
+        await delete_item_and_log_sale(
+            item_id=item_id,
+            text=old_text,
+            serial=old_serial,
+            category_id=old_category_id,
+            price=total_item_price,
+            prepayment=sale_prepayment or 0,
+            payment_type=sale_payment_type,
+            payment_amount=sale_payment_amount if sale_payment_type != "paid" else 0,
+            message_id=sale_message_id,
+            conn=conn
+        )
 
-    # Инвалидируем кэш дашборда за сегодня
-    await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
+        # Инвалидируем кэш дашборда за сегодня
+        await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
+    finally:
+        if own_conn:
+            await conn.close()
