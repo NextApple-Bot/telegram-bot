@@ -68,7 +68,7 @@ async def restore_sold(deleted_id: int, request: Request):
             if sale_message_id:
                 # Удаляем запись из sales
                 await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
-                # Удаляем финансовую запись из daily_payments
+                # Удаляем ВСЕ финансовые записи, связанные с этой продажей
                 await conn.execute("DELETE FROM daily_payments WHERE sale_message_id = $1", sale_message_id)
                 logger.info(f"Удалены продажа и финансы для sale_message_id={sale_message_id}")
             else:
@@ -84,5 +84,10 @@ async def restore_sold(deleted_id: int, request: Request):
                 UPDATE deleted_items SET restored = TRUE WHERE id = $1
             """, deleted_id)
 
-    AssortmentService.invalidate_cache()
+    await AssortmentService.invalidate_cache()
+    # ИСПРАВЛЕНИЕ #4: добавлено предупреждение о возможной остаточной предоплате
+    logger.warning(
+        "Товар восстановлен. Если была предоплата (бронь) с отдельным message_id, "
+        "она не была удалена. Проверьте финансовую статистику вручную."
+    )
     return RedirectResponse(url="/admin/sold", status_code=303)
