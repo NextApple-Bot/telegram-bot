@@ -41,37 +41,56 @@ class AssortmentService:
 
     @classmethod
     async def remove_by_serial(cls, serial: str, reason: str = 'manual', conn=None) -> int:
-        """Удаляет товар по серийному номеру с сохранением в deleted_items."""
+        """
+        Удаляет товар по серийному номеру с сохранением в deleted_items.
+        ИСПРАВЛЕНИЕ #8: используется атомарный DELETE ... RETURNING для избежания гонок.
+        """
         from bot.db import get_pool
-        from bot.repositories import ItemRepository
-        item = await ItemRepository.get_item_by_serial(serial, conn=conn)
-        if not item:
-            return 0
-
+        
+        normalized_serial = serial.strip().upper()
         if conn is None:
             pool = await get_pool()
             async with pool.acquire() as conn:
                 async with conn.transaction():
-                    await ItemRepository.add_deleted_item(
-                        item_id=item['id'],
-                        text=item['text'],
-                        serial=serial,
-                        category_id=item['category_id'],
-                        reason=reason,
-                        conn=conn
+                    # Атомарно удаляем и получаем данные товара
+                    deleted_row = await conn.fetchrow(
+                        """
+                        DELETE FROM items
+                        WHERE UPPER(serial) = $1
+                        RETURNING id, text, category_id
+                        """,
+                        normalized_serial
                     )
-                    removed_count = await ItemRepository.remove_item_by_serial(serial, conn=conn)
+                    if deleted_row:
+                        # Добавляем запись в deleted_items
+                        await conn.execute(
+                            """
+                            INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                            VALUES ($1, $2, $3, $4, $5)
+                            """,
+                            deleted_row['id'], deleted_row['text'], serial, deleted_row['category_id'], reason
+                        )
+                        await cls.invalidate_cache()
+                        return 1
+                    return 0
         else:
-            await ItemRepository.add_deleted_item(
-                item_id=item['id'],
-                text=item['text'],
-                serial=serial,
-                category_id=item['category_id'],
-                reason=reason,
-                conn=conn
+            # Используем переданное соединение
+            deleted_row = await conn.fetchrow(
+                """
+                DELETE FROM items
+                WHERE UPPER(serial) = $1
+                RETURNING id, text, category_id
+                """,
+                normalized_serial
             )
-            removed_count = await ItemRepository.remove_item_by_serial(serial, conn=conn)
-
-        if removed_count > 0:
-            await cls.invalidate_cache()
-        return removed_count
+            if deleted_row:
+                await conn.execute(
+                    """
+                    INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                    VALUES ($1, $2, $3, $4, $5)
+                    """,
+                    deleted_row['id'], deleted_row['text'], serial, deleted_row['category_id'], reason
+                )
+                await cls.invalidate_cache()
+                return 1
+            return 0
