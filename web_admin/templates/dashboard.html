@@ -235,7 +235,6 @@
         const formData = new FormData(form);
         const data = Object.fromEntries(formData.entries());
 
-        // Преобразование строк в числа
         for (let key in data) {
             data[key] = parseFloat(data[key]) || 0;
         }
@@ -248,10 +247,20 @@
             });
             const result = await response.json();
             if (result.success) {
-                // Закрываем модалку и перезагружаем страницу
-                const modal = bootstrap.Modal.getInstance(document.getElementById('editStatsModal'));
-                modal.hide();
-                window.location.reload();
+                // Принудительно закрываем модальное окно
+                const modalElement = document.getElementById('editStatsModal');
+                const modalInstance = bootstrap.Modal.getInstance(modalElement);
+                if (modalInstance) {
+                    modalInstance.hide();
+                } else {
+                    const newModal = new bootstrap.Modal(modalElement);
+                    newModal.hide();
+                }
+                document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                document.body.classList.remove('modal-open');
+                
+                // Жёсткая перезагрузка страницы с очисткой кэша
+                window.location.reload(true);
             } else {
                 alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
             }
