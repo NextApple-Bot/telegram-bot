@@ -3,17 +3,45 @@
 {% block title %}Дашборд{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .stats-card {
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 1.5rem;
+        box-shadow: 0 20px 30px -10px rgba(0,0,0,0.5);
+        transition: all 0.2s;
+    }
+    .stats-card:hover {
+        box-shadow: 0 25px 40px -12px #00000080;
+    }
+    .glass-panel {
+        background: rgba(15, 23, 36, 0.5);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 1.5rem;
+        padding: 1.5rem;
+    }
+    .gradient-text {
+        background: linear-gradient(135deg, #c084fc, #60a5fa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+</style>
 {% endblock %}
 {% block content %}
-<h1>Дашборд</h1>
+<div class="glass-panel mb-4">
+    <h1 class="gradient-text" style="font-weight: 700;">Дашборд</h1>
+</div>
 
-<div class="row mt-4">
+<div class="row mt-4 g-4">
     <div class="col-md-6">
-        <div class="card text-white bg-primary mb-3">
-            <div class="card-header">Продажи сегодня</div>
+        <div class="card stats-card text-white h-100">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-cart-check-fill me-2" style="color: #60a5fa;"></i> Продажи сегодня
+            </div>
             <div class="card-body">
-                <h5 class="card-title">{{ sales_today }}</h5>
-                <p class="card-text">
+                <h2 class="card-title display-5 fw-bold" style="color: #a78bfa;">{{ sales_today }}</h2>
+                <p class="card-text opacity-75">
                     {% if sales_change_yesterday > 0 %}📈 +{{ sales_change_yesterday }}% ко вчера{% elif sales_change_yesterday < 0 %}📉 {{ sales_change_yesterday }}% ко вчера{% else %}➡️ без изменений{% endif %}
                     <br>
                     {% if sales_change_week > 0 %}📈 +{{ sales_change_week }}% к среднему за неделю{% elif sales_change_week < 0 %}📉 {{ sales_change_week }}% к среднему за неделю{% else %}➡️ без изменений{% endif %}
@@ -22,11 +50,13 @@
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card text-white bg-success mb-3">
-            <div class="card-header">Выручка сегодня</div>
+        <div class="card stats-card text-white h-100">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-currency-dollar me-2" style="color: #34d399;"></i> Выручка сегодня
+            </div>
             <div class="card-body">
-                <h5 class="card-title">{{ "{:,.0f}".format(revenue_today) }} ₽</h5>
-                <p class="card-text">
+                <h2 class="card-title display-5 fw-bold" style="color: #fbbf24;">{{ "{:,.0f}".format(revenue_today) }} ₽</h2>
+                <p class="card-text opacity-75">
                     {% if revenue_change_yesterday > 0 %}📈 +{{ revenue_change_yesterday }}% ко вчера{% elif revenue_change_yesterday < 0 %}📉 {{ revenue_change_yesterday }}% ко вчера{% else %}➡️ без изменений{% endif %}
                     <br>
                     {% if revenue_change_week > 0 %}📈 +{{ revenue_change_week }}% к среднему за неделю{% elif revenue_change_week < 0 %}📉 {{ revenue_change_week }}% к среднему за неделю{% else %}➡️ без изменений{% endif %}
@@ -36,44 +66,44 @@
     </div>
 </div>
 
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card stats-card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Финансы за сегодня</span>
+                <span><i class="bi bi-coin me-2"></i>Финансы за сегодня</span>
                 <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
-                    ✏️ Редактировать статистику
+                    <i class="bi bi-pencil-square me-1"></i> Редактировать
                 </button>
             </div>
-            <div class="card-body">
-                <table class="table table-sm">
-                    <tr><th>Наличные</th><td>{{ payments.cash|round(0) }} ₽</td></tr>
-                    <tr><th>Терминал</th><td>{{ payments.terminal|round(0) }} ₽</td></tr>
-                    <tr><th>QR-код</th><td>{{ payments.qr|round(0) }} ₽</td></tr>
-                    <tr><th>Перевод</th><td>{{ payments.transfer|round(0) }} ₽</td></tr>
-                    <tr><th>Оплата по счету</th><td>{{ payments.invoice|round(0) }} ₽</td></tr>
-                    <tr><th>Рассрочка</th><td>{{ payments.installment|round(0) }} ₽</td></tr>
-                    <tr class="table-active"><th>Итого</th><td><strong>{{ total_revenue|round(0) }} ₽</strong></td></tr>
-                    <tr><th>План</th><td>{{ plan_amount|round(0) }} ₽</td></tr>
-                    <tr><th>Выполнение</th><td>{{ (total_revenue / plan_amount * 100)|round(1) }}%</td></tr>
+            <div class="card-body p-0">
+                <table class="table table-borderless mb-0">
+                    <tr><th class="ps-4">Наличные</th><td class="text-end pe-4">{{ payments.cash|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Терминал</th><td class="text-end pe-4">{{ payments.terminal|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">QR-код</th><td class="text-end pe-4">{{ payments.qr|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Перевод</th><td class="text-end pe-4">{{ payments.transfer|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Оплата по счету</th><td class="text-end pe-4">{{ payments.invoice|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Рассрочка</th><td class="text-end pe-4">{{ payments.installment|round(0) }} ₽</td></tr>
+                    <tr class="border-top border-light"><th class="ps-4 fw-bold">Итого</th><td class="text-end pe-4 fw-bold fs-5">{{ total_revenue|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">План</th><td class="text-end pe-4">{{ plan_amount|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Выполнение</th><td class="text-end pe-4">{{ (total_revenue / plan_amount * 100)|round(1) }}%</td></tr>
                 </table>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row mt-4">
+<div class="row mt-4 g-4">
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">Динамика продаж (последние 7 дней)</div>
+        <div class="card stats-card h-100">
+            <div class="card-header"><i class="bi bi-graph-up me-2"></i>Динамика продаж (7 дней)</div>
             <div class="card-body">
                 <canvas id="salesChart" width="400" height="200"></canvas>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">Динамика выручки (последние 7 дней)</div>
+        <div class="card stats-card h-100">
+            <div class="card-header"><i class="bi bi-graph-up-arrow me-2"></i>Динамика выручки (7 дней)</div>
             <div class="card-body">
                 <canvas id="revenueChart" width="400" height="200"></canvas>
             </div>
@@ -83,16 +113,14 @@
 
 <div class="row mt-4">
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                Топ-5 моделей по продажам
-                <div class="float-end">
-                    <select id="periodSelect" class="form-select form-select-sm" style="width: auto;">
-                        <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
-                        <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
-                        <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
-                    </select>
-                </div>
+        <div class="card stats-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-trophy me-2"></i>Топ-5 моделей</span>
+                <select id="periodSelect" class="form-select form-select-sm w-auto bg-dark text-white border-secondary">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                    <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
+                </select>
             </div>
             <div class="card-body">
                 <canvas id="topModelsChart" width="400" height="200"></canvas>
@@ -102,64 +130,63 @@
 </div>
 
 <!-- Модальное окно редактирования статистики -->
-<div class="modal fade" id="editStatsModal" tabindex="-1" aria-labelledby="editStatsModalLabel" aria-hidden="true">
+<div class="modal fade" id="editStatsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="editStatsModalLabel">Редактировать статистику за сегодня</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">Редактировать статистику за сегодня</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="editStatsForm">
-                    <h6>Платежи</h6>
-                    <div class="row mb-3">
+                    <h6 class="gradient-text">Платежи</h6>
+                    <div class="row mb-3 g-3">
                         <div class="col-md-4">
-                            <label for="edit_cash" class="form-label">Наличные (₽)</label>
-                            <input type="number" step="0.01" class="form-control" id="edit_cash" name="cash" value="{{ payments.cash }}">
+                            <label class="form-label">Наличные (₽)</label>
+                            <input type="number" step="0.01" class="form-control" name="cash" value="{{ payments.cash }}">
                         </div>
                         <div class="col-md-4">
-                            <label for="edit_terminal" class="form-label">Терминал (₽)</label>
-                            <input type="number" step="0.01" class="form-control" id="edit_terminal" name="terminal" value="{{ payments.terminal }}">
+                            <label class="form-label">Терминал (₽)</label>
+                            <input type="number" step="0.01" class="form-control" name="terminal" value="{{ payments.terminal }}">
                         </div>
                         <div class="col-md-4">
-                            <label for="edit_qr" class="form-label">QR-код (₽)</label>
-                            <input type="number" step="0.01" class="form-control" id="edit_qr" name="qr" value="{{ payments.qr }}">
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label for="edit_transfer" class="form-label">Перевод (₽)</label>
-                            <input type="number" step="0.01" class="form-control" id="edit_transfer" name="transfer" value="{{ payments.transfer }}">
-                        </div>
-                        <div class="col-md-4">
-                            <label for="edit_invoice" class="form-label">Оплата по счету (₽)</label>
-                            <input type="number" step="0.01" class="form-control" id="edit_invoice" name="invoice" value="{{ payments.invoice }}">
-                        </div>
-                        <div class="col-md-4">
-                            <label for="edit_installment" class="form-label">Рассрочка (₽)</label>
-                            <input type="number" step="0.01" class="form-control" id="edit_installment" name="installment" value="{{ payments.installment }}">
+                            <label class="form-label">QR-код (₽)</label>
+                            <input type="number" step="0.01" class="form-control" name="qr" value="{{ payments.qr }}">
                         </div>
                     </div>
-
-                    <h6>Количество</h6>
-                    <div class="row mb-3">
+                    <div class="row mb-3 g-3">
                         <div class="col-md-4">
-                            <label for="edit_sales_count" class="form-label">Продажи</label>
-                            <input type="number" step="1" class="form-control" id="edit_sales_count" name="sales_count" value="{{ stats.sales_count }}">
+                            <label class="form-label">Перевод (₽)</label>
+                            <input type="number" step="0.01" class="form-control" name="transfer" value="{{ payments.transfer }}">
                         </div>
                         <div class="col-md-4">
-                            <label for="edit_preorders_count" class="form-label">Предзаказы</label>
-                            <input type="number" step="1" class="form-control" id="edit_preorders_count" name="preorders_count" value="{{ stats.preorders_count }}">
+                            <label class="form-label">По счёту (₽)</label>
+                            <input type="number" step="0.01" class="form-control" name="invoice" value="{{ payments.invoice }}">
                         </div>
                         <div class="col-md-4">
-                            <label for="edit_bookings_count" class="form-label">Брони</label>
-                            <input type="number" step="1" class="form-control" id="edit_bookings_count" name="bookings_count" value="{{ stats.bookings_count }}">
+                            <label class="form-label">Рассрочка (₽)</label>
+                            <input type="number" step="0.01" class="form-control" name="installment" value="{{ payments.installment }}">
+                        </div>
+                    </div>
+                    <h6 class="gradient-text mt-4">Количество</h6>
+                    <div class="row mb-3 g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Продажи</label>
+                            <input type="number" step="1" class="form-control" name="sales_count" value="{{ stats.sales_count }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Предзаказы</label>
+                            <input type="number" step="1" class="form-control" name="preorders_count" value="{{ stats.preorders_count }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Брони</label>
+                            <input type="number" step="1" class="form-control" name="bookings_count" value="{{ stats.bookings_count }}">
                         </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Отмена</button>
                 <button type="button" class="btn btn-primary" id="saveStatsBtn">Сохранить</button>
             </div>
         </div>
@@ -167,29 +194,75 @@
 </div>
 
 <script>
-    // Линейный график продаж
-    new Chart(document.getElementById('salesChart'), {
+    // Градиентные цвета для графиков
+    const gradientCtx = document.createElement('canvas').getContext('2d');
+    const gradient1 = (ctx, color1, color2) => {
+        const grad = ctx.createLinearGradient(0, 0, 0, 400);
+        grad.addColorStop(0, color1);
+        grad.addColorStop(1, color2);
+        return grad;
+    };
+
+    // График продаж
+    const salesCtx = document.getElementById('salesChart').getContext('2d');
+    new Chart(salesCtx, {
         type: 'line',
         data: {
             labels: {{ chart_dates|tojson }},
-            datasets: [{ label: 'Количество продаж', data: {{ chart_sales|tojson }}, borderColor: 'blue', backgroundColor: 'rgba(0,0,255,0.1)', fill: true, tension: 0.2 }]
+            datasets: [{
+                label: 'Количество продаж',
+                data: {{ chart_sales|tojson }},
+                borderColor: '#a78bfa',
+                backgroundColor: gradient1(salesCtx, 'rgba(167, 139, 250, 0.3)', 'rgba(167, 139, 250, 0.02)'),
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: '#c084fc',
+                pointBorderColor: '#fff',
+                borderWidth: 3
+            }]
         },
-        options: { responsive: true, scales: { y: { beginAtZero: true, stepSize: 1, precision: 0 } } }
+        options: {
+            responsive: true,
+            plugins: { legend: { labels: { color: '#cbd5e1' } } },
+            scales: {
+                y: { beginAtZero: true, stepSize: 1, precision: 0, grid: { color: '#334155' }, ticks: { color: '#cbd5e1' } },
+                x: { ticks: { color: '#cbd5e1' } }
+            }
+        }
     });
 
-    // Линейный график выручки
-    new Chart(document.getElementById('revenueChart'), {
+    // График выручки
+    const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+    new Chart(revenueCtx, {
         type: 'line',
         data: {
             labels: {{ chart_dates|tojson }},
-            datasets: [{ label: 'Выручка (₽)', data: {{ chart_revenue|tojson }}, borderColor: 'green', backgroundColor: 'rgba(0,255,0,0.1)', fill: true, tension: 0.2 }]
+            datasets: [{
+                label: 'Выручка (₽)',
+                data: {{ chart_revenue|tojson }},
+                borderColor: '#34d399',
+                backgroundColor: gradient1(revenueCtx, 'rgba(52, 211, 153, 0.3)', 'rgba(52, 211, 153, 0.02)'),
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: '#6ee7b7',
+                pointBorderColor: '#fff',
+                borderWidth: 3
+            }]
         },
-        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { callback: (value) => value.toLocaleString() + ' ₽' } } } }
+        options: {
+            responsive: true,
+            plugins: { legend: { labels: { color: '#cbd5e1' } }, tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toLocaleString()} ₽` } } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#334155' }, ticks: { color: '#cbd5e1', callback: (v) => v.toLocaleString() + ' ₽' } },
+                x: { ticks: { color: '#cbd5e1' } }
+            }
+        }
     });
 
-    // Круговая диаграмма топ-моделей
+    // Топ-моделей (круговая с неоновыми цветами)
     let pieChart = null;
     const pieCtx = document.getElementById('topModelsChart').getContext('2d');
+    const neonColors = ['#a78bfa', '#60a5fa', '#fbbf24', '#34d399', '#f472b6'];
 
     function updateTopModels(days) {
         fetch(`/admin/dashboard/top_models_data?days=${days}`)
@@ -198,72 +271,93 @@
                 if (pieChart) pieChart.destroy();
                 if (data.labels.length === 0) {
                     pieCtx.clearRect(0, 0, 400, 200);
-                    pieCtx.fillStyle = '#ccc';
+                    pieCtx.fillStyle = '#1e293b';
                     pieCtx.fillRect(0, 0, 400, 200);
-                    pieCtx.fillStyle = '#000';
-                    pieCtx.font = '16px Arial';
+                    pieCtx.fillStyle = '#94a3b8';
+                    pieCtx.font = '16px Inter';
                     pieCtx.fillText('Нет данных за период', 120, 100);
                     return;
                 }
                 pieChart = new Chart(pieCtx, {
-                    type: 'pie',
-                    data: { labels: data.labels, datasets: [{ data: data.counts, backgroundColor: ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff'], hoverOffset: 4 }] },
-                    options: { responsive: true, plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } } } }
+                    type: 'doughnut',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            data: data.counts,
+                            backgroundColor: neonColors,
+                            borderColor: '#0f172a',
+                            borderWidth: 2,
+                            hoverOffset: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 12 } } },
+                            tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } }
+                        },
+                        cutout: '60%'
+                    }
                 });
             });
     }
 
     document.getElementById('periodSelect').addEventListener('change', (e) => updateTopModels(e.target.value));
-
     {% if top_labels %}
     pieChart = new Chart(pieCtx, {
-        type: 'pie',
-        data: { labels: {{ top_labels|tojson }}, datasets: [{ data: {{ top_counts|tojson }}, backgroundColor: ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff'], hoverOffset: 4 }] },
-        options: { responsive: true, plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } } } }
+        type: 'doughnut',
+        data: {
+            labels: {{ top_labels|tojson }},
+            datasets: [{
+                data: {{ top_counts|tojson }},
+                backgroundColor: neonColors,
+                borderColor: '#0f172a',
+                borderWidth: 2,
+                hoverOffset: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right', labels: { color: '#cbd5e1' } },
+                tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } }
+            },
+            cutout: '60%'
+        }
     });
     {% else %}
-    pieCtx.fillStyle = '#ccc';
+    pieCtx.fillStyle = '#1e293b';
     pieCtx.fillRect(0, 0, 400, 200);
-    pieCtx.fillStyle = '#000';
-    pieCtx.font = '16px Arial';
+    pieCtx.fillStyle = '#94a3b8';
+    pieCtx.font = '16px Inter';
     pieCtx.fillText('Нет данных за период', 120, 100);
     {% endif %}
 
-    // Логика сохранения статистики
+    // Сохранение статистики
     document.getElementById('saveStatsBtn').addEventListener('click', async () => {
         const form = document.getElementById('editStatsForm');
         const formData = new FormData(form);
         const data = Object.fromEntries(formData.entries());
-
-        for (let key in data) {
-            data[key] = parseFloat(data[key]) || 0;
-        }
+        for (let k in data) data[k] = parseFloat(data[k]) || 0;
 
         try {
-            const response = await fetch('/admin/dashboard/update_today_stats', {
+            const res = await fetch('/admin/dashboard/update_today_stats', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
-            const result = await response.json();
+            const result = await res.json();
             if (result.success) {
-                // Закрываем модальное окно и очищаем backdrop
-                const modalElement = document.getElementById('editStatsModal');
-                const modalInstance = bootstrap.Modal.getInstance(modalElement);
-                if (modalInstance) modalInstance.hide();
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editStatsModal'));
+                modal.hide();
                 document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
                 document.body.classList.remove('modal-open');
-
-                // Принудительно перезагружаем страницу с уникальным параметром, чтобы обойти кэш
-                const url = new URL(window.location.href);
-                url.searchParams.set('_t', Date.now());
-                window.location.href = url.toString();
+                window.location.href = window.location.pathname + '?_t=' + Date.now();
             } else {
                 alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
             }
         } catch (e) {
             alert('Ошибка сети: ' + e.message);
-            console.error(e);
         }
     });
 </script>
