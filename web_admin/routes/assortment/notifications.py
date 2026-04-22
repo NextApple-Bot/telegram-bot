@@ -1,5 +1,6 @@
 # Файл: web_admin/routes/assortment/notifications.py
 import logging
+import asyncio
 from aiogram import Bot
 from bot import config
 
