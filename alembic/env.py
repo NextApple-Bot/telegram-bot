@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Прямой импорт Base из модуля models (без загрузки всего пакета bot)
-from bot.models import Base
+from bot.db.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
