@@ -68,35 +68,7 @@ async def dashboard(
     request: Request,
     days: int = Query(7, ge=7, le=90)
 ):
-    # ===== ВРЕМЕННО ОТКЛЮЧЕНО КЭШИРОВАНИЕ =====
-    # cache_key = f"dashboard:summary:{date.today().isoformat()}"
-    # cached_data = await cache.get(cache_key)
-    # if cached_data:
-    #     stats = cached_data.get('stats')
-    #     payments = cached_data.get('payments')
-    #     total_revenue = cached_data.get('total_revenue')
-    #     sales_counts = cached_data.get('sales_counts')
-    #     revenue_counts = cached_data.get('revenue_counts')
-    #     dates = cached_data.get('dates')
-    #     top_labels = cached_data.get('top_labels')
-    #     top_counts = cached_data.get('top_counts')
-    #     prev_stats = await get_previous_period_stats()
-    #     sales_today = stats['sales_count']
-    #     revenue_today = total_revenue
-    #
-    #     sales_change_yesterday = 0
-    #     if prev_stats['sales_yesterday']:
-    #         sales_change_yesterday = (sales_today - prev_stats['sales_yesterday']) / prev_stats['sales_yesterday'] * 100
-    #     revenue_change_yesterday = 0
-    #     if prev_stats['revenue_yesterday']:
-    #         revenue_change_yesterday = (revenue_today - prev_stats['revenue_yesterday']) / prev_stats['revenue_yesterday'] * 100
-    #     sales_change_week = 0
-    #     if prev_stats['sales_last_week']:
-    #         sales_change_week = (sales_today - prev_stats['sales_last_week'] / 7) / (prev_stats['sales_last_week'] / 7) * 100
-    #     revenue_change_week = 0
-    #     if prev_stats['revenue_last_week']:
-    #         revenue_change_week = (revenue_today - prev_stats['revenue_last_week'] / 7) / (prev_stats['revenue_last_week'] / 7) * 100
-    # else:
+    # Получаем актуальные данные из БД (без кэша)
     stats = await StatsRepository.get_today_stats()
     pool = await get_pool()
 
@@ -180,10 +152,7 @@ async def dashboard(
     if prev_stats['revenue_last_week']:
         revenue_change_week = (revenue_today - prev_stats['revenue_last_week'] / 7) / (prev_stats['revenue_last_week'] / 7) * 100
 
-    # cache_payload = { ... }
-    # await cache.set(cache_key, cache_payload, ttl=60)
-
-    return templates.TemplateResponse("dashboard.html", {
+    response = templates.TemplateResponse("dashboard.html", {
         "request": request,
         "stats": stats,
         "payments": payments,
@@ -202,6 +171,11 @@ async def dashboard(
         "sales_change_week": round(sales_change_week, 1),
         "revenue_change_week": round(revenue_change_week, 1),
     })
+    # Запрещаем кэширование страницы
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @router.get("/top_models_data")
@@ -289,7 +263,6 @@ async def update_today_stats(data: UpdateTodayStatsRequest):
                             VALUES (0, 0, $1)
                         """, today)
 
-        # await cache.delete(f"dashboard:summary:{today.isoformat()}")
         logger.info(f"Статистика за сегодня обновлена: {data.dict()}")
         return JSONResponse({"success": True})
     except Exception as e:
