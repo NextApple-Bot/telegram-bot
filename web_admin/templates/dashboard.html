@@ -247,20 +247,17 @@
             });
             const result = await response.json();
             if (result.success) {
-                // Принудительно закрываем модальное окно
+                // Закрываем модальное окно и очищаем backdrop
                 const modalElement = document.getElementById('editStatsModal');
                 const modalInstance = bootstrap.Modal.getInstance(modalElement);
-                if (modalInstance) {
-                    modalInstance.hide();
-                } else {
-                    const newModal = new bootstrap.Modal(modalElement);
-                    newModal.hide();
-                }
+                if (modalInstance) modalInstance.hide();
                 document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
                 document.body.classList.remove('modal-open');
-                
-                // Жёсткая перезагрузка страницы с очисткой кэша
-                window.location.reload(true);
+
+                // Принудительно перезагружаем страницу с уникальным параметром, чтобы обойти кэш
+                const url = new URL(window.location.href);
+                url.searchParams.set('_t', Date.now());
+                window.location.href = url.toString();
             } else {
                 alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
             }
