@@ -83,99 +83,104 @@ async def edit_item_submit(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        old = await conn.fetchrow("SELECT is_sold, text, serial, category_id, is_booked FROM items WHERE id = $1", item_id)
-        if not old:
-            raise HTTPException(status_code=404, detail="Item not found")
-        old_is_sold = old["is_sold"]
-        old_text = old["text"]
-        old_serial = old["serial"] or ""
-        old_category_id = old["category_id"]
-        old_is_booked = old["is_booked"]
+        async with conn.transaction():
+            old = await conn.fetchrow("SELECT is_sold, text, serial, category_id, is_booked FROM items WHERE id = $1", item_id)
+            if not old:
+                raise HTTPException(status_code=404, detail="Item not found")
+            old_is_sold = old["is_sold"]
+            old_text = old["text"]
+            old_serial = old["serial"] or ""
+            old_category_id = old["category_id"]
+            old_is_booked = old["is_booked"]
 
-        if old_is_sold:
-            raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
+            if old_is_sold:
+                raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
-        # Обработка ПРОДАЖИ
-        if is_sold:
-            accessories = []
-            for name, acc_serial, price, pay_type in zip(
-                accessory_name, accessory_serial, accessory_price, accessory_payment_type
-            ):
-                if name.strip() and price is not None and price > 0:
-                    accessories.append({
-                        "name": name.strip(),
-                        "serial": acc_serial.strip() if acc_serial and acc_serial.strip() else None,
-                        "price": price,
-                        "payment_type": pay_type if pay_type else None
-                    })
+            # Обработка ПРОДАЖИ
+            if is_sold:
+                accessories = []
+                for name, acc_serial, price, pay_type in zip(
+                    accessory_name, accessory_serial, accessory_price, accessory_payment_type
+                ):
+                    if name.strip() and price is not None and price > 0:
+                        accessories.append({
+                            "name": name.strip(),
+                            "serial": acc_serial.strip() if acc_serial and acc_serial.strip() else None,
+                            "price": price,
+                            "payment_type": pay_type if pay_type else None
+                        })
 
-            from .sales import handle_sale_from_form
-            await handle_sale_from_form(
-                item_id=item_id, text=text, serial=serial, category_id=category_id,
-                old_text=old_text, old_serial=old_serial, old_category_id=old_category_id,
-                sale_price=sale_price, sale_prepayment=sale_prepayment,
-                sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
-                sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
-                accessories=accessories
-            )
-            return RedirectResponse(url="/admin/assortment", status_code=303)
+                from .sales import handle_sale_from_form
+                # ИСПРАВЛЕНИЕ #7: передаём текущее соединение для единой транзакции
+                await handle_sale_from_form(
+                    item_id=item_id, text=text, serial=serial, category_id=category_id,
+                    old_text=old_text, old_serial=old_serial, old_category_id=old_category_id,
+                    sale_price=sale_price, sale_prepayment=sale_prepayment,
+                    sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
+                    sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
+                    accessories=accessories,
+                    conn=conn
+                )
+                # После успешной продажи не нужно дополнительно обновлять item, он уже удалён
+                await AssortmentService.invalidate_cache()
+                return RedirectResponse(url="/admin/assortment", status_code=303)
 
-        # Обработка БРОНИ
-        if is_booked:
-            if not booking_price:
-                raise HTTPException(status_code=400, detail="Укажите стоимость брони")
-            await conn.execute("""
-                UPDATE items
-                SET text = $1, serial = $2, category_id = $3, is_booked = $4,
-                    booking_price = $5, booking_prepayment = $6, booking_platform = $7,
-                    booking_full_name = $8, booking_phone = $9, booking_payment_type = $10,
-                    sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
-                    sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
-                    sale_payment_amount = NULL, is_sold = FALSE
-                WHERE id = $11
-            """, text, serial.strip().upper() if serial else None, category_id, is_booked,
-               booking_price, booking_prepayment, booking_platform,
-               booking_full_name, booking_phone, booking_payment_type, item_id)
-
-            # Сохраняем предоплату в daily_payments
-            if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
+            # Обработка БРОНИ
+            if is_booked:
+                if not booking_price:
+                    raise HTTPException(status_code=400, detail="Укажите стоимость брони")
                 await conn.execute("""
-                    INSERT INTO daily_payments (type, payment_type, amount)
-                    VALUES ('preorder', $1, $2)
-                """, booking_payment_type, booking_prepayment)
+                    UPDATE items
+                    SET text = $1, serial = $2, category_id = $3, is_booked = $4,
+                        booking_price = $5, booking_prepayment = $6, booking_platform = $7,
+                        booking_full_name = $8, booking_phone = $9, booking_payment_type = $10,
+                        sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
+                        sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
+                        sale_payment_amount = NULL, is_sold = FALSE
+                    WHERE id = $11
+                """, text, serial.strip().upper() if serial else None, category_id, is_booked,
+                   booking_price, booking_prepayment, booking_platform,
+                   booking_full_name, booking_phone, booking_payment_type, item_id)
 
-            from .notifications import send_booking_notification
-            await send_booking_notification(
-                item_text=text,
-                serial=serial.strip().upper() if serial else "без серийного номера",
-                price=booking_price,
-                prepayment=booking_prepayment,
-                platform=booking_platform,
-                full_name=booking_full_name,
-                phone=booking_phone,
-                payment_type=booking_payment_type,
-                is_cancel=False
-            )
-            logger.info(f"Бронь товара {item_id} успешно сохранена")
-        else:
-            await conn.execute("""
-                UPDATE items
-                SET text = $1, serial = $2, category_id = $3, is_booked = $4,
-                    booking_price = NULL, booking_prepayment = NULL, booking_platform = NULL,
-                    booking_full_name = NULL, booking_phone = NULL, booking_payment_type = NULL,
-                    sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
-                    sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
-                    sale_payment_amount = NULL, is_sold = FALSE
-                WHERE id = $5
-            """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
+                # Сохраняем предоплату в daily_payments
+                if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
+                    await conn.execute("""
+                        INSERT INTO daily_payments (type, payment_type, amount)
+                        VALUES ('preorder', $1, $2)
+                    """, booking_payment_type, booking_prepayment)
 
-            if old_is_booked and not is_booked:
                 from .notifications import send_booking_notification
                 await send_booking_notification(
-                    item_text=old_text,
-                    serial=old_serial,
-                    is_cancel=True
+                    item_text=text,
+                    serial=serial.strip().upper() if serial else "без серийного номера",
+                    price=booking_price,
+                    prepayment=booking_prepayment,
+                    platform=booking_platform,
+                    full_name=booking_full_name,
+                    phone=booking_phone,
+                    payment_type=booking_payment_type,
+                    is_cancel=False
                 )
+                logger.info(f"Бронь товара {item_id} успешно сохранена")
+            else:
+                await conn.execute("""
+                    UPDATE items
+                    SET text = $1, serial = $2, category_id = $3, is_booked = $4,
+                        booking_price = NULL, booking_prepayment = NULL, booking_platform = NULL,
+                        booking_full_name = NULL, booking_phone = NULL, booking_payment_type = NULL,
+                        sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
+                        sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
+                        sale_payment_amount = NULL, is_sold = FALSE
+                    WHERE id = $5
+                """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
+
+                if old_is_booked and not is_booked:
+                    from .notifications import send_booking_notification
+                    await send_booking_notification(
+                        item_text=old_text,
+                        serial=old_serial,
+                        is_cancel=True
+                    )
 
     await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
