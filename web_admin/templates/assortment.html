@@ -31,7 +31,29 @@
                 <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal"><i class="bi bi-folder-plus"></i> Категория</button>
             </div>
         </div>
-        <div class="mb-2"><span class="badge bg-secondary">Всего товаров: {{ total }}</span></div>
+        <div class="mb-2">
+            <span class="badge bg-secondary">Всего товаров: {{ total }}</span>
+        </div>
+        <!-- Управление порядком категорий -->
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Порядок категорий (влияет на выгрузку и отображение)</label>
+            <div class="list-group">
+                {% for cat in categories %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>{{ cat.name }}</span>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary move-up-btn" data-cat-id="{{ cat.id }}" {% if loop.first %}disabled{% endif %} title="Переместить вверх">
+                            <i class="bi bi-arrow-up"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary move-down-btn" data-cat-id="{{ cat.id }}" {% if loop.last %}disabled{% endif %} title="Переместить вниз">
+                            <i class="bi bi-arrow-down"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <small class="text-muted">Нажмите на стрелки, чтобы изменить порядок категорий. Изменения сразу применяются.</small>
+        </div>
     </div>
 </div>
 
@@ -90,7 +112,7 @@
     {% endif %}
 </div>
 
-<!-- Модалки добавления товара и категории (сохранены с улучшенными стилями) -->
+<!-- Модалки добавления товара и категории (сохранены) -->
 <div class="modal fade" id="addItemModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/admin/assortment/add" method="post"><div class="modal-header"><h5 class="modal-title">Добавить товар</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Текст</label><input type="text" class="form-control" name="text" required></div><div class="mb-3"><label class="form-label">Серийный</label><input type="text" class="form-control" name="serial"></div><div class="mb-3"><label class="form-label">Категория</label><select name="category_id" class="form-select" required>{% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}</select></div><div class="form-check"><input type="checkbox" class="form-check-input" name="is_booked"><label class="form-check-label">Бронь</label></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button><button type="submit" class="btn btn-primary">Добавить</button></div></form></div></div></div>
 <div class="modal fade" id="addCategoryModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/admin/assortment/add_category" method="post"><div class="modal-header"><h5 class="modal-title">Добавить категорию</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Название</label><input type="text" class="form-control" name="name" required></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button><button type="submit" class="btn btn-primary">Добавить</button></div></form></div></div></div>
 
@@ -107,7 +129,8 @@
         params.set('page', 1);
         window.location.search = params.toString();
     });
-    // умный поиск (сокращён)
+
+    // Умный поиск
     const searchInput = document.getElementById('searchInput');
     const suggestions = document.getElementById('searchSuggestions');
     searchInput.addEventListener('input', function() {
@@ -116,6 +139,41 @@
         fetch(`/admin/assortment/search?q=${encodeURIComponent(q)}`)
             .then(r => r.json())
             .then(d => { suggestions.innerHTML = d.results.map(i => `<option value="${i.text}">`).join(''); });
+    });
+
+    // Обработчики кнопок перемещения категорий
+    document.querySelectorAll('.move-up-btn').forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.preventDefault();
+            const catId = this.dataset.catId;
+            try {
+                const resp = await fetch(`/admin/assortment/categories/${catId}/move_up`, { method: 'POST' });
+                if (resp.ok) {
+                    window.location.reload();
+                } else {
+                    alert('Ошибка перемещения');
+                }
+            } catch (err) {
+                alert('Ошибка сети');
+            }
+        });
+    });
+
+    document.querySelectorAll('.move-down-btn').forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.preventDefault();
+            const catId = this.dataset.catId;
+            try {
+                const resp = await fetch(`/admin/assortment/categories/${catId}/move_down`, { method: 'POST' });
+                if (resp.ok) {
+                    window.location.reload();
+                } else {
+                    alert('Ошибка перемещения');
+                }
+            } catch (err) {
+                alert('Ошибка сети');
+            }
+        });
     });
 </script>
 {% endblock %}
