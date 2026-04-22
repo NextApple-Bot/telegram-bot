@@ -6,12 +6,12 @@ from typing import Dict
 logger = logging.getLogger(__name__)
 
 PAYMENT_KEYWORDS = {
-    'cash': re.compile(r'Наличными|Наличные|наличными|нал\.?|нал', re.IGNORECASE),
-    'terminal': re.compile(r'Терминал', re.IGNORECASE),
+    'cash': re.compile(r'Наличными|Наличные|наличными|нал\.?|нал|Нал|Наличка', re.IGNORECASE),
+    'terminal': re.compile(r'Терминал|Терминалом|терминал|терминалом|Terminal|terminal|Терм\.?', re.IGNORECASE),
     'qr': re.compile(r'QR[- ]?код|QRCode|QrCode|QR\s*код|Qrкод|QRCODE|Qrcode|Qrcod|Qr-код|Qr-Код|Qr-code|QR-code', re.IGNORECASE),
-    'transfer': re.compile(r'Перевод', re.IGNORECASE),
-    'invoice': re.compile(r'Оплата по счету|Оплата По Счету|по счету', re.IGNORECASE),
-    'installment': re.compile(r'Рассрочка', re.IGNORECASE),
+    'transfer': re.compile(r'Перевод|перевод|Переводом|переводом|Пер\.?', re.IGNORECASE),
+    'invoice': re.compile(r'Оплата по счету|Оплата По Счету|по счету|По счёту|Счёт|Счет|Инвойс', re.IGNORECASE),
+    'installment': re.compile(r'Рассрочка|рассрочка|Рассрочкой|рассрочкой|Расср\.?', re.IGNORECASE),
 }
 PREPAY_PATTERN = re.compile(r'П[/\\]О|предоплата', re.IGNORECASE)
 NUMBER_PATTERN = re.compile(r'(\d[\d\s]*(?:[.,]\d+)?)')
