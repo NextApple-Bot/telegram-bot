@@ -40,6 +40,7 @@
                     <h6>Дополнительные товары / аксессуары</h6>
                     <div id="accessories-container"></div>
                     <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="add-accessory-btn"><i class="bi bi-plus-lg"></i> Добавить позицию</button>
+                    <small class="form-text text-muted d-block mt-1">При вводе серийного номера (от 3 символов) происходит автопоиск.</small>
                 </div>
             </div>
             <button type="submit" class="btn btn-primary">Сохранить</button>
@@ -48,7 +49,108 @@
     </div>
 </div>
 <script>
-    // Та же логика видимости, очистки чисел и аксессуаров, что и ранее (для краткости опущена, но вы можете скопировать из предыдущих полных версий)
-    // ...
+    // Управление видимостью блоков
+    const bookingDiv = document.getElementById('bookingFields');
+    const isBookedCheckbox = document.getElementById('is_booked');
+    const saleDiv = document.getElementById('saleFields');
+    const isSoldCheckbox = document.getElementById('is_sold');
+    const bookingRequiredFields = ['booking_price'];
+    const saleRequiredFields = ['sale_price', 'sale_payment_amount'];
+
+    function updateVisibility() {
+        const bookingVisible = isBookedCheckbox.checked;
+        const saleVisible = isSoldCheckbox.checked;
+        bookingDiv.style.display = bookingVisible ? 'block' : 'none';
+        saleDiv.style.display = saleVisible ? 'block' : 'none';
+        bookingRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = bookingVisible; });
+        saleRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = saleVisible; });
+        if (bookingVisible) { isSoldCheckbox.checked = false; saleDiv.style.display = 'none'; saleRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = false; }); }
+        if (saleVisible) { isBookedCheckbox.checked = false; bookingDiv.style.display = 'none'; bookingRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = false; }); }
+    }
+    isBookedCheckbox.addEventListener('change', updateVisibility);
+    isSoldCheckbox.addEventListener('change', updateVisibility);
+    updateVisibility();
+
+    // Очистка числовых полей
+    function cleanNumberInput(event) {
+        const input = event.target;
+        let value = input.value;
+        value = value.replace(/[^\d.-]/g, '').replace(',', '.');
+        const parts = value.split('.');
+        if (parts.length > 2) value = parts[0] + '.' + parts.slice(1).join('');
+        if (value.startsWith('-')) value = '-' + value.slice(1).replace(/-/g, '');
+        else value = value.replace(/-/g, '');
+        input.value = value;
+    }
+    const numberFields = ['booking_price', 'booking_prepayment', 'sale_price', 'sale_prepayment', 'sale_payment_amount'];
+    numberFields.forEach(id => { const f = document.getElementById(id); if (f) f.addEventListener('input', cleanNumberInput); });
+
+    // Динамическое добавление аксессуаров с автопоиском
+    const container = document.getElementById('accessories-container');
+    const addBtn = document.getElementById('add-accessory-btn');
+    let searchTimeout = null;
+
+    function createAccessoryRow() {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 align-items-end accessory-row';
+        row.innerHTML = `
+            <div class="col-md-3"><label class="form-label">Наименование</label><input type="text" class="form-control accessory-name" name="accessory_name" placeholder="Например: Комплект Аксессуаров"></div>
+            <div class="col-md-2 position-relative"><label class="form-label">Серийный номер</label><input type="text" class="form-control accessory-serial" name="accessory_serial" placeholder="J90N90D041" autocomplete="off"><div class="serial-suggestions dropdown-menu" style="display: none; position: absolute; width: 100%; max-height: 200px; overflow-y: auto;"></div></div>
+            <div class="col-md-2"><label class="form-label">Стоимость (₽)</label><input type="number" step="0.01" class="form-control accessory-price" name="accessory_price" placeholder="5000"></div>
+            <div class="col-md-3"><label class="form-label">Способ оплаты</label><select class="form-select accessory-payment" name="accessory_payment_type"><option value="">Не указан</option><option value="cash">Наличные</option><option value="terminal">Терминал</option><option value="qr">QR-код</option><option value="transfer">Перевод</option><option value="invoice">Оплата по счету</option><option value="installment">Рассрочка</option><option value="paid">Оплачен</option></select></div>
+            <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-accessory-btn"><i class="bi bi-trash"></i></button></div>
+        `;
+        const nameInput = row.querySelector('.accessory-name');
+        const serialInput = row.querySelector('.accessory-serial');
+        const priceInput = row.querySelector('.accessory-price');
+        const suggestionsDiv = row.querySelector('.serial-suggestions');
+        priceInput.addEventListener('input', cleanNumberInput);
+        row.querySelector('.remove-accessory-btn').addEventListener('click', () => row.remove());
+
+        serialInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            if (query.length < 3) { suggestionsDiv.style.display = 'none'; return; }
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/admin/assortment/api/search_by_serial?q=${encodeURIComponent(query)}`);
+                    const data = await response.json();
+                    if (data.results.length === 0) { suggestionsDiv.style.display = 'none'; return; }
+                    if (data.results.length === 1) {
+                        const item = data.results[0];
+                        nameInput.value = item.text;
+                        serialInput.value = item.serial;
+                        if (item.price !== null) priceInput.value = item.price;
+                        suggestionsDiv.style.display = 'none';
+                        return;
+                    }
+                    suggestionsDiv.innerHTML = '';
+                    data.results.forEach(item => {
+                        const opt = document.createElement('button');
+                        opt.className = 'dropdown-item'; opt.type = 'button';
+                        opt.textContent = `${item.text} (${item.serial})`;
+                        opt.addEventListener('click', () => {
+                            nameInput.value = item.text;
+                            serialInput.value = item.serial;
+                            if (item.price !== null) priceInput.value = item.price;
+                            suggestionsDiv.style.display = 'none';
+                        });
+                        suggestionsDiv.appendChild(opt);
+                    });
+                    suggestionsDiv.style.display = 'block';
+                    const hide = (e) => { if (!serialInput.contains(e.target) && !suggestionsDiv.contains(e.target)) { suggestionsDiv.style.display = 'none'; document.removeEventListener('click', hide); } };
+                    document.addEventListener('click', hide);
+                } catch (err) { console.error(err); }
+            }, 300);
+        });
+        serialInput.addEventListener('blur', () => { setTimeout(() => { if (!suggestionsDiv.matches(':hover')) suggestionsDiv.style.display = 'none'; }, 100); });
+        return row;
+    }
+    addBtn.addEventListener('click', () => container.appendChild(createAccessoryRow()));
+
+    document.getElementById('editForm').addEventListener('submit', function() {
+        numberFields.forEach(id => { const f = document.getElementById(id); if (f) f.value = parseFloat(f.value.replace(/[^\d.-]/g, '').replace(',', '.')) || 0; });
+        document.querySelectorAll('.accessory-price').forEach(f => { f.value = parseFloat(f.value.replace(/[^\d.-]/g, '').replace(',', '.')) || 0; });
+    });
 </script>
 {% endblock %}
