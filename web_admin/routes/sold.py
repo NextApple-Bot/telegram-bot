@@ -64,6 +64,22 @@ async def restore_sold(deleted_id: int, request: Request):
 
             item_id = row["item_id"]
             sale_message_id = row["sale_message_id"]
+            category_id = row["category_id"]
+
+            # Проверяем существование категории
+            cat_exists = await conn.fetchval("SELECT 1 FROM categories WHERE id = $1", category_id)
+            if not cat_exists:
+                # Категория была удалена — создаём или используем "Общее:"
+                default_cat_id = await conn.fetchval("""
+                    INSERT INTO categories (name) VALUES ('Общее:')
+                    ON CONFLICT (name) DO NOTHING
+                    RETURNING id
+                """)
+                if not default_cat_id:
+                    # Если конфликт произошёл, но RETURNING не сработал (теоретически), запросим id
+                    default_cat_id = await conn.fetchval("SELECT id FROM categories WHERE name = 'Общее:'")
+                category_id = default_cat_id
+                logger.info(f"Категория {row['category_id']} не найдена, товар восстановлен в категорию 'Общее:' (id={category_id})")
 
             if sale_message_id:
                 await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
@@ -75,7 +91,7 @@ async def restore_sold(deleted_id: int, request: Request):
             await conn.execute("""
                 INSERT INTO items (text, serial, category_id, is_booked)
                 VALUES ($1, $2, $3, FALSE)
-            """, row["text"], row["serial"], row["category_id"])
+            """, row["text"], row["serial"], category_id)
 
             await conn.execute("""
                 UPDATE deleted_items SET restored = TRUE WHERE id = $1
