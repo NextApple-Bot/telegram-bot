@@ -41,7 +41,6 @@ try:
     from bot.handlers import router
     from bot.db import close_pool, get_pool, init_db, check_db_health, check_redis_health
     from bot import config as bot_config
-    from bot.webhook_utils import set_allowed_updates   # ИСПРАВЛЕНИЕ #5
     import redis.asyncio as redis
 
     config = bot_config
@@ -75,11 +74,6 @@ try:
     else:
         logger.warning("⚠️ Роутер уже прикреплён к другому диспетчеру, пропускаем повторное включение")
 
-    # Сохраняем список разрешённых обновлений для вебхука
-    allowed_updates = dp.resolve_used_update_types()
-    set_allowed_updates(allowed_updates)
-    logger.info(f"✅ Разрешённые типы обновлений: {allowed_updates}")
-
 except Exception as e:
     logger.error(f"❌ Ошибка при инициализации бота: {e}")
     logger.error(traceback.format_exc())
@@ -96,7 +90,7 @@ async def on_startup():
         logger.error(f"❌ Ошибка инициализации пула БД: {e}")
 
     from bot.background import start_background_tasks
-    asyncio.create_task(start_background_tasks(bot))   # Передаём объект bot
+    asyncio.create_task(start_background_tasks(bot, dp))
     logger.info("✅ Фоновые задачи запущены (с блокировками Redis)")
 
     if bot and dp:
@@ -105,7 +99,6 @@ async def on_startup():
             webhook_url = f"{config.RENDER_URL}/webhook"
             try:
                 await bot.delete_webhook(drop_pending_updates=True)
-                # Используем сохранённый список разрешённых обновлений
                 allowed_updates = dp.resolve_used_update_types()
                 await bot.set_webhook(
                     url=webhook_url,
