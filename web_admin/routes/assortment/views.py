@@ -1,11 +1,12 @@
 # Файл: web_admin/routes/assortment/views.py
-from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Request, Query, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import re
 
 from bot.db import get_pool
+from bot.services.assortment import AssortmentService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
@@ -73,7 +74,8 @@ async def list_assortment(
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
         rows = await conn.fetch(base_query, *params)
         items = [dict(row) for row in rows]
-        categories_rows = await conn.fetch("SELECT id, name FROM categories ORDER BY name")
+        # Категории получаем с сортировкой по sort_order, затем по имени
+        categories_rows = await conn.fetch("SELECT id, name FROM categories ORDER BY sort_order, name")
         categories = [{"id": row["id"], "name": row["name"]} for row in categories_rows]
 
     return templates.TemplateResponse("assortment.html", {
@@ -109,7 +111,6 @@ async def search_items(q: str = Query(..., min_length=2)):
 
 @router.get("/api/search_by_serial")
 async def search_by_serial(q: str = Query(..., min_length=1)):
-    # Удаляем символ '№' и все пробелы из запроса
     normalized_q = re.sub(r'[№\s]', '', q.strip())
     if len(normalized_q) < 1:
         return {"results": []}
@@ -145,3 +146,59 @@ async def search_by_serial(q: str = Query(..., min_length=1)):
             "category": r['category_name']
         })
     return {"results": results}
+
+
+@router.post("/categories/{cat_id}/move_up")
+async def move_category_up(cat_id: int):
+    """Перемещает категорию вверх по sort_order."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Получаем текущий sort_order
+            current_order = await conn.fetchval('SELECT sort_order FROM categories WHERE id = $1', cat_id)
+            if current_order is None:
+                raise HTTPException(status_code=404, detail="Категория не найдена")
+            # Находим категорию с меньшим sort_order (предыдущую)
+            prev = await conn.fetchrow(
+                'SELECT id, sort_order FROM categories WHERE sort_order < $1 ORDER BY sort_order DESC LIMIT 1',
+                current_order
+            )
+            if prev:
+                # Меняем sort_order местами
+                await conn.execute(
+                    'UPDATE categories SET sort_order = $1 WHERE id = $2',
+                    prev['sort_order'], cat_id
+                )
+                await conn.execute(
+                    'UPDATE categories SET sort_order = $1 WHERE id = $2',
+                    current_order, prev['id']
+                )
+    await AssortmentService.invalidate_cache()
+    return JSONResponse({"success": True})
+
+
+@router.post("/categories/{cat_id}/move_down")
+async def move_category_down(cat_id: int):
+    """Перемещает категорию вниз по sort_order."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            current_order = await conn.fetchval('SELECT sort_order FROM categories WHERE id = $1', cat_id)
+            if current_order is None:
+                raise HTTPException(status_code=404, detail="Категория не найдена")
+            # Находим категорию с большим sort_order (следующую)
+            next_cat = await conn.fetchrow(
+                'SELECT id, sort_order FROM categories WHERE sort_order > $1 ORDER BY sort_order ASC LIMIT 1',
+                current_order
+            )
+            if next_cat:
+                await conn.execute(
+                    'UPDATE categories SET sort_order = $1 WHERE id = $2',
+                    next_cat['sort_order'], cat_id
+                )
+                await conn.execute(
+                    'UPDATE categories SET sort_order = $1 WHERE id = $2',
+                    current_order, next_cat['id']
+                )
+    await AssortmentService.invalidate_cache()
+    return JSONResponse({"success": True})
