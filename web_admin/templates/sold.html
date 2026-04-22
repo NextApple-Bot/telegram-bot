@@ -3,20 +3,82 @@
 {% block page_title %}Проданные товары (хранятся 7 дней){% endblock %}
 {% block content %}
 <div class="card">
-    <div class="card-header">Всего записей: {{ total }}</div>
+    <div class="card-body">
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-md-3">
+                <label class="form-label">На странице</label>
+                <select name="per_page" class="form-select" id="perPageSelect">
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                    <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                    <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary" id="applyPerPage">Применить</button>
+            </div>
+        </div>
+        <div class="mb-2"><span class="badge bg-secondary">Всего записей: {{ total }}</span></div>
+    </div>
+</div>
+
+<div class="card">
     <div class="table-responsive">
         <table class="table table-hover">
-            <thead><tr><th>ID</th><th>Товар</th><th>Серийный</th><th>Категория</th><th>Дата продажи</th><th></th></tr></thead>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Товар</th>
+                    <th>Серийный</th>
+                    <th>Категория</th>
+                    <th>Дата продажи</th>
+                    <th style="width: 120px;"></th>
+                </tr>
+            </thead>
             <tbody>
                 {% for item in items %}
-                <tr><td>{{ item.id }}</td><td>{{ item.text }}</td><td>{{ item.serial or '—' }}</td><td>{{ item.category_id or '—' }}</td><td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M') if item.deleted_at else '—' }}</td>
-                    <td><form action="/admin/sold/restore/{{ item.id }}" method="post" onsubmit="return confirm('Восстановить товар?');"><button class="btn btn-sm btn-success">↩️ Восстановить</button></form></td>
+                <tr>
+                    <td>{{ item.id }}</td>
+                    <td>{{ item.text }}</td>
+                    <td>{{ item.serial or '—' }}</td>
+                    <td>{{ item.category_id or '—' }}</td>
+                    <td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M') if item.deleted_at else '—' }}</td>
+                    <td>
+                        <form action="/admin/sold/restore/{{ item.id }}" method="post" onsubmit="return confirm('Восстановить товар?');">
+                            <button class="btn btn-sm btn-success">↩️ Восстановить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">Нет проданных товаров</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
     {% if total_pages > 1 %}
-    <div class="card-footer"><nav><ul class="pagination pagination-sm">{% if page>1 %}<li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}">«</a></li><li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}">‹</a></li>{% endif %}<li class="page-item active"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>{% if page<total_pages %}<li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}">›</a></li><li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}">»</a></li>{% endif %}</ul></nav></div>{% endif %}
+    <div class="card-footer">
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                {% if page > 1 %}
+                <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}">«</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}">‹</a></li>
+                {% endif %}
+                <li class="page-item active"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
+                {% if page < total_pages %}
+                <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}">›</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}">»</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
+
+<script>
+    document.getElementById('applyPerPage').addEventListener('click', function() {
+        const perPage = document.getElementById('perPageSelect').value;
+        window.location.href = `?page=1&per_page=${perPage}`;
+    });
+</script>
 {% endblock %}
