@@ -15,18 +15,17 @@ async def test_process_sale_with_serial():
          patch('bot.services.sale.StatsRepository.add_sale', new=AsyncMock()), \
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
-        # Создаём мок-соединение (поддерживает async with)
+        # Мок соединения
         mock_conn = AsyncMock()
+
+        # Объект контекстного менеджера, возвращаемый pool.acquire()
         mock_conn_ctx = MagicMock()
         mock_conn_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn_ctx.__aexit__ = AsyncMock(return_value=None)
 
-        # Мок acquire: асинхронная функция, возвращающая контекстный менеджер соединения
-        mock_acquire = AsyncMock(return_value=mock_conn_ctx)
-
-        # Мок пула
+        # pool.acquire — синхронный метод, возвращающий контекстный менеджер
         mock_pool = MagicMock()
-        mock_pool.acquire = mock_acquire
+        mock_pool.acquire = MagicMock(return_value=mock_conn_ctx)
         mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
@@ -67,10 +66,8 @@ async def test_process_sale_not_found():
         mock_conn_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn_ctx.__aexit__ = AsyncMock(return_value=None)
 
-        mock_acquire = AsyncMock(return_value=mock_conn_ctx)
-
         mock_pool = MagicMock()
-        mock_pool.acquire = mock_acquire
+        mock_pool.acquire = MagicMock(return_value=mock_conn_ctx)
         mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
