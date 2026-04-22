@@ -1,5 +1,5 @@
 # Файл: web_admin/routes/dashboard.py
-from fastapi import APIRouter, Request, Query, HTTPException
+from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from datetime import date, timedelta
@@ -7,9 +7,7 @@ from collections import Counter
 import re
 import logging
 from pydantic import BaseModel
-from typing import Optional
 
-from bot.repositories import StatsRepository
 from bot.db import get_pool
 from bot.services.cache import cache
 
@@ -41,19 +39,28 @@ async def get_previous_period_stats():
     last_week_start = today - timedelta(days=7)
     pool = await get_pool()
     async with pool.acquire() as conn:
-        sales_yesterday = await conn.fetchval('SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1', yesterday)
-        revenue_yesterday_rows = await conn.fetch('''
+        sales_yesterday = await conn.fetchval(
+            'SELECT COALESCE(SUM(count), 0) FROM sales WHERE DATE(sold_at) = $1', yesterday
+        )
+        revenue_yesterday_rows = await conn.fetch(
+            '''
             SELECT COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
                    COALESCE(SUM(transfer),0) + COALESCE(SUM(invoice),0) + COALESCE(SUM(installment),0) as total
             FROM sales WHERE DATE(sold_at) = $1
-        ''', yesterday)
+            ''', yesterday
+        )
         revenue_yesterday = revenue_yesterday_rows[0]['total'] if revenue_yesterday_rows else 0
-        sales_last_week = await conn.fetchval('SELECT COUNT(*) FROM sales WHERE sold_at >= $1 AND sold_at < $2', last_week_start, today)
-        revenue_last_week_rows = await conn.fetch('''
+        sales_last_week = await conn.fetchval(
+            'SELECT COALESCE(SUM(count), 0) FROM sales WHERE sold_at >= $1 AND sold_at < $2',
+            last_week_start, today
+        )
+        revenue_last_week_rows = await conn.fetch(
+            '''
             SELECT COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
                    COALESCE(SUM(transfer),0) + COALESCE(SUM(invoice),0) + COALESCE(SUM(installment),0) as total
             FROM sales WHERE sold_at >= $1 AND sold_at < $2
-        ''', last_week_start, today)
+            ''', last_week_start, today
+        )
         revenue_last_week = revenue_last_week_rows[0]['total'] if revenue_last_week_rows else 0
     return {
         'sales_yesterday': sales_yesterday,
@@ -64,41 +71,52 @@ async def get_previous_period_stats():
 
 
 @router.get("/", response_class=HTMLResponse)
-async def dashboard(
-    request: Request,
-    days: int = Query(7, ge=7, le=90)
-):
-    # Получаем актуальные данные из БД (без кэша)
-    stats = await StatsRepository.get_today_stats()
+async def dashboard(request: Request, days: int = Query(7, ge=7, le=90)):
     pool = await get_pool()
+    today = date.today()
 
     async with pool.acquire() as conn:
+        # Финансы за сегодня
         rows = await conn.fetch('''
             SELECT payment_type, SUM(amount) as total
             FROM daily_payments
             WHERE DATE(created_at) = CURRENT_DATE
             GROUP BY payment_type
         ''')
-    payments = {row['payment_type']: float(row['total']) for row in rows}
-    for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
-        payments.setdefault(pt, 0.0)
-    total_revenue = sum(payments.values())
+        payments = {row['payment_type']: float(row['total']) for row in rows}
+        for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
+            payments.setdefault(pt, 0.0)
+        total_revenue = sum(payments.values())
 
-    end_date = date.today()
-    start_date = end_date - timedelta(days=6)
-    async with pool.acquire() as conn:
+        # Продажи сегодня (суммируем count)
+        sales_count = await conn.fetchval(
+            'SELECT COALESCE(SUM(count), 0) FROM sales WHERE DATE(sold_at) = $1', today
+        )
+
+        # Предзаказы сегодня (количество записей)
+        preorders_count = await conn.fetchval(
+            'SELECT COUNT(*) FROM preorders WHERE DATE(created_at) = $1', today
+        )
+
+        # Брони сегодня (количество записей)
+        bookings_count = await conn.fetchval(
+            'SELECT COUNT(*) FROM bookings WHERE DATE(booked_at) = $1', today
+        )
+
+        # График продаж за 7 дней
+        start_date = today - timedelta(days=6)
         sales_rows = await conn.fetch('''
-            SELECT DATE(sold_at) as day, COUNT(*) as count
+            SELECT DATE(sold_at) as day, COALESCE(SUM(count), 0) as count
             FROM sales
             WHERE sold_at >= $1
             GROUP BY day
             ORDER BY day
         ''', start_date)
-    sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
-    dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
-    sales_counts = [sales_dict.get(d, 0) for d in dates]
+        sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
+        dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
+        sales_counts = [sales_dict.get(d, 0) for d in dates]
 
-    async with pool.acquire() as conn:
+        # График выручки за 7 дней
         revenue_rows = await conn.fetch('''
             SELECT DATE(sold_at) as day,
                    COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
@@ -108,15 +126,16 @@ async def dashboard(
             GROUP BY day
             ORDER BY day
         ''', start_date)
-    revenue_dict = {row['day'].isoformat(): float(row['revenue']) for row in revenue_rows}
-    revenue_counts = [revenue_dict.get(d, 0) for d in dates]
+        revenue_dict = {row['day'].isoformat(): float(row['revenue']) for row in revenue_rows}
+        revenue_counts = [revenue_dict.get(d, 0) for d in dates]
 
+    # Топ-5 моделей
     top_cache_key = f"dashboard:top_models:{days}"
     cached_top = await cache.get(top_cache_key)
     if cached_top:
         top_labels, top_counts = cached_top
     else:
-        period_start = date.today() - timedelta(days=days - 1)
+        period_start = today - timedelta(days=days - 1)
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT i.text
@@ -135,7 +154,7 @@ async def dashboard(
         await cache.set(top_cache_key, (top_labels, top_counts), ttl=3600)
 
     prev_stats = await get_previous_period_stats()
-    sales_today = stats['sales_count']
+    sales_today = sales_count
     revenue_today = total_revenue
 
     sales_change_yesterday = 0
@@ -154,7 +173,12 @@ async def dashboard(
 
     response = templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "stats": stats,
+        "stats": {
+            "date": today.strftime("%Y-%m-%d"),
+            "sales_count": sales_today,
+            "preorders_count": preorders_count,
+            "bookings_count": bookings_count,
+        },
         "payments": payments,
         "total_revenue": total_revenue,
         "plan_amount": 600000,
@@ -171,7 +195,6 @@ async def dashboard(
         "sales_change_week": round(sales_change_week, 1),
         "revenue_change_week": round(revenue_change_week, 1),
     })
-    # Запрещаем кэширование страницы
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -250,18 +273,17 @@ async def update_today_stats(data: UpdateTodayStatsRequest):
                     """, data.sales_count, data.cash, data.terminal, data.qr,
                         data.transfer, data.invoice, data.installment, today)
 
-                if data.preorders_count > 0:
+                for _ in range(data.preorders_count):
                     await conn.execute("""
                         INSERT INTO preorders (cash, terminal, qr, transfer, invoice, installment, created_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
                     """, 0, 0, 0, 0, 0, 0, today)
 
-                if data.bookings_count > 0:
-                    for _ in range(data.bookings_count):
-                        await conn.execute("""
-                            INSERT INTO bookings (item_id, total_amount, booked_at)
-                            VALUES (0, 0, $1)
-                        """, today)
+                for _ in range(data.bookings_count):
+                    await conn.execute("""
+                        INSERT INTO bookings (item_id, total_amount, booked_at)
+                        VALUES (0, 0, $1)
+                    """, today)
 
         logger.info(f"Статистика за сегодня обновлена: {data.dict()}")
         return JSONResponse({"success": True})
