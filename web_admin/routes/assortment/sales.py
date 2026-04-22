@@ -1,6 +1,7 @@
 # Файл: web_admin/routes/assortment/sales.py
 import uuid
 import logging
+import asyncio
 from bot.repositories import StatsRepository
 from bot.db import get_pool
 from bot.services.cache import cache
@@ -69,7 +70,7 @@ async def handle_sale_from_form(
     sale_full_name: str,
     sale_phone: str,
     accessories: list = None,
-    conn = None   # ИСПРАВЛЕНИЕ #7: принимаем соединение для единой транзакции
+    conn = None
 ):
     if not sale_price:
         raise ValueError("Укажите стоимость продажи")
@@ -84,7 +85,6 @@ async def handle_sale_from_form(
     processed_accessories = []
     accessories_payments = {}
 
-    # Если передано внешнее соединение, используем его, иначе создаём своё
     own_conn = False
     if conn is None:
         pool = await get_pool()
@@ -152,7 +152,8 @@ async def handle_sale_from_form(
         )
 
         from .notifications import send_sale_notification
-        await send_sale_notification(
+        # УЛУЧШЕНИЕ 9: асинхронная отправка уведомления о продаже
+        asyncio.create_task(send_sale_notification(
             item_text=text,
             price=sale_price,
             payment_type=sale_payment_type,
@@ -162,7 +163,7 @@ async def handle_sale_from_form(
             full_name=sale_full_name,
             phone=sale_phone,
             accessories=processed_accessories
-        )
+        ))
 
         await delete_item_and_log_sale(
             item_id=item_id,
