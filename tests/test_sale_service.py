@@ -11,11 +11,10 @@ async def test_process_sale_with_serial():
 
     with patch('bot.services.sale.extract_serials', return_value=["ABC123"]), \
          patch('bot.services.sale.ItemRepository.get_item_id_by_serial', new=AsyncMock(return_value=789)), \
-         patch('bot.services.sale.AssortmentService') as mock_assortment, \
+         patch('bot.services.assortment.AssortmentService.remove_by_serial', new=AsyncMock()) as mock_remove, \
          patch('bot.services.sale.StatsRepository.add_sale', new=AsyncMock()), \
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
-        mock_assortment.remove_by_serial = AsyncMock()
         mock_conn = AsyncMock()
         mock_acquire = AsyncMock()
         mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -31,7 +30,7 @@ async def test_process_sale_with_serial():
         assert result["is_accessory"] is False
         assert result.get("skip_sale_stats") is False
         assert result.get("skip_payments") is False
-        mock_assortment.remove_by_serial.assert_called_once_with("ABC123", reason='sale', conn=mock_conn)
+        mock_remove.assert_called_once_with("ABC123", reason='sale', conn=mock_conn)
 
 
 @pytest.mark.asyncio
@@ -45,7 +44,6 @@ async def test_process_sale_without_serial():
         assert result["sold_items"] == []
         assert result["is_accessory"] is True
         assert result.get("skip_sale_stats") is True
-        # У аксессуаров нет ключа skip_payments
         assert "skip_payments" not in result
 
 
