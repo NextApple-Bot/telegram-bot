@@ -1,6 +1,6 @@
 # Файл: tests/test_sale_service.py
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from bot.services.sale import SaleService
 
 
@@ -9,7 +9,6 @@ async def test_process_sale_with_serial():
     content = "iPhone 15 Pro (ABC123) - 1000₽\nНаличные - 1000"
     payments = {'cash': 1000.0, 'terminal': 0.0, 'qr': 0.0, 'transfer': 0.0, 'invoice': 0.0, 'installment': 0.0}
 
-    # Мокаем всё, что используется внутри process_sale
     with patch('bot.services.sale.extract_serials', return_value=["ABC123"]), \
          patch('bot.services.sale.ItemRepository.get_item_id_by_serial', new=AsyncMock(return_value=789)), \
          patch('bot.services.assortment.AssortmentService.remove_by_serial', new=AsyncMock()) as mock_remove, \
@@ -18,11 +17,12 @@ async def test_process_sale_with_serial():
 
         # Создаём мок соединения и пула
         mock_conn = AsyncMock()
-        mock_acquire = AsyncMock()
+        mock_acquire = MagicMock()
         mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_acquire.__aexit__ = AsyncMock(return_value=None)
-        mock_pool = AsyncMock()
-        mock_pool.acquire.return_value = mock_acquire
+
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=mock_acquire)
         mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
@@ -46,7 +46,6 @@ async def test_process_sale_without_serial():
         assert result["sold_items"] == []
         assert result["is_accessory"] is True
         assert result.get("skip_sale_stats") is True
-        # У аксессуаров ключ skip_payments отсутствует
         assert "skip_payments" not in result
 
 
@@ -60,11 +59,12 @@ async def test_process_sale_not_found():
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
         mock_conn = AsyncMock()
-        mock_acquire = AsyncMock()
+        mock_acquire = MagicMock()
         mock_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_acquire.__aexit__ = AsyncMock(return_value=None)
-        mock_pool = AsyncMock()
-        mock_pool.acquire.return_value = mock_acquire
+
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=mock_acquire)
         mock_get_pool.return_value = mock_pool
 
         result = await SaleService.process_sale(content, 123, 456, payments)
