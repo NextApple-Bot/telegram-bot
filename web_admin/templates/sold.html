@@ -1,59 +1,22 @@
-{# 8. Полный файл web_admin/templates/sold.html #}
-{# Файл: web_admin/templates/sold.html #}
 {% extends "base.html" %}
 {% block title %}Проданные товары{% endblock %}
+{% block page_title %}Проданные товары (хранятся 7 дней){% endblock %}
 {% block content %}
-<h1>Проданные товары (хранятся 7 дней)</h1>
-<div class="row mb-2">
-    <div class="col">
-        <span class="badge bg-secondary">Всего записей: {{ total }}</span>
+<div class="card">
+    <div class="card-header">Всего записей: {{ total }}</div>
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead><tr><th>ID</th><th>Товар</th><th>Серийный</th><th>Категория</th><th>Дата продажи</th><th></th></tr></thead>
+            <tbody>
+                {% for item in items %}
+                <tr><td>{{ item.id }}</td><td>{{ item.text }}</td><td>{{ item.serial or '—' }}</td><td>{{ item.category_id or '—' }}</td><td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M') if item.deleted_at else '—' }}</td>
+                    <td><form action="/admin/sold/restore/{{ item.id }}" method="post" onsubmit="return confirm('Восстановить товар?');"><button class="btn btn-sm btn-success">↩️ Восстановить</button></form></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+    {% if total_pages > 1 %}
+    <div class="card-footer"><nav><ul class="pagination pagination-sm">{% if page>1 %}<li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}">«</a></li><li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}">‹</a></li>{% endif %}<li class="page-item active"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>{% if page<total_pages %}<li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}">›</a></li><li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}">»</a></li>{% endif %}</ul></nav></div>{% endif %}
 </div>
-<div class="table-responsive">
-    <table class="table table-striped table-bordered">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Товар</th>
-                <th>Серийный номер</th>
-                <th>Категория</th>
-                <th>Дата продажи</th>
-                <th>Действия</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in items %}
-            <tr>
-                <td>{{ item.id }}</td>
-                <td>{{ item.text }}</td>
-                <td>{{ item.serial or '—' }}</td>
-                <td>{{ item.category_id or '—' }}</td>
-                <td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M') if item.deleted_at else '—' }}</td>
-                <td>
-                    <form action="/admin/sold/restore/{{ item.id }}" method="post" onsubmit="return confirm('Восстановить товар? Он вернётся в ассортимент.');">
-                        <button type="submit" class="btn btn-sm btn-success">↩️ Восстановить</button>
-                    </form>
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="6" class="text-center">Нет проданных товаров</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% if total_pages > 1 %}
-<nav>
-    <ul class="pagination">
-        {% if page > 1 %}
-        <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}">Первая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}">Предыдущая</a></li>
-        {% endif %}
-        <li class="page-item active"><span class="page-link">Страница {{ page }} из {{ total_pages }}</span></li>
-        {% if page < total_pages %}
-        <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}">Следующая</a></li>
-        <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}">Последняя</a></li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
 {% endblock %}
