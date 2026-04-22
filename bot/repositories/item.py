@@ -27,8 +27,13 @@ class ItemRepository:
         row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
         if row:
             return row['id']
+        # При создании категории устанавливаем sort_order = max(sort_order) + 1
+        max_order = await conn.fetchval('SELECT COALESCE(MAX(sort_order), -1) FROM categories')
         try:
-            row = await conn.fetchrow('INSERT INTO categories (name) VALUES ($1) RETURNING id', original_name)
+            row = await conn.fetchrow(
+                'INSERT INTO categories (name, sort_order) VALUES ($1, $2) RETURNING id',
+                original_name, max_order + 1
+            )
             return row['id']
         except asyncpg.UniqueViolationError:
             row = await conn.fetchrow('SELECT id FROM categories WHERE name = $1', original_name)
@@ -185,13 +190,14 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_all_categories_with_items():
+        """Возвращает категории с товарами, отсортированные по sort_order, затем по имени."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT c.name as category_name, i.text as item_text
                 FROM categories c
                 LEFT JOIN items i ON c.id = i.category_id
-                ORDER BY c.id, i.id
+                ORDER BY c.sort_order, c.name, i.id
             ''')
             categories = {}
             for row in rows:
@@ -220,9 +226,12 @@ class ItemRepository:
                 await conn.execute('TRUNCATE TABLE categories CASCADE')
                 category_names = [cat['header'] for cat in categories]
                 if category_names:
-                    values_placeholder = ', '.join(f"(${i})" for i in range(1, len(category_names) + 1))
-                    query = f'INSERT INTO categories (name) VALUES {values_placeholder}'
-                    await conn.execute(query, *category_names)
+                    # Вставляем категории с sort_order по порядку следования в списке
+                    for idx, name in enumerate(category_names):
+                        await conn.execute(
+                            'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
+                            name, idx
+                        )
 
                 rows = await conn.fetch('SELECT id, name FROM categories')
                 cat_id_map = {row['name']: row['id'] for row in rows}
@@ -247,4 +256,4 @@ class ItemRepository:
                     query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
                     await conn.execute(query, *params)
 
-        await AssortmentService.invalidate_cache()   # <-- ИСПРАВЛЕНО: добавлен await
+        await AssortmentService.invalidate_cache()
