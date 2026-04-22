@@ -40,7 +40,7 @@ async def edit_item_form(request: Request, item_id: int):
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")
         item = dict(row)
-        categories = await conn.fetch("SELECT id, name FROM categories ORDER BY name")
+        categories = await conn.fetch("SELECT id, name FROM categories ORDER BY sort_order, name")
     return templates.TemplateResponse("assortment_edit_item.html", {
         "request": request,
         "item": item,
@@ -259,6 +259,11 @@ async def add_item(
 async def add_category(request: Request, name: str = Form(...)):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO categories (name) VALUES ($1)", name)
+        # Получаем максимальный sort_order и добавляем 1 для новой категории
+        max_order = await conn.fetchval('SELECT COALESCE(MAX(sort_order), -1) FROM categories')
+        await conn.execute(
+            'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
+            name, max_order + 1
+        )
     await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
