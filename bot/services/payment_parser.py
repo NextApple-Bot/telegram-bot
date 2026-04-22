@@ -5,7 +5,6 @@ from typing import Dict
 
 logger = logging.getLogger(__name__)
 
-# Предкомпилированные регулярные выражения
 PAYMENT_KEYWORDS = {
     'cash': re.compile(r'Наличными|Наличные|наличными', re.IGNORECASE),
     'terminal': re.compile(r'Терминал', re.IGNORECASE),
@@ -39,36 +38,35 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     results = {key: 0.0 for key in PAYMENT_KEYWORDS}
 
     for line in lines:
+        # Ищем ключевые слова в строке
+        line_pay_types = [pt for pt, kw in PAYMENT_KEYWORDS.items() if kw.search(line)]
+        if not line_pay_types:
+            continue
+
+        # Ищем все числа в строке
+        numbers = []
         for match in NUMBER_PATTERN.finditer(line):
             num_str = match.group(1).replace(' ', '').replace(',', '.')
             try:
                 amount = float(num_str)
             except ValueError:
                 continue
-
-            if amount > 10_000_000:
-                logger.debug(f"Пропущено слишком большое число: {amount}")
+            if amount > 10_000_000 or is_likely_phone_or_serial(num_str):
                 continue
-            if is_likely_phone_or_serial(num_str):
-                logger.debug(f"Пропущено число, похожее на телефон/серийник: {num_str}")
-                continue
+            numbers.append(amount)
 
-            # Проверка на скобки без ключевого слова
-            open_paren = line.rfind('(', 0, match.start())
-            if open_paren != -1:
-                close_paren = line.find(')', match.start() + len(match.group()))
-                if close_paren != -1 and close_paren > open_paren:
-                    bracket_content = line[open_paren+1:close_paren]
-                    found_keyword = any(kw_re.search(bracket_content) for kw_re in PAYMENT_KEYWORDS.values())
-                    if not found_keyword:
-                        logger.debug(f"Пропущено число в скобках без ключевого слова оплаты: {num_str}")
-                        continue
+        if not numbers:
+            continue
 
-            for pay_type, kw_re in PAYMENT_KEYWORDS.items():
-                if kw_re.search(line):
-                    results[pay_type] += amount
-                    logger.debug(f"➕ {pay_type} += {amount}")
-                    break
+        # Если в строке один тип оплаты и одно число — связываем их
+        if len(line_pay_types) == 1 and len(numbers) == 1:
+            results[line_pay_types[0]] += numbers[0]
+        # Если несколько чисел или несколько типов — пытаемся определить по близости
+        else:
+            # Упрощённо: первое число первому типу, остальные пропускаем (или можно добавить эвристики)
+            for pt, num in zip(line_pay_types, numbers):
+                results[pt] += num
+            # Оставшиеся числа (если их больше) игнорируем, чтобы не приписывать лишнего
 
     return results
 
@@ -80,43 +78,4 @@ def extract_prepayments(text: str) -> Dict[str, float]:
         return {key: 0.0 for key in PAYMENT_KEYWORDS}
 
     prepay_text = '\n'.join(lines)
-    payments = extract_payment_amounts(prepay_text, ignore_prepay=False)
-
-    # Если стандартная обработка не дала результатов, пытаемся явно извлечь тип из скобок
-    if all(v == 0 for v in payments.values()):
-        for line in lines:
-            match_num = NUMBER_PATTERN.search(line)
-            if not match_num:
-                continue
-            num_str = match_num.group(1).replace(' ', '').replace(',', '.')
-            try:
-                amount = float(num_str)
-            except ValueError:
-                continue
-
-            match_bracket = BRACKET_PAYMENT_PATTERN.search(line)
-            if match_bracket:
-                bracket_content = match_bracket.group(1).strip().lower()
-                if re.search(r'нал|cash', bracket_content):
-                    payments['cash'] += amount
-                elif re.search(r'терминал|terminal', bracket_content):
-                    payments['terminal'] += amount
-                elif re.search(r'qr|qrcode|qr-?code', bracket_content):
-                    payments['qr'] += amount
-                elif re.search(r'перевод|transfer', bracket_content):
-                    payments['transfer'] += amount
-                elif re.search(r'счет|invoice', bracket_content):
-                    payments['invoice'] += amount
-                elif re.search(r'рассрочка|installment', bracket_content):
-                    payments['installment'] += amount
-                else:
-                    for pay_type, kw_re in PAYMENT_KEYWORDS.items():
-                        if kw_re.search(line):
-                            payments[pay_type] += amount
-                            break
-            else:
-                for pay_type, kw_re in PAYMENT_KEYWORDS.items():
-                    if kw_re.search(line):
-                        payments[pay_type] += amount
-                        break
-    return payments
+    return extract_payment_amounts(prepay_text, ignore_prepay=False)
