@@ -5,7 +5,7 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-# Добавляем корень проекта в sys.path, чтобы импорты работали
+# Добавляем корень проекта в sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from alembic import context
@@ -17,11 +17,10 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения
 load_dotenv()
 
-# Импортируем Base из модуля models (прямой импорт, чтобы избежать проблем с пакетом)
+# Прямой импорт Base из модуля models
 from bot.db.models import Base
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# this is the Alembic Config object
 config = context.config
 
 # Interpret the config file for Python logging.
