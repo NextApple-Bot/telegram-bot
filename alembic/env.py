@@ -14,19 +14,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- Поиск bot/db/models.py ---
+# --- Поиск bot/models.py ---
 root_path = Path(__file__).parent.parent
-models_path = root_path / "bot" / "db" / "models.py"
+models_path = root_path / "bot" / "models.py"
 
 if not models_path.exists():
     print(f"❌ Файл models.py не найден по пути: {models_path}")
-    os.system("ls -la /app/bot/db")
+    os.system("ls -la /app/bot")
     raise FileNotFoundError(f"models.py not found at {models_path}")
 
 print(f"✅ Загружаем модели из: {models_path}")
-spec = importlib.util.spec_from_file_location("bot.db.models", models_path)
+spec = importlib.util.spec_from_file_location("bot.models", models_path)
 models_module = importlib.util.module_from_spec(spec)
-sys.modules["bot.db.models"] = models_module
+sys.modules["bot.models"] = models_module
 spec.loader.exec_module(models_module)
 
 if not hasattr(models_module, "Base"):
