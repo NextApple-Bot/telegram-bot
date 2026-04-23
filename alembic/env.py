@@ -1,7 +1,12 @@
 # Файл: alembic/env.py
 import asyncio
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
+
+# Добавляем корень проекта в sys.path, чтобы импорты работали
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from alembic import context
 from sqlalchemy import pool
@@ -12,7 +17,7 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения
 load_dotenv()
 
-# Прямой импорт Base из модуля models (без загрузки всего пакета bot)
+# Импортируем Base из модуля models (прямой импорт, чтобы избежать проблем с пакетом)
 from bot.db.models import Base
 
 # this is the Alembic Config object, which provides
