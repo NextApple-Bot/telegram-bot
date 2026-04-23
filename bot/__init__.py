@@ -1,2 +1,16 @@
-# Пакет bot
-# Импорт Base убран для избежания циклических зависимостей
+# Пакет bot.db
+from .models import Base, Client, Purchase, Category, Item, Sale, Preorder, Booking, DailyPayment, ProcessedMessage, DeletedItem
+
+__all__ = [
+    'Base',
+    'Client',
+    'Purchase',
+    'Category',
+    'Item',
+    'Sale',
+    'Preorder',
+    'Booking',
+    'DailyPayment',
+    'ProcessedMessage',
+    'DeletedItem',
+]
