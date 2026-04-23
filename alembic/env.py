@@ -12,13 +12,30 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения
 load_dotenv()
 
-# --- Костыль для загрузки Base без пакета ---
-# Путь к файлу models.py относительно корня проекта
+# --- Поиск models.py ---
 root_path = Path(__file__).parent.parent
-models_path = root_path / "bot" / "db" / "models.py"
+possible_paths = [
+    root_path / "bot" / "db" / "models.py",
+    root_path / "bot" / "models.py",
+    root_path / "models.py",
+]
+
+models_path = None
+for p in possible_paths:
+    if p.exists():
+        models_path = p
+        break
+
+if models_path is None:
+    print("❌ Не найден файл models.py. Содержимое /app:")
+    os.system("ls -la /app")
+    os.system("ls -la /app/bot")
+    os.system("ls -la /app/bot/db")
+    raise FileNotFoundError("models.py not found")
+
+print(f"✅ Найден models.py: {models_path}")
 
 spec = importlib.util.spec_from_file_location("bot.db.models", models_path)
 models_module = importlib.util.module_from_spec(spec)
@@ -26,23 +43,18 @@ sys.modules["bot.db.models"] = models_module
 spec.loader.exec_module(models_module)
 
 Base = models_module.Base
-# -------------------------------------------
+# -------------------------
 
-# this is the Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Получаем URL из переменной окружения
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set")
 
-# Устанавливаем URL в конфиг Alembic
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
-
 target_metadata = Base.metadata
 
 
@@ -54,14 +66,12 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection):
     context.configure(connection=connection, target_metadata=target_metadata)
-
     with context.begin_transaction():
         context.run_migrations()
 
@@ -71,10 +81,8 @@ async def run_async_migrations():
         DATABASE_URL,
         poolclass=pool.NullPool,
     )
-
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
-
     await connectable.dispose()
 
 
