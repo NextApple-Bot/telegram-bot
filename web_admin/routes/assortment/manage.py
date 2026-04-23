@@ -112,7 +112,7 @@ async def edit_item_submit(
                         })
 
                 from .sales import handle_sale_from_form
-                await handle_sale_from_form(
+                result = await handle_sale_from_form(
                     item_id=item_id, text=text, serial=serial, category_id=category_id,
                     old_text=old_text, old_serial=old_serial, old_category_id=old_category_id,
                     sale_price=sale_price, sale_prepayment=sale_prepayment,
@@ -121,6 +121,9 @@ async def edit_item_submit(
                     accessories=accessories,
                     conn=conn
                 )
+                if "error" in result:
+                    # Если произошла ошибка, возвращаем её пользователю
+                    raise HTTPException(status_code=400, detail=result["error"])
                 await AssortmentService.invalidate_cache()
                 return RedirectResponse(url="/admin/assortment", status_code=303)
 
@@ -141,7 +144,6 @@ async def edit_item_submit(
                    booking_price, booking_prepayment, booking_platform,
                    booking_full_name, booking_phone, booking_payment_type, item_id)
 
-                # Сохраняем предоплату в daily_payments
                 if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
                     await conn.execute("""
                         INSERT INTO daily_payments (type, payment_type, amount)
@@ -149,7 +151,6 @@ async def edit_item_submit(
                     """, booking_payment_type, booking_prepayment)
 
                 from .notifications import send_booking_notification
-                # УЛУЧШЕНИЕ 9: асинхронная отправка уведомления в фоне
                 asyncio.create_task(send_booking_notification(
                     item_text=text,
                     serial=serial.strip().upper() if serial else "без серийного номера",
@@ -259,7 +260,6 @@ async def add_item(
 async def add_category(request: Request, name: str = Form(...)):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Получаем максимальный sort_order и добавляем 1 для новой категории
         max_order = await conn.fetchval('SELECT COALESCE(MAX(sort_order), -1) FROM categories')
         await conn.execute(
             'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
