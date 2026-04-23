@@ -1,26 +1,51 @@
-FROM python:3.11-slim
+# Stage 1: Build dependencies
+FROM python:3.11-slim AS builder
+WORKDIR /app
 
-# Устанавливаем системные зависимости, включая Rust
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Rust (требуется для компиляции pydantic-core)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install Python dependencies into a user directory
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir --upgrade pip && \
+    pip install --user --no-cache-dir -r requirements.txt
 
+# Stage 2: Final runtime image
+FROM python:3.11-slim
 WORKDIR /app
 
-# Копируем файл с зависимостями и устанавливаем их
-COPY requirements.txt .
-# Убедимся, что pip обновлён, и установим зависимости
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install runtime system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Копируем весь код проекта
+# Create non-root user
+RUN addgroup --system --gid 1001 botgroup && \
+    adduser --system --uid 1001 --gid 1001 botuser
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /home/botuser/.local
+
+# Copy application code
 COPY . .
 
-# Команда для запуска бота
-CMD ["python", "main.py"]
+# Set ownership to non-root user
+RUN chown -R botuser:botgroup /app
+
+# Switch to non-root user
+USER botuser
+
+# Add local bin to PATH
+ENV PATH=/home/botuser/.local/bin:$PATH
+ENV PYTHONPATH=/app
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+
+# Use start script
+CMD ["sh", "./start.sh"]
