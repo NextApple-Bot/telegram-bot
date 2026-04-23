@@ -20,8 +20,7 @@ models_path = root_path / "bot" / "db" / "models.py"
 
 if not models_path.exists():
     print(f"❌ Файл models.py не найден по пути: {models_path}")
-    print("📁 Содержимое /app/bot/db:")
-    os.system("ls -la /app/bot/db 2>/dev/null || echo 'Папка /app/bot/db не существует'")
+    os.system("ls -la /app/bot/db")
     raise FileNotFoundError(f"models.py not found at {models_path}")
 
 print(f"✅ Загружаем модели из: {models_path}")
@@ -43,6 +42,11 @@ if config.config_file_name is not None:
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set")
+
+# Принудительно заменяем postgresql:// на postgresql+asyncpg://
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+    print("🔄 Заменён синхронный URL на асинхронный")
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 target_metadata = Base.metadata
