@@ -4,9 +4,7 @@ import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
-
-# Добавляем корень проекта в sys.path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import importlib.util
 
 from alembic import context
 from sqlalchemy import pool
@@ -17,8 +15,18 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения
 load_dotenv()
 
-# Прямой импорт Base из модуля models
-from bot.db.models import Base
+# --- Костыль для загрузки Base без пакета ---
+# Путь к файлу models.py относительно корня проекта
+root_path = Path(__file__).parent.parent
+models_path = root_path / "bot" / "db" / "models.py"
+
+spec = importlib.util.spec_from_file_location("bot.db.models", models_path)
+models_module = importlib.util.module_from_spec(spec)
+sys.modules["bot.db.models"] = models_module
+spec.loader.exec_module(models_module)
+
+Base = models_module.Base
+# -------------------------------------------
 
 # this is the Alembic Config object
 config = context.config
@@ -39,7 +47,6 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -60,7 +67,6 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations():
-    """Run migrations in 'online' mode with async engine."""
     connectable = create_async_engine(
         DATABASE_URL,
         poolclass=pool.NullPool,
@@ -73,7 +79,6 @@ async def run_async_migrations():
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
     asyncio.run(run_async_migrations())
 
 
