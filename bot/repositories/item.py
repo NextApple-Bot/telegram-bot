@@ -190,13 +190,14 @@ class ItemRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_all_categories_with_items():
-        """Возвращает категории с товарами, отсортированные по sort_order, затем по имени."""
+        """Возвращает категории с товарами, отсортированные по sort_order, затем по имени, исключая служебную __SYSTEM__."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
                 SELECT c.name as category_name, i.text as item_text
                 FROM categories c
                 LEFT JOIN items i ON c.id = i.category_id
+                WHERE c.name != '__SYSTEM__'
                 ORDER BY c.sort_order, c.name, i.id
             ''')
             categories = {}
