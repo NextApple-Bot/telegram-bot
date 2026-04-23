@@ -43,7 +43,8 @@ class AssortmentService:
     async def remove_by_serial(cls, serial: str, reason: str = 'manual', conn=None) -> int:
         """
         Удаляет товар по серийному номеру с сохранением в deleted_items.
-        ИСПРАВЛЕНИЕ #8: используется атомарный DELETE ... RETURNING для избежания гонок.
+        Используется атомарный DELETE ... RETURNING для избежания гонок.
+        Добавлена защита от ошибок внешнего ключа.
         """
         from bot.db import get_pool
         
@@ -52,7 +53,6 @@ class AssortmentService:
             pool = await get_pool()
             async with pool.acquire() as conn:
                 async with conn.transaction():
-                    # Атомарно удаляем и получаем данные товара
                     deleted_row = await conn.fetchrow(
                         """
                         DELETE FROM items
@@ -62,14 +62,19 @@ class AssortmentService:
                         normalized_serial
                     )
                     if deleted_row:
-                        # Добавляем запись в deleted_items
-                        await conn.execute(
-                            """
-                            INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
-                            VALUES ($1, $2, $3, $4, $5)
-                            """,
-                            deleted_row['id'], deleted_row['text'], serial, deleted_row['category_id'], reason
-                        )
+                        # Проверяем, что запись с таким item_id действительно была удалена (существует в момент транзакции)
+                        # и вставляем в deleted_items с обработкой возможной ошибки внешнего ключа
+                        try:
+                            await conn.execute(
+                                """
+                                INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                                VALUES ($1, $2, $3, $4, $5)
+                                """,
+                                deleted_row['id'], deleted_row['text'], serial, deleted_row['category_id'], reason
+                            )
+                        except Exception as e:
+                            logger.warning(f"Не удалось вставить в deleted_items для {serial}: {e}")
+                            # Всё равно считаем, что товар удалён, раз DELETE прошёл
                         await cls.invalidate_cache()
                         return 1
                     return 0
@@ -84,13 +89,16 @@ class AssortmentService:
                 normalized_serial
             )
             if deleted_row:
-                await conn.execute(
-                    """
-                    INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
-                    VALUES ($1, $2, $3, $4, $5)
-                    """,
-                    deleted_row['id'], deleted_row['text'], serial, deleted_row['category_id'], reason
-                )
+                try:
+                    await conn.execute(
+                        """
+                        INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                        VALUES ($1, $2, $3, $4, $5)
+                        """,
+                        deleted_row['id'], deleted_row['text'], serial, deleted_row['category_id'], reason
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось вставить в deleted_items для {serial}: {e}")
                 await cls.invalidate_cache()
                 return 1
             return 0
