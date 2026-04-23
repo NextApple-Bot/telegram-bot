@@ -14,39 +14,29 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- Поиск models.py ---
+# --- Поиск bot/db/models.py ---
 root_path = Path(__file__).parent.parent
-possible_paths = [
-    root_path / "bot" / "db" / "models.py",
-    root_path / "bot" / "models.py",
-    root_path / "models.py",
-]
+models_path = root_path / "bot" / "db" / "models.py"
 
-models_path = None
-for p in possible_paths:
-    if p.exists():
-        models_path = p
-        break
+if not models_path.exists():
+    print(f"❌ Файл models.py не найден по пути: {models_path}")
+    print("📁 Содержимое /app/bot/db:")
+    os.system("ls -la /app/bot/db 2>/dev/null || echo 'Папка /app/bot/db не существует'")
+    raise FileNotFoundError(f"models.py not found at {models_path}")
 
-if models_path is None:
-    print("❌ Не найден файл models.py. Содержимое /app:")
-    os.system("ls -la /app")
-    os.system("ls -la /app/bot")
-    os.system("ls -la /app/bot/db")
-    raise FileNotFoundError("models.py not found")
-
-print(f"✅ Найден models.py: {models_path}")
-
+print(f"✅ Загружаем модели из: {models_path}")
 spec = importlib.util.spec_from_file_location("bot.db.models", models_path)
 models_module = importlib.util.module_from_spec(spec)
 sys.modules["bot.db.models"] = models_module
 spec.loader.exec_module(models_module)
 
+if not hasattr(models_module, "Base"):
+    raise AttributeError("Модуль models.py не содержит атрибут 'Base'")
+
 Base = models_module.Base
-# -------------------------
+# ---------------------------------
 
 config = context.config
-
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
