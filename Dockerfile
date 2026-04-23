@@ -8,10 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies into a user directory
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies into the virtual environment
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir --upgrade pip && \
-    pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Final runtime image
 FROM python:3.11-slim
@@ -27,20 +31,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN addgroup --system --gid 1001 botgroup && \
     adduser --system --uid 1001 --gid 1001 botuser
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /home/botuser/.local
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
 
 # Copy application code
 COPY . .
 
 # Set ownership to non-root user
-RUN chown -R botuser:botgroup /app
+RUN chown -R botuser:botgroup /app /opt/venv
 
 # Switch to non-root user
 USER botuser
 
-# Add local bin to PATH
-ENV PATH=/home/botuser/.local/bin:$PATH
+# Activate virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH=/app
 
 # Healthcheck
