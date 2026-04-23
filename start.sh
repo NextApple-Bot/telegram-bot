@@ -14,15 +14,38 @@ fi
 
 echo "✅ Переменные окружения в порядке."
 
-# Отладка: показываем структуру проекта
-echo "📁 Содержимое /app:"
-ls -la /app
-echo "📁 Содержимое /app/bot:"
-ls -la /app/bot || echo "❌ /app/bot не найден"
-echo "📁 Содержимое /app/bot/db:"
-ls -la /app/bot/db || echo "❌ /app/bot/db не найден"
+# Устанавливаем PYTHONPATH для импорта модулей при необходимости
+export PYTHONPATH=/app
 
-echo "🔄 Применяем миграции Alembic..."
+echo "🔄 Проверяем, существует ли уже таблица 'clients'..."
+python -c "
+import asyncio
+import asyncpg
+import os
+import sys
+
+async def check_and_stamp():
+    conn = await asyncpg.connect(os.environ['DATABASE_URL'])
+    try:
+        # Пытаемся сделать запрос к таблице clients
+        await conn.execute('SELECT 1 FROM clients LIMIT 1')
+        print('✅ Таблица clients уже существует. Пропускаем начальные миграции.')
+        sys.exit(0)  # код 0 = таблица есть
+    except Exception:
+        print('⚠️ Таблица clients не найдена. Будут применены все миграции.')
+        sys.exit(1)  # код 1 = таблицы нет
+    finally:
+        await conn.close()
+
+asyncio.run(check_and_stamp())
+"
+
+if [ $? -eq 0 ]; then
+    echo "🔄 Помечаем начальные миграции как выполненные..."
+    alembic stamp head
+fi
+
+echo "🔄 Применяем оставшиеся миграции Alembic..."
 python run_migrations.py
 
 echo "🚀 Запускаем основной сервер..."
