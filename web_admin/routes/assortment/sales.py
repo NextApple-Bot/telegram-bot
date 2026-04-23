@@ -35,10 +35,16 @@ async def delete_item_and_log_sale(
         payment_type = 'cash'
         logger.warning(f"Некорректный payment_type, заменён на 'cash': {payment_type}")
 
-    await conn.execute("""
-        INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
-        VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
-    """, item_id, text, serial, category_id, message_id)
+    # Вставка в deleted_items с защитой от FK-ошибок
+    try:
+        await conn.execute("""
+            INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
+            VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
+        """, item_id, text, serial, category_id, message_id)
+    except Exception as e:
+        logger.warning(f"Не удалось вставить в deleted_items для item_id={item_id}: {e}")
+        # Продолжаем, так как товар всё равно нужно удалить
+
     await conn.execute("DELETE FROM items WHERE id = $1", item_id)
     await StatsRepository.add_sale(
         count=1,
@@ -108,10 +114,14 @@ async def handle_sale_from_form(
                     if row:
                         item_info = dict(row)
                         display_text = item_info['text']
-                        await conn.execute("""
-                            INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
-                            VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
-                        """, item_info['id'], item_info['text'], acc['serial'], item_info['category_id'], sale_message_id)
+                        # Защищённая вставка в deleted_items для аксессуара
+                        try:
+                            await conn.execute("""
+                                INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
+                                VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
+                            """, item_info['id'], item_info['text'], acc['serial'], item_info['category_id'], sale_message_id)
+                        except Exception as e:
+                            logger.warning(f"Не удалось вставить аксессуар в deleted_items: {e}")
                         await conn.execute("DELETE FROM items WHERE id = $1", item_info['id'])
                         await StatsRepository.add_sale(
                             count=1,
