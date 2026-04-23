@@ -25,6 +25,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Восстанавливаем внешний ключ при откате
     op.drop_index('idx_deleted_items_item_id', table_name='deleted_items')
     op.execute("""
         ALTER TABLE deleted_items 
