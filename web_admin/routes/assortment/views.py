@@ -55,9 +55,9 @@ async def list_assortment(
                c.id as category_id, c.name as category_name
         FROM items i
         JOIN categories c ON i.category_id = c.id
-        WHERE 1=1
+        WHERE c.name != '__SYSTEM__'
     """
-    count_query = "SELECT COUNT(*) FROM items i WHERE 1=1"
+    count_query = "SELECT COUNT(*) FROM items i JOIN categories c ON i.category_id = c.id WHERE c.name != '__SYSTEM__'"
     params = []
     count_params = []
 
@@ -84,13 +84,12 @@ async def list_assortment(
         rows = await conn.fetch(base_query, *params)
         items = [dict(row) for row in rows]
 
-        # Проверяем наличие столбца sort_order и формируем соответствующий ORDER BY
         if await has_sort_order_column(conn):
             order_clause = "ORDER BY sort_order, name"
         else:
             order_clause = "ORDER BY name"
 
-        categories_rows = await conn.fetch(f"SELECT id, name FROM categories {order_clause}")
+        categories_rows = await conn.fetch(f"SELECT id, name FROM categories WHERE name != '__SYSTEM__' {order_clause}")
         categories = [{"id": row["id"], "name": row["name"]} for row in categories_rows]
 
     return templates.TemplateResponse("assortment.html", {
@@ -116,7 +115,7 @@ async def search_items(q: str = Query(..., min_length=2)):
             SELECT i.id, i.text, i.serial, c.name as category_name
             FROM items i
             JOIN categories c ON i.category_id = c.id
-            WHERE i.text ILIKE $1 OR i.serial ILIKE $1
+            WHERE (i.text ILIKE $1 OR i.serial ILIKE $1) AND c.name != '__SYSTEM__'
             ORDER BY i.id DESC
             LIMIT 10
         ''', f'%{q}%')
@@ -137,7 +136,7 @@ async def search_by_serial(q: str = Query(..., min_length=1)):
                    c.name as category_name
             FROM items i
             JOIN categories c ON i.category_id = c.id
-            WHERE regexp_replace(i.serial, '[№\\s]', '', 'g') ILIKE $1
+            WHERE regexp_replace(i.serial, '[№\\s]', '', 'g') ILIKE $1 AND c.name != '__SYSTEM__'
             ORDER BY i.id
             LIMIT 10
         ''', f'%{normalized_q}%')
@@ -169,7 +168,6 @@ async def move_category_up(cat_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Проверяем наличие столбца sort_order
             if not await has_sort_order_column(conn):
                 raise HTTPException(status_code=400, detail="Функция недоступна: столбец sort_order отсутствует")
 
@@ -177,8 +175,8 @@ async def move_category_up(cat_id: int):
             if current_order is None:
                 raise HTTPException(status_code=404, detail="Категория не найдена")
             prev = await conn.fetchrow(
-                'SELECT id, sort_order FROM categories WHERE sort_order < $1 ORDER BY sort_order DESC LIMIT 1',
-                current_order
+                'SELECT id, sort_order FROM categories WHERE sort_order < $1 AND name != $2 ORDER BY sort_order DESC LIMIT 1',
+                current_order, '__SYSTEM__'
             )
             if prev:
                 await conn.execute(
@@ -206,8 +204,8 @@ async def move_category_down(cat_id: int):
             if current_order is None:
                 raise HTTPException(status_code=404, detail="Категория не найдена")
             next_cat = await conn.fetchrow(
-                'SELECT id, sort_order FROM categories WHERE sort_order > $1 ORDER BY sort_order ASC LIMIT 1',
-                current_order
+                'SELECT id, sort_order FROM categories WHERE sort_order > $1 AND name != $2 ORDER BY sort_order ASC LIMIT 1',
+                current_order, '__SYSTEM__'
             )
             if next_cat:
                 await conn.execute(
