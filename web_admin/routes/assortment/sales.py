@@ -2,8 +2,7 @@
 import uuid
 import logging
 import asyncio
-import traceback
-from bot.repositories import StatsRepository
+from bot.repositories import StatsRepository, ClientRepository
 from bot.db import get_pool
 from bot.services.cache import cache
 from datetime import date
@@ -29,7 +28,7 @@ async def delete_item_and_log_sale(
 ):
     """
     Удаляет товар из ассортимента и создаёт запись в sales.
-    Платежи в daily_payments уже обработаны в handle_sale_from_form.
+    Платежи в daily_payments и покупка (purchases) уже обработаны в handle_sale_from_form.
     """
     allowed_types = {'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment', 'paid'}
     if payment_type not in allowed_types:
@@ -43,7 +42,6 @@ async def delete_item_and_log_sale(
         """, item_id, text, serial, category_id, message_id)
     except Exception as e:
         logger.warning(f"Не удалось вставить в deleted_items для item_id={item_id}: {e}")
-        # Продолжаем, так как товар всё равно нужно удалить
 
     await conn.execute("DELETE FROM items WHERE id = $1", item_id)
     await StatsRepository.add_sale(
@@ -80,7 +78,7 @@ async def handle_sale_from_form(
 ):
     """
     Обрабатывает продажу товара и аксессуаров.
-    В случае ошибки возвращает словарь с ключом 'error'.
+    Также создаёт запись о покупке (purchases) и сохраняет клиента.
     """
     try:
         if not sale_price:
@@ -103,6 +101,17 @@ async def handle_sale_from_form(
             own_conn = True
 
         try:
+            # --- Сохраняем или обновляем клиента ---
+            client_id = None
+            phone = sale_phone.strip() if sale_phone else None
+            if phone or sale_full_name:
+                client_id = await ClientRepository.get_or_create_client(
+                    phone=phone,
+                    full_name=sale_full_name.strip() if sale_full_name else None,
+                    social_network=sale_platform.strip() if sale_platform else None,
+                )
+
+            # Обработка аксессуаров
             if accessories:
                 for acc in accessories:
                     acc_price = acc['price']
@@ -145,12 +154,12 @@ async def handle_sale_from_form(
                     if pay_type and pay_type != "paid" and acc_price > 0:
                         accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
 
-            # Собираем все платежи (кроме paid)
+            # Собираем все платежи
             all_payments = dict(accessories_payments)
             if sale_payment_type != "paid" and sale_payment_amount > 0:
                 all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
 
-            # Сохраняем обычные платежи в daily_payments
+            # Сохраняем платежи в daily_payments
             for pay_type, amount in all_payments.items():
                 if amount > 0:
                     await conn.execute("""
@@ -158,13 +167,22 @@ async def handle_sale_from_form(
                         VALUES ('sale', $1, $2, $3)
                     """, pay_type, amount, sale_message_id)
 
-            total_item_price = sale_price + accessories_total
+            # --- Создаём запись о покупке (purchases) ---
+            if client_id:
+                items_list = [{"item_text": text, "price": sale_price, "serial": serial}]
+                if processed_accessories:
+                    for acc in processed_accessories:
+                        items_list.append({"item_text": acc['text'], "price": acc['price']})
+                payment_details_json = {pt: amt for pt, amt in all_payments.items() if amt > 0}
+                await ClientRepository.add_purchase(
+                    client_id=client_id,
+                    items=items_list,
+                    total_amount=sale_price + accessories_total,
+                    payment_details=payment_details_json,
+                    purchase_type='sale'
+                )
 
-            logger.info(
-                f"Продажа товара {item_id}: цена={total_item_price}, "
-                f"платежи={all_payments}, аксессуары={accessories_total}"
-            )
-
+            # Отправка уведомления
             from .notifications import send_sale_notification
             asyncio.create_task(send_sale_notification(
                 item_text=text,
@@ -178,12 +196,13 @@ async def handle_sale_from_form(
                 accessories=processed_accessories
             ))
 
+            # Удаление товара и фиксация продажи
             await delete_item_and_log_sale(
                 item_id=item_id,
                 text=old_text,
                 serial=old_serial,
                 category_id=old_category_id,
-                price=total_item_price,
+                price=sale_price + accessories_total,
                 prepayment=sale_prepayment or 0,
                 payment_type=sale_payment_type,
                 payment_amount=sale_payment_amount if sale_payment_type != "paid" else 0,
@@ -191,7 +210,7 @@ async def handle_sale_from_form(
                 conn=conn
             )
 
-            # Инвалидируем кэш дашборда за сегодня
+            # Инвалидируем кэш дашборда
             await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
         finally:
             if own_conn:
@@ -199,4 +218,4 @@ async def handle_sale_from_form(
         return {"success": True}
     except Exception as e:
         logger.exception("Ошибка в handle_sale_from_form")
-        return {"error": str(e), "traceback": traceback.format_exc()}
+        return {"error": str(e)}
