@@ -90,7 +90,7 @@
             </thead>
             <tbody>
                 {% for item in items %}
-                <tr>
+                <tr class="{% if item.is_booked %}table-warning{% endif %}">
                     <td>{{ item.id }}</td>
                     <td>{{ item.text }}</td>
                     <td>{{ item.serial or '—' }}</td>
