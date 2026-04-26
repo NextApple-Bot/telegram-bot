@@ -27,7 +27,8 @@
             </div>
             <div class="col-md-3 text-md-end">
                 <button type="submit" class="btn btn-primary w-100 w-md-auto">Применить</button>
-                <a href="/admin/clients/export/csv?{{ request.query_params|urlencode }}" class="btn btn-outline-secondary ms-2">📥 CSV</a>
+                <!-- Исправлено: убран фильтр |urlencode -->
+                <a href="/admin/clients/export/csv?{{ request.query_params }}" class="btn btn-outline-secondary ms-2">📥 CSV</a>
             </div>
         </div>
     </div>
@@ -41,11 +42,11 @@
         <table class="table table-hover align-middle">
             <thead>
                 <tr>
-                    <th><a href="?sort_by=id&sort_order={% if sort_by == 'id' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">ID</a></th>
-                    <th><a href="?sort_by=full_name&sort_order={% if sort_by == 'full_name' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">ФИО</a></th>
-                    <th><a href="?sort_by=phone&sort_order={% if sort_by == 'phone' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">Телефон</a></th>
-                    <th><a href="?sort_by=telegram_username&sort_order={% if sort_by == 'telegram_username' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">Telegram</a></th>
-                    <th><a href="?sort_by=created_at&sort_order={% if sort_by == 'created_at' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">Дата регистрации</a></th>
+                    <th><a href="?sort_by=id&sort_order={% if sort_by == 'id' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">ID</a></th>
+                    <th><a href="?sort_by=full_name&sort_order={% if sort_by == 'full_name' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">ФИО</a></th>
+                    <th><a href="?sort_by=phone&sort_order={% if sort_by == 'phone' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Телефон</a></th>
+                    <th><a href="?sort_by=telegram_username&sort_order={% if sort_by == 'telegram_username' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Telegram</a></th>
+                    <th><a href="?sort_by=created_at&sort_order={% if sort_by == 'created_at' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Дата регистрации</a></th>
                     <th style="width: 100px;">Действия</th>
                 </tr>
             </thead>
@@ -75,13 +76,13 @@
         <nav>
             <ul class="pagination pagination-sm mb-0">
                 {% if page > 1 %}
-                <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}&{{ request.query_params|urlencode }}">«</a></li>
-                <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}&{{ request.query_params|urlencode }}">‹</a></li>
+                <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}&{{ request.query_params }}">«</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}&{{ request.query_params }}">‹</a></li>
                 {% endif %}
                 <li class="page-item active"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
                 {% if page < total_pages %}
-                <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}&{{ request.query_params|urlencode }}">›</a></li>
-                <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}&{{ request.query_params|urlencode }}">»</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}&{{ request.query_params }}">›</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}&{{ request.query_params }}">»</a></li>
                 {% endif %}
             </ul>
         </nav>
