@@ -27,11 +27,24 @@
 </style>
 {% endblock %}
 {% block content %}
+<!-- Выбор даты -->
+<div class="row align-items-end mb-4">
+    <div class="col-auto">
+        <label class="form-label fw-semibold">Дата</label>
+        <input type="date" class="form-control" id="targetDateInput" value="{{ target_date }}">
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" id="changeDateBtn">Показать</button>
+    </div>
+    <div class="col-auto ms-auto">
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
+            <i class="bi bi-pencil-square me-1"></i> Редактировать статистику
+        </button>
+    </div>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 style="font-weight: 600; font-size: 1.8rem; color: var(--text-dark);">Дашборд</h1>
-    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
-        <i class="bi bi-pencil-square me-1"></i> Редактировать статистику
-    </button>
+    <h1 style="font-weight: 600; font-size: 1.8rem; color: var(--text-dark);">Дашборд за {{ target_date }}</h1>
 </div>
 
 <div class="row g-4 mb-4">
@@ -40,10 +53,11 @@
             <div class="card-body">
                 <div class="d-flex align-items-center mb-2">
                     <i class="bi bi-cart-check-fill me-2 fs-4" style="color: var(--primary);"></i>
-                    <h5 class="card-title mb-0 fw-semibold">Продажи сегодня</h5>
+                    <h5 class="card-title mb-0 fw-semibold">Продажи</h5>
                 </div>
                 <div class="kpi-value">{{ sales_today }}</div>
                 <div class="mt-2">
+                    {% if sales_change_yesterday is not none %}
                     {% if sales_change_yesterday > 0 %}
                     <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ sales_change_yesterday }}% ко вчера</span>
                     {% elif sales_change_yesterday < 0 %}
@@ -60,6 +74,9 @@
                         <span class="trend-badge text-secondary">➡️ к нед.</span>
                         {% endif %}
                     </span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">Нет данных сравнения</span>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -69,10 +86,11 @@
             <div class="card-body">
                 <div class="d-flex align-items-center mb-2">
                     <i class="bi bi-currency-dollar me-2 fs-4" style="color: var(--success);"></i>
-                    <h5 class="card-title mb-0 fw-semibold">Выручка сегодня</h5>
+                    <h5 class="card-title mb-0 fw-semibold">Выручка</h5>
                 </div>
                 <div class="kpi-value">{{ "{:,.0f}".format(revenue_today) }} ₽</div>
                 <div class="mt-2">
+                    {% if revenue_change_yesterday is not none %}
                     {% if revenue_change_yesterday > 0 %}
                     <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ revenue_change_yesterday }}% ко вчера</span>
                     {% elif revenue_change_yesterday < 0 %}
@@ -89,6 +107,9 @@
                         <span class="trend-badge text-secondary">➡️ к нед.</span>
                         {% endif %}
                     </span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">Нет данных сравнения</span>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -99,7 +120,7 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header fw-semibold">
-                <i class="bi bi-coin me-2"></i> Финансы за сегодня
+                <i class="bi bi-coin me-2"></i> Финансы за {{ target_date }}
             </div>
             <div class="card-body p-0">
                 <table class="table table-borderless mb-0">
@@ -164,11 +185,12 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title fw-semibold">Редактировать статистику за сегодня</h5>
+                <h5 class="modal-title fw-semibold">Редактировать статистику за <span id="editDateLabel">{{ target_date }}</span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <form id="editStatsForm">
+                    <input type="hidden" name="target_date" value="{{ target_date }}">
                     <h6 class="fw-semibold mb-3">Платежи</h6>
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
@@ -222,7 +244,15 @@
 </div>
 
 <script>
-    // Продажи
+    // Кнопка выбора даты
+    document.getElementById('changeDateBtn').addEventListener('click', function() {
+        const dateVal = document.getElementById('targetDateInput').value;
+        if (dateVal) {
+            window.location.href = '?target_date=' + dateVal;
+        }
+    });
+
+    // Графики (используем переданные данные)
     new Chart(document.getElementById('salesChart'), {
         type: 'line',
         data: {
@@ -248,7 +278,6 @@
         }
     });
 
-    // Выручка
     new Chart(document.getElementById('revenueChart'), {
         type: 'line',
         data: {
@@ -284,7 +313,7 @@
     const colors = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
     function updateTopModels(days) {
-        fetch(`/admin/dashboard/top_models_data?days=${days}`)
+        fetch(`/admin/dashboard/top_models_data?days=${days}&target_date={{ target_date }}`)
             .then(res => res.json())
             .then(data => {
                 if (pieChart) pieChart.destroy();
@@ -358,10 +387,12 @@
         const form = document.getElementById('editStatsForm');
         const formData = new FormData(form);
         const data = Object.fromEntries(formData.entries());
-        for (let k in data) data[k] = parseFloat(data[k]) || 0;
+        for (let k in data) {
+            if (k !== 'target_date') data[k] = parseFloat(data[k]) || 0;
+        }
 
         try {
-            const res = await fetch('/admin/dashboard/update_today_stats', {
+            const res = await fetch('/admin/dashboard/update_stats', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -370,9 +401,8 @@
             if (result.success) {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('editStatsModal'));
                 modal.hide();
-                document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-                document.body.classList.remove('modal-open');
-                window.location.href = window.location.pathname + '?_t=' + Date.now();
+                // Перезагружаем страницу с той же датой
+                window.location.href = '?target_date=' + data.target_date + '&_t=' + Date.now();
             } else {
                 alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
             }
