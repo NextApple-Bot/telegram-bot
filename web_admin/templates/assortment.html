@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Ассортимент{% endblock %}
 {% block page_title %}Ассортимент{% endblock %}
+{% block extra_head %}
+<!-- SortableJS для drag-and-drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+{% endblock %}
 {% block content %}
 <div class="card">
     <div class="card-body">
@@ -45,11 +49,11 @@
         <!-- Сворачиваемый блок управления порядком категорий -->
         <div class="collapse mb-3" id="categoryOrderCollapse">
             <div class="card card-body bg-light">
-                <label class="form-label fw-semibold">Порядок категорий (влияет на выгрузку и отображение)</label>
-                <div class="list-group">
+                <label class="form-label fw-semibold">Порядок категорий (перетаскивайте, чтобы изменить)</label>
+                <div class="list-group" id="categoryOrderList">
                     {% for cat in categories %}
-                    <div class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>{{ cat.name }}</span>
+                    <div class="list-group-item d-flex justify-content-between align-items-center" data-cat-id="{{ cat.id }}">
+                        <span class="category-name" title="Двойной клик для редактирования">{{ cat.name }}</span>
                         <div class="btn-group btn-group-sm">
                             <button class="btn btn-outline-secondary move-up-btn" data-cat-id="{{ cat.id }}" {% if loop.first %}disabled{% endif %} title="Переместить вверх">
                                 <i class="bi bi-arrow-up"></i>
@@ -57,11 +61,14 @@
                             <button class="btn btn-outline-secondary move-down-btn" data-cat-id="{{ cat.id }}" {% if loop.last %}disabled{% endif %} title="Переместить вниз">
                                 <i class="bi bi-arrow-down"></i>
                             </button>
+                            <button class="btn btn-outline-danger delete-category-btn" data-cat-id="{{ cat.id }}" title="Удалить категорию">
+                                <i class="bi bi-trash"></i>
+                            </button>
                         </div>
                     </div>
                     {% endfor %}
                 </div>
-                <small class="text-muted mt-2">Нажмите на стрелки, чтобы изменить порядок категорий. Изменения сразу применяются.</small>
+                <small class="text-muted mt-2">Перетащите элементы, чтобы изменить порядок. Двойной клик по названию — переименовать. Кнопка корзины — удалить (только пустую категорию).</small>
             </div>
         </div>
     </div>
@@ -127,6 +134,7 @@
 <div class="modal fade" id="addCategoryModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/admin/assortment/add_category" method="post"><div class="modal-header"><h5 class="modal-title">Добавить категорию</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Название</label><input type="text" class="form-control" name="name" required></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button><button type="submit" class="btn btn-primary">Добавить</button></div></form></div></div></div>
 
 <script>
+    // Основные функции фильтрации и поиска
     document.getElementById('applyFilter').addEventListener('click', function(e) {
         e.preventDefault();
         const params = new URLSearchParams(window.location.search);
@@ -151,21 +159,108 @@
             .then(d => { suggestions.innerHTML = d.results.map(i => `<option value="${i.text}">`).join(''); });
     });
 
-    // Обработчики кнопок перемещения категорий
+    // --- Drag-and-drop с помощью SortableJS ---
+    const orderList = document.getElementById('categoryOrderList');
+    if (orderList) {
+        new Sortable(orderList, {
+            animation: 150,
+            handle: '.list-group-item',
+            onEnd: async function() {
+                const items = orderList.querySelectorAll('.list-group-item');
+                const newOrder = Array.from(items).map(item => parseInt(item.dataset.catId));
+                try {
+                    const resp = await fetch('/admin/assortment/categories/reorder', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(newOrder)
+                    });
+                    if (!resp.ok) alert('Ошибка при сохранении порядка');
+                } catch (err) {
+                    alert('Ошибка сети');
+                }
+            }
+        });
+    }
+
+    // --- Инлайн-редактирование названия категории ---
+    document.querySelectorAll('.category-name').forEach(span => {
+        span.addEventListener('dblclick', function() {
+            const catId = this.closest('.list-group-item').dataset.catId;
+            const currentName = this.textContent;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentName;
+            input.className = 'form-control form-control-sm';
+            this.replaceWith(input);
+            input.focus();
+            input.select();
+
+            const save = async () => {
+                const newName = input.value.trim();
+                if (newName && newName !== currentName) {
+                    try {
+                        const resp = await fetch(`/admin/assortment/categories/${catId}/rename?new_name=${encodeURIComponent(newName)}`, {method: 'POST'});
+                        if (!resp.ok) {
+                            const err = await resp.json();
+                            alert(err.detail || 'Ошибка');
+                        } else {
+                            const spanNew = document.createElement('span');
+                            spanNew.className = 'category-name';
+                            spanNew.textContent = newName;
+                            spanNew.title = 'Двойной клик для редактирования';
+                            spanNew.addEventListener('dblclick', arguments.callee);
+                            input.replaceWith(spanNew);
+                        }
+                    } catch (err) {
+                        alert('Ошибка сети');
+                    }
+                } else {
+                    const spanOld = document.createElement('span');
+                    spanOld.className = 'category-name';
+                    spanOld.textContent = currentName;
+                    spanOld.title = 'Двойной клик для редактирования';
+                    spanOld.addEventListener('dblclick', arguments.callee);
+                    input.replaceWith(spanOld);
+                }
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); save(); }
+            });
+        });
+    });
+
+    // --- Удаление категории ---
+    document.querySelectorAll('.delete-category-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const catId = this.dataset.catId;
+            if (!confirm('Удалить эту категорию? Если в ней есть товары, удаление невозможно.')) return;
+            try {
+                const resp = await fetch(`/admin/assortment/categories/${catId}/delete`, {method: 'POST'});
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    alert(err.detail || 'Ошибка удаления');
+                } else {
+                    // Удаляем элемент из DOM
+                    this.closest('.list-group-item').remove();
+                }
+            } catch (err) {
+                alert('Ошибка сети');
+            }
+        });
+    });
+
+    // Обработчики кнопок перемещения (оставлены для совместимости, но drag-and-drop основной)
     document.querySelectorAll('.move-up-btn').forEach(btn => {
         btn.addEventListener('click', async function(e) {
             e.preventDefault();
             const catId = this.dataset.catId;
             try {
                 const resp = await fetch(`/admin/assortment/categories/${catId}/move_up`, { method: 'POST' });
-                if (resp.ok) {
-                    window.location.reload();
-                } else {
-                    alert('Ошибка перемещения');
-                }
-            } catch (err) {
-                alert('Ошибка сети');
-            }
+                if (resp.ok) window.location.reload();
+                else alert('Ошибка перемещения');
+            } catch (err) { alert('Ошибка сети'); }
         });
     });
 
@@ -175,14 +270,9 @@
             const catId = this.dataset.catId;
             try {
                 const resp = await fetch(`/admin/assortment/categories/${catId}/move_down`, { method: 'POST' });
-                if (resp.ok) {
-                    window.location.reload();
-                } else {
-                    alert('Ошибка перемещения');
-                }
-            } catch (err) {
-                alert('Ошибка сети');
-            }
+                if (resp.ok) window.location.reload();
+                else alert('Ошибка перемещения');
+            } catch (err) { alert('Ошибка сети'); }
         });
     });
 </script>
