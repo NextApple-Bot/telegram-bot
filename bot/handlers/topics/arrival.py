@@ -129,7 +129,26 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
             return
         lines = [line.strip() for line in content.splitlines() if line.strip()]
 
+    # Убираем строки-разделители (полностью из тире)
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
+
+    # --- НОВОЕ: склеиваем строки, где серийник на следующей строке ---
+    merged_lines = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Если строка не содержит серийный номер, а следующая содержит — склеиваем
+        if not extract_serials(line) and i + 1 < len(lines):
+            next_line = lines[i + 1]
+            if extract_serials(next_line):
+                merged = f"{line} {next_line}"
+                merged_lines.append(merged)
+                i += 2
+                continue
+        merged_lines.append(line)
+        i += 1
+    lines = merged_lines
+    # ----------------------------------------------------------------
 
     filtered_lines = []
     skipped_no_serial = []
