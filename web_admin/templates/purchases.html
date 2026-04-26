@@ -36,7 +36,7 @@
             </div>
         </div>
         <div class="text-end">
-            <a href="/admin/purchases/export/csv?{{ request.query_params|urlencode }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-download"></i> CSV</a>
+            <a href="/admin/purchases/export/csv?{{ request.query_params }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-download"></i> CSV</a>
         </div>
     </div>
 </div>
@@ -47,11 +47,11 @@
         <table class="table table-hover align-middle">
             <thead>
                 <tr>
-                    <th><a href="?sort_by=id&sort_order={% if sort_by=='id' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">ID</a></th>
-                    <th><a href="?sort_by=client_name&sort_order={% if sort_by=='client_name' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">Клиент</a></th>
-                    <th><a href="?sort_by=created_at&sort_order={% if sort_by=='created_at' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">Дата</a></th>
-                    <th><a href="?sort_by=total_amount&sort_order={% if sort_by=='total_amount' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">Сумма</a></th>
-                    <th><a href="?sort_by=purchase_type&sort_order={% if sort_by=='purchase_type' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params|urlencode }}">Тип</a></th>
+                    <th><a href="?sort_by=id&sort_order={% if sort_by=='id' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">ID</a></th>
+                    <th><a href="?sort_by=client_name&sort_order={% if sort_by=='client_name' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Клиент</a></th>
+                    <th><a href="?sort_by=created_at&sort_order={% if sort_by=='created_at' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Дата</a></th>
+                    <th><a href="?sort_by=total_amount&sort_order={% if sort_by=='total_amount' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Сумма</a></th>
+                    <th><a href="?sort_by=purchase_type&sort_order={% if sort_by=='purchase_type' and sort_order=='asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Тип</a></th>
                     <th>Оплата</th>
                     <th style="width:80px;"></th>
                 </tr>
@@ -80,13 +80,13 @@
         <nav>
             <ul class="pagination pagination-sm mb-0">
                 {% if page > 1 %}
-                <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}&{{ request.query_params|urlencode }}">«</a></li>
-                <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}&{{ request.query_params|urlencode }}">‹</a></li>
+                <li class="page-item"><a class="page-link" href="?page=1&per_page={{ per_page }}&{{ request.query_params }}">«</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page-1 }}&per_page={{ per_page }}&{{ request.query_params }}">‹</a></li>
                 {% endif %}
                 <li class="page-item active"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
                 {% if page < total_pages %}
-                <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}&{{ request.query_params|urlencode }}">›</a></li>
-                <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}&{{ request.query_params|urlencode }}">»</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ page+1 }}&per_page={{ per_page }}&{{ request.query_params }}">›</a></li>
+                <li class="page-item"><a class="page-link" href="?page={{ total_pages }}&per_page={{ per_page }}&{{ request.query_params }}">»</a></li>
                 {% endif %}
             </ul>
         </nav>
