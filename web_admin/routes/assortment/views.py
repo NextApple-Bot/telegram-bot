@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from typing import Optional
+from typing import Optional, List
 import re
 
 from bot.db import get_pool
@@ -84,6 +84,7 @@ async def list_assortment(
         rows = await conn.fetch(base_query, *params)
         items = [dict(row) for row in rows]
 
+        # Проверяем наличие столбца sort_order и формируем соответствующий ORDER BY
         if await has_sort_order_column(conn):
             order_clause = "ORDER BY sort_order, name"
         else:
@@ -115,7 +116,7 @@ async def search_items(q: str = Query(..., min_length=2)):
             SELECT i.id, i.text, i.serial, c.name as category_name
             FROM items i
             JOIN categories c ON i.category_id = c.id
-            WHERE (i.text ILIKE $1 OR i.serial ILIKE $1) AND c.name != '__SYSTEM__'
+            WHERE i.text ILIKE $1 OR i.serial ILIKE $1
             ORDER BY i.id DESC
             LIMIT 10
         ''', f'%{q}%')
@@ -136,7 +137,7 @@ async def search_by_serial(q: str = Query(..., min_length=1)):
                    c.name as category_name
             FROM items i
             JOIN categories c ON i.category_id = c.id
-            WHERE regexp_replace(i.serial, '[№\\s]', '', 'g') ILIKE $1 AND c.name != '__SYSTEM__'
+            WHERE regexp_replace(i.serial, '[№\\s]', '', 'g') ILIKE $1
             ORDER BY i.id
             LIMIT 10
         ''', f'%{normalized_q}%')
@@ -215,6 +216,64 @@ async def move_category_down(cat_id: int):
                 await conn.execute(
                     'UPDATE categories SET sort_order = $1 WHERE id = $2',
                     current_order, next_cat['id']
+                )
+    await AssortmentService.invalidate_cache()
+    return JSONResponse({"success": True})
+
+
+# --- НОВЫЕ ЭНДПОИНТЫ ДЛЯ УЛУЧШЕНИЙ ---
+
+@router.post("/categories/{cat_id}/delete")
+async def delete_category(cat_id: int):
+    """Удаляет категорию, если она пуста (нет товаров)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Проверяем, что категория не служебная
+        name = await conn.fetchval("SELECT name FROM categories WHERE id = $1", cat_id)
+        if not name or name == '__SYSTEM__':
+            raise HTTPException(status_code=400, detail="Эту категорию нельзя удалить")
+        
+        count = await conn.fetchval("SELECT COUNT(*) FROM items WHERE category_id = $1", cat_id)
+        if count > 0:
+            raise HTTPException(status_code=400, detail="Категория не пуста. Перенесите товары или удалите их.")
+        
+        await conn.execute("DELETE FROM categories WHERE id = $1", cat_id)
+    await AssortmentService.invalidate_cache()
+    return JSONResponse({"success": True})
+
+
+@router.post("/categories/{cat_id}/rename")
+async def rename_category(cat_id: int, new_name: str = Query(..., min_length=1)):
+    """Переименовывает категорию."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        name = await conn.fetchval("SELECT name FROM categories WHERE id = $1", cat_id)
+        if not name or name == '__SYSTEM__':
+            raise HTTPException(status_code=400, detail="Эту категорию нельзя переименовать")
+        
+        # Проверка на дубликат имени
+        exists = await conn.fetchval("SELECT id FROM categories WHERE LOWER(name) = LOWER($1) AND id != $2", new_name, cat_id)
+        if exists:
+            raise HTTPException(status_code=400, detail="Категория с таким именем уже существует")
+        
+        await conn.execute("UPDATE categories SET name = $1 WHERE id = $2", new_name, cat_id)
+    await AssortmentService.invalidate_cache()
+    return JSONResponse({"success": True})
+
+
+@router.post("/categories/reorder")
+async def reorder_categories(order: List[int]):
+    """
+    Принимает список ID категорий в новом порядке.
+    Обновляет sort_order для каждой категории.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for idx, cat_id in enumerate(order):
+                await conn.execute(
+                    "UPDATE categories SET sort_order = $1 WHERE id = $2 AND name != '__SYSTEM__'",
+                    idx, cat_id
                 )
     await AssortmentService.invalidate_cache()
     return JSONResponse({"success": True})
