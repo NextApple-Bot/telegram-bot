@@ -21,16 +21,17 @@ async def list_sold(
     pool = await get_pool()
     offset = (page - 1) * per_page
 
+    # Показываем все непроданные удалённые товары (независимо от причины)
     query = """
-        SELECT id, item_id, text, serial, category_id, deleted_at, sale_message_id
+        SELECT id, item_id, text, serial, category_id, deleted_at, sale_message_id, reason
         FROM deleted_items
-        WHERE reason = 'sale_from_admin' AND restored = FALSE
+        WHERE restored = FALSE
         ORDER BY deleted_at DESC
         LIMIT $1 OFFSET $2
     """
     count_query = """
         SELECT COUNT(*) FROM deleted_items
-        WHERE reason = 'sale_from_admin' AND restored = FALSE
+        WHERE restored = FALSE
     """
 
     async with pool.acquire() as conn:
@@ -57,7 +58,7 @@ async def restore_sold(deleted_id: int, request: Request):
             row = await conn.fetchrow("""
                 SELECT item_id, text, serial, category_id, sale_message_id
                 FROM deleted_items
-                WHERE id = $1 AND reason = 'sale_from_admin' AND restored = FALSE
+                WHERE id = $1 AND restored = FALSE
             """, deleted_id)
             if not row:
                 raise HTTPException(status_code=404, detail="Запись не найдена или уже восстановлена")
@@ -69,14 +70,12 @@ async def restore_sold(deleted_id: int, request: Request):
             # Проверяем существование категории
             cat_exists = await conn.fetchval("SELECT 1 FROM categories WHERE id = $1", category_id)
             if not cat_exists:
-                # Категория была удалена — создаём или используем "Общее:"
                 default_cat_id = await conn.fetchval("""
                     INSERT INTO categories (name) VALUES ('Общее:')
                     ON CONFLICT (name) DO NOTHING
                     RETURNING id
                 """)
                 if not default_cat_id:
-                    # Если конфликт произошёл, но RETURNING не сработал (теоретически), запросим id
                     default_cat_id = await conn.fetchval("SELECT id FROM categories WHERE name = 'Общее:'")
                 category_id = default_cat_id
                 logger.info(f"Категория {row['category_id']} не найдена, товар восстановлен в категорию 'Общее:' (id={category_id})")
