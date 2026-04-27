@@ -114,6 +114,14 @@ async def edit_item_submit(
             if old_is_sold:
                 raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
+            # ---------- НОВЫЙ СТРОБОСКОПИЧЕСКИЙ ПРОВЕР ----------
+            if is_sold and is_booked:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Снимите бронь перед продажей, дебил"
+                )
+            # ---------------------------------------------------
+
             # Обработка ПРОДАЖИ
             if is_sold:
                 accessories = []
