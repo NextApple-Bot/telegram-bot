@@ -2,6 +2,12 @@
 {% block title %}Продавцы{% endblock %}
 {% block page_title %}Управление продавцами{% endblock %}
 {% block content %}
+<div class="mb-3">
+    <a href="/admin/dashboard" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Назад к дашборду
+    </a>
+</div>
+
 <div class="card">
     <div class="card-body">
         <form method="post" action="/admin/sellers/add" class="row g-2">
