@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>{% block title %}Admin Panel{% endblock %}</title>
-    <!-- Предзагрузка шрифта для мгновенного рендера -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
@@ -25,7 +24,7 @@
             --card-bg: #ffffff;
             --border-light: #e2e8f0;
             --text-dark: #1e293b;
-            --text-muted: #334155;  /* улучшен контраст с 64748b на 334155 */
+            --text-muted: #334155;
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.05);
             --shadow-md: 0 4px 6px -2px rgba(0,0,0,0.03), 0 10px 15px -3px rgba(0,0,0,0.05);
             --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.03), 0 10px 10px -5px rgba(0,0,0,0.02);
@@ -163,7 +162,7 @@
             padding: 0.75rem 1rem;
             vertical-align: middle;
             border-color: var(--border-light);
-            word-break: break-word;  /* чтобы серийники не вылезали */
+            word-break: break-word;
         }
         .table tbody tr:hover {
             background-color: rgba(0,0,0,0.01);
@@ -232,13 +231,11 @@
             padding-top: 1.5rem;
         }
 
-        /* ---- Фокус для доступности ---- */
         :focus-visible {
             outline: 2px solid var(--primary);
             outline-offset: 2px;
         }
 
-        /* ---- Кнопка мобильного меню (бургер) ---- */
         .mobile-menu-toggle {
             display: none;
             background: none;
@@ -250,13 +247,15 @@
             z-index: 1100;
         }
 
-        /* ---- Адаптивность ---- */
+        /* Планшеты: только иконки */
         @media (max-width: 992px) {
             .sidebar { width: var(--sidebar-collapsed-width); }
             .sidebar .nav-link span { display: none; }
             .sidebar .nav-link i { margin: 0 auto; }
             .sidebar .logo-area h4 { text-align: center; font-size: 1.2rem; }
         }
+
+        /* Мобильные: сайдбар скрыт, бургер активен */
         @media (max-width: 768px) {
             .mobile-menu-toggle { display: block; }
             .sidebar {
@@ -265,12 +264,17 @@
                 transition: transform 0.2s ease;
             }
             .sidebar.sidebar-mobile-open { transform: translateX(0); }
+            /* ВОТ ЭТО ДЕРЬМО Я ПРОЕБАЛ, СУКА. ТЕПЕРЬ ПОДПИСИ ВОЗВРАЩАЮТСЯ */
+            .sidebar.sidebar-mobile-open .nav-link span {
+                display: inline !important;
+            }
             .main-content { margin-left: 0 !important; padding: 1rem; }
             .top-bar { flex-direction: column; align-items: flex-start; }
             .top-bar h1 { font-size: 1.5rem; }
             .btn { width: 100%; margin-bottom: 0.5rem; }
             .table { font-size: 0.8rem; }
         }
+
         @media (max-width: 480px) {
             .card-body { padding: 1rem; }
             .row { flex-direction: column; }
@@ -280,6 +284,9 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Меню">
+        <i class="bi bi-list"></i>
+    </button>
     <div class="sidebar" id="sidebar">
         <div class="logo-area">
             <h4>📊 Bot Admin</h4>
@@ -303,6 +310,9 @@
             <a href="/admin/stats" class="nav-link {% if request.url.path.startswith('/admin/stats') %}active{% endif %}">
                 <i class="bi bi-graph-up"></i> <span>Статистика</span>
             </a>
+            <a href="/admin/sellers/stats" class="nav-link {% if request.url.path.startswith('/admin/sellers') %}active{% endif %}">
+                <i class="bi bi-people-fill"></i> <span>Продавцы</span>
+            </a>
             <a href="/admin/auth/logout" class="nav-link">
                 <i class="bi bi-box-arrow-right"></i> <span>Выйти</span>
             </a>
@@ -315,12 +325,8 @@
     <div class="main-content" id="mainContent">
         <div class="top-bar">
             <div style="display: flex; align-items: center;">
-                <button class="mobile-menu-toggle" id="mobileMenuToggle">
-                    <i class="bi bi-list"></i>
-                </button>
                 <h1>{% block page_title %}Панель управления{% endblock %}</h1>
             </div>
-            <div></div>
         </div>
         <div class="container-fluid px-0">
             {% block content %}{% endblock %}
