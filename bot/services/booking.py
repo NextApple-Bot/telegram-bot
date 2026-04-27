@@ -45,7 +45,8 @@ class BookingService:
                 results.append({"line": item_line, "status": "error", "reason": "no_id"})
                 continue
 
-            today = datetime.now().strftime("%d.%m")
+            # Формат даты теперь DD.MM.YY
+            today = datetime.now().strftime("%d.%m.%y")
             new_text = f"{item_info['text']} (Бронь от {today})"
             await ItemRepository.mark_item_booked(item_info['id'], new_text)
 
