@@ -7,6 +7,7 @@ from datetime import datetime
 
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
+from bot import config                   # <-- добавлен импорт config
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -97,12 +98,29 @@ async def restore_sold(deleted_id: int, request: Request):
                 logger.info(f"Категория {row['category_id']} не найдена, товар восстановлен в категорию 'Общее:' (id={category_id})")
 
             if sale_message_id:
+                # Удаляем запись из sales
                 await conn.execute("DELETE FROM sales WHERE message_id = $1", sale_message_id)
+                # Удаляем связанные финансовые записи
                 await conn.execute("DELETE FROM daily_payments WHERE sale_message_id = $1", sale_message_id)
                 logger.info(f"Удалены продажа и финансы для sale_message_id={sale_message_id}")
+
+                # --- НОВОЕ: пытаемся удалить исходное сообщение из Telegram ---
+                try:
+                    from aiogram import Bot
+                    bot = Bot(token=config.TOKEN)
+                    await bot.delete_message(
+                        chat_id=config.MAIN_GROUP_ID,
+                        message_id=sale_message_id
+                    )
+                    await bot.session.close()
+                    logger.info(f"Сообщение о продаже {sale_message_id} удалено из топика")
+                except Exception as e:
+                    # Не критично, если сообщение не удалилось (например, для продаж из админки)
+                    logger.warning(f"Не удалось удалить сообщение {sale_message_id}: {e}")
             else:
                 logger.warning(f"Не найден sale_message_id для записи deleted_id={deleted_id}, статистика не удалена")
 
+            # Восстанавливаем товар
             await conn.execute("""
                 INSERT INTO items (text, serial, category_id, is_booked)
                 VALUES ($1, $2, $3, FALSE)
