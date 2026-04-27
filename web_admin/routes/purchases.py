@@ -1,6 +1,6 @@
 # Файл: web_admin/routes/purchases.py
 from fastapi import APIRouter, Request, Query, Form, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, timedelta
 from typing import Optional
@@ -208,3 +208,12 @@ async def export_purchases_csv(
     response = StreamingResponse(iter([output.getvalue().encode('utf-8-sig')]), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=purchases_export.csv"
     return response
+
+
+# --------------- Новый эндпоинт удаления ---------------
+@router.post("/delete/{purchase_id}")
+async def delete_purchase(request: Request, purchase_id: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute('DELETE FROM purchases WHERE id = $1', purchase_id)
+    return RedirectResponse(url="/admin/purchases", status_code=303)
