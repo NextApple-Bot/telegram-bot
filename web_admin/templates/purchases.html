@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card">
     <div class="card-body">
-        <div class="row g-2 mb-3 align-items-end">
+        <div class="row g-2 mb-3 align-items-end" id="purchaseFilters">
             <div class="col-md-3">
                 <label class="form-label">Клиент</label>
                 <input type="text" class="form-control" name="client_search" placeholder="Имя или телефон" value="{{ client_search or '' }}">
@@ -32,7 +32,7 @@
                 </select>
             </div>
             <div class="col-md-1">
-                <button type="submit" class="btn btn-primary w-100">Фильтр</button>
+                <button type="submit" class="btn btn-primary w-100" id="applyPurchaseFilter">Фильтр</button>
             </div>
         </div>
         <div class="text-end">
@@ -94,7 +94,7 @@
     {% endif %}
 </div>
 <script>
-    document.querySelector('.btn-primary').addEventListener('click', function(e) {
+    document.getElementById('applyPurchaseFilter').addEventListener('click', function(e) {
         e.preventDefault();
         const params = new URLSearchParams(window.location.search);
         const fields = ['client_search','date_from','date_to','payment_type','purchase_type'];
@@ -106,4 +106,17 @@
         window.location.search = params.toString();
     });
 </script>
+<style>
+    @media (max-width: 480px) {
+        #purchaseFilters .col-md-3,
+        #purchaseFilters .col-md-2,
+        #purchaseFilters .col-md-1 {
+            width: 100%;
+        }
+        #purchaseFilters .btn {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+    }
+</style>
 {% endblock %}
