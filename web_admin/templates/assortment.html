@@ -2,7 +2,6 @@
 {% block title %}Ассортимент{% endblock %}
 {% block page_title %}Ассортимент{% endblock %}
 {% block extra_head %}
-<!-- SortableJS для drag-and-drop -->
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 {% endblock %}
 {% block content %}
@@ -39,14 +38,12 @@
             <span class="badge bg-secondary">Всего товаров: {{ total }}</span>
         </div>
 
-        <!-- Кнопка для раскрытия блока управления порядком категорий -->
         <div class="mb-3">
             <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#categoryOrderCollapse" aria-expanded="false" aria-controls="categoryOrderCollapse">
                 <i class="bi bi-arrow-down-up"></i> Управление порядком категорий
             </button>
         </div>
 
-        <!-- Сворачиваемый блок управления порядком категорий -->
         <div class="collapse mb-3" id="categoryOrderCollapse">
             <div class="card card-body bg-light">
                 <label class="form-label fw-semibold">Порядок категорий (перетаскивайте, чтобы изменить)</label>
@@ -96,7 +93,7 @@
                     <td>{{ item.serial or '—' }}</td>
                     <td>{{ item.category_name }}</td>
                     <td>{% if item.is_booked %}✅{% else %}—{% endif %}</td>
-                    <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '—' }}</td>
+                    <td>{{ item.created_at|format_date if item.created_at else '—' }}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
                             <a href="/admin/assortment/edit/{{ item.id }}" class="btn btn-outline-secondary" title="Редактировать"><i class="bi bi-pencil"></i></a>
@@ -134,7 +131,6 @@
 <div class="modal fade" id="addCategoryModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/admin/assortment/add_category" method="post"><div class="modal-header"><h5 class="modal-title">Добавить категорию</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Название</label><input type="text" class="form-control" name="name" required></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button><button type="submit" class="btn btn-primary">Добавить</button></div></form></div></div></div>
 
 <script>
-    // Основные функции фильтрации и поиска
     document.getElementById('applyFilter').addEventListener('click', function(e) {
         e.preventDefault();
         const params = new URLSearchParams(window.location.search);
@@ -148,7 +144,6 @@
         window.location.search = params.toString();
     });
 
-    // Умный поиск
     const searchInput = document.getElementById('searchInput');
     const suggestions = document.getElementById('searchSuggestions');
     searchInput.addEventListener('input', function() {
@@ -159,7 +154,6 @@
             .then(d => { suggestions.innerHTML = d.results.map(i => `<option value="${i.text}">`).join(''); });
     });
 
-    // --- Drag-and-drop с помощью SortableJS ---
     const orderList = document.getElementById('categoryOrderList');
     if (orderList) {
         new Sortable(orderList, {
@@ -182,7 +176,6 @@
         });
     }
 
-    // --- Инлайн-редактирование названия категории ---
     document.querySelectorAll('.category-name').forEach(span => {
         span.addEventListener('dblclick', function() {
             const catId = this.closest('.list-group-item').dataset.catId;
@@ -231,7 +224,6 @@
         });
     });
 
-    // --- Удаление категории ---
     document.querySelectorAll('.delete-category-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const catId = this.dataset.catId;
@@ -242,7 +234,6 @@
                     const err = await resp.json();
                     alert(err.detail || 'Ошибка удаления');
                 } else {
-                    // Удаляем элемент из DOM
                     this.closest('.list-group-item').remove();
                 }
             } catch (err) {
@@ -251,7 +242,6 @@
         });
     });
 
-    // Обработчики кнопок перемещения (оставлены для совместимости, но drag-and-drop основной)
     document.querySelectorAll('.move-up-btn').forEach(btn => {
         btn.addEventListener('click', async function(e) {
             e.preventDefault();
