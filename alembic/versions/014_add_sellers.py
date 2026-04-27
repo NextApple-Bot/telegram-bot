@@ -1,7 +1,7 @@
 """Add sellers and seller_days tables
 
 Revision ID: 014
-Revises: 013
+Revises: 012   # <-- изменено с 013 на 012
 Create Date: 2026-04-27 15:00:00.000000
 
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '014'
-down_revision = '013'
+down_revision = '012'   # последняя применённая миграция
 branch_labels = None
 depends_on = None
 
@@ -28,7 +28,6 @@ def upgrade() -> None:
         sa.Column('date', sa.Date(), nullable=False),
         sa.UniqueConstraint('seller_id', 'date', name='uq_seller_date')
     )
-    # Индекс для быстрой выборки по дате
     op.create_index('idx_seller_days_date', 'seller_days', ['date'])
 
 
