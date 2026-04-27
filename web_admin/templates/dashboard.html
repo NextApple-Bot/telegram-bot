@@ -190,7 +190,8 @@
             </div>
             <div class="modal-body">
                 <form id="editStatsForm">
-                    <input type="hidden" name="target_date" value="{{ target_date }}">
+                    <!-- Отправляем дату в ISO, сервер поймёт -->
+                    <input type="hidden" name="target_date" value="{{ stats.date }}">
                     <h6 class="fw-semibold mb-3">Платежи</h6>
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
