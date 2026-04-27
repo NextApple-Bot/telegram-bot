@@ -175,6 +175,10 @@
             font-weight: 500;
             font-size: 0.875rem;
             transition: all 0.15s;
+            min-height: 44px;             /* Тач-зона Apple */
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         .btn-primary {
             background-color: var(--primary);
@@ -189,7 +193,32 @@
             background-color: var(--bg-light);
             border-color: var(--secondary);
         }
-        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; min-height: 36px; }  /* чуть меньше для мелких кнопок */
+
+        /* СТЕКЛЯННЫЙ ИНДИКАТОР ЗАГРУЗКИ APPLE */
+        .btn-loading {
+            position: relative;
+            pointer-events: none;
+            color: transparent !important;
+        }
+        .btn-loading::after {
+            content: "";
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            top: 50%;
+            left: 50%;
+            margin: -11px 0 0 -11px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: rgba(255,255,255,0.9);
+            animation: apple-spin 0.7s linear infinite;
+            box-shadow: 0 0 12px rgba(255,255,255,0.6), inset 0 0 6px rgba(255,255,255,0.4);
+            backdrop-filter: blur(4px);
+        }
+        @keyframes apple-spin {
+            to { transform: rotate(360deg); }
+        }
 
         .form-control, .form-select {
             border-radius: var(--radius-md);
@@ -248,7 +277,6 @@
             z-index: 1100;
         }
 
-        /* ОВЕРЛЕЙ ДЛЯ МОБИЛЬНОГО МЕНЮ (ЧТОБЫ НЕ ПРОСВЕЧИВАЛ ВЫСЕР) */
         .sidebar-overlay {
             display: none;
             position: fixed;
@@ -260,23 +288,18 @@
             z-index: 1039;
             animation: fadeIn 0.2s ease;
         }
-        .sidebar-overlay.active {
-            display: block;
-        }
+        .sidebar-overlay.active { display: block; }
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
         }
 
-        /* Планшеты: только иконки */
         @media (max-width: 992px) {
             .sidebar { width: var(--sidebar-collapsed-width); }
             .sidebar .nav-link span { display: none; }
             .sidebar .nav-link i { margin: 0 auto; }
             .sidebar .logo-area h4 { text-align: center; font-size: 1.2rem; }
         }
-
-        /* Мобильные: бургер, оверлей, подписи */
         @media (max-width: 768px) {
             .mobile-menu-toggle { display: block; }
             .sidebar {
@@ -286,17 +309,13 @@
                 z-index: 1050;
             }
             .sidebar.sidebar-mobile-open { transform: translateX(0); }
-            /* Показываем подписи только в открытом мобильном меню */
-            .sidebar.sidebar-mobile-open .nav-link span {
-                display: inline !important;
-            }
+            .sidebar.sidebar-mobile-open .nav-link span { display: inline !important; }
             .main-content { margin-left: 0 !important; padding: 1rem; }
             .top-bar { flex-direction: column; align-items: flex-start; }
             .top-bar h1 { font-size: 1.5rem; }
             .btn { width: 100%; margin-bottom: 0.5rem; }
             .table { font-size: 0.8rem; }
         }
-
         @media (max-width: 480px) {
             .card-body { padding: 1rem; }
             .row { flex-direction: column; }
@@ -309,8 +328,6 @@
     <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Меню">
         <i class="bi bi-list"></i>
     </button>
-
-    <!-- Оверлей -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <div class="sidebar" id="sidebar">
@@ -391,6 +408,17 @@
                 overlay.classList.remove('active');
             });
         }
+
+        // ГЛОБАЛЬНЫЙ ИНДИКАТОР ЗАГРУЗКИ ДЛЯ ВСЕХ ФОРМ
+        document.addEventListener('submit', function(e) {
+            const form = e.target;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn && !submitBtn.classList.contains('btn-loading')) {
+                submitBtn.classList.add('btn-loading');
+                // Для асинхронных форм (fetch) восстановление будет в их обработчиках,
+                // для синхронных – страница перезагрузится, и это нормально.
+            }
+        });
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
