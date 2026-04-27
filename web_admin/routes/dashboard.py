@@ -37,7 +37,6 @@ def extract_base_model(full_text: str) -> str:
 async def get_stats_for_date(target_date: date):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Финансы за день
         rows = await conn.fetch('''
             SELECT payment_type, SUM(amount) as total
             FROM daily_payments
@@ -49,23 +48,18 @@ async def get_stats_for_date(target_date: date):
             payments.setdefault(pt, 0.0)
         total_revenue = sum(payments.values())
 
-        # Продажи (количество)
         sales_count = await conn.fetchval(
             'SELECT COALESCE(SUM(count), 0) FROM sales WHERE DATE(sold_at) = $1', target_date
         )
-
-        # Предзаказы (количество записей)
         preorders_count = await conn.fetchval(
             'SELECT COUNT(*) FROM preorders WHERE DATE(created_at) = $1', target_date
         )
-
-        # Брони (количество записей)
         bookings_count = await conn.fetchval(
             'SELECT COUNT(*) FROM bookings WHERE DATE(booked_at) = $1', target_date
         )
 
     return {
-        "date": target_date.strftime("%Y-%m-%d"),
+        "date": target_date.strftime("%d.%m.%y"),          # формат DD.MM.YY
         "payments": payments,
         "total_revenue": total_revenue,
         "sales_count": sales_count,
@@ -75,7 +69,6 @@ async def get_stats_for_date(target_date: date):
 
 
 async def get_previous_period_stats():
-    """Сравнение с вчера и прошлой неделей (для сегодня)."""
     today = date.today()
     yesterday = today - timedelta(days=1)
     last_week_start = today - timedelta(days=7)
@@ -134,7 +127,7 @@ async def dashboard(
     preorders_count = stats["preorders_count"]
     bookings_count = stats["bookings_count"]
 
-    # Графики за 7 дней (всегда от target_date-6)
+    # Графики за 7 дней (всегда от target_date-6 дней)
     start_date = target - timedelta(days=6)
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -146,8 +139,9 @@ async def dashboard(
             ORDER BY day
         ''', start_date, target)
         sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
-        dates = [(start_date + timedelta(days=i)).isoformat() for i in range(7)]
-        sales_counts = [sales_dict.get(d, 0) for d in dates]
+        # Даты на оси X в формате DD.MM.YY
+        dates = [(start_date + timedelta(days=i)).strftime("%d.%m.%y") for i in range(7)]
+        sales_counts = [sales_dict.get((start_date + timedelta(days=i)).isoformat(), 0) for i in range(7)]
 
         revenue_rows = await conn.fetch('''
             SELECT DATE(sold_at) as day,
@@ -159,9 +153,9 @@ async def dashboard(
             ORDER BY day
         ''', start_date, target)
         revenue_dict = {row['day'].isoformat(): float(row['revenue']) for row in revenue_rows}
-        revenue_counts = [revenue_dict.get(d, 0) for d in dates]
+        revenue_counts = [revenue_dict.get((start_date + timedelta(days=i)).isoformat(), 0) for i in range(7)]
 
-    # Топ-5 моделей за период days (как и раньше)
+    # Топ-5 моделей
     top_cache_key = f"dashboard:top_models:{days}:{target.isoformat()}"
     cached_top = await cache.get(top_cache_key)
     if cached_top:
@@ -185,7 +179,7 @@ async def dashboard(
         top_counts = [item[1] for item in top_5]
         await cache.set(top_cache_key, (top_labels, top_counts), ttl=43200)
 
-    # Сравнение с предыдущим периодом показываем только для сегодня
+    # Сравнение с предыдущим периодом только для сегодня
     if target == today:
         prev_stats = await get_previous_period_stats()
         sales_change_yesterday = 0
@@ -209,7 +203,7 @@ async def dashboard(
     response = templates.TemplateResponse("dashboard.html", {
         "request": request,
         "stats": {
-            "date": target.strftime("%Y-%m-%d"),
+            "date": target.strftime("%d.%m.%y"),
             "sales_count": sales_today,
             "preorders_count": preorders_count,
             "bookings_count": bookings_count,
@@ -223,7 +217,7 @@ async def dashboard(
         "top_labels": top_labels,
         "top_counts": top_counts,
         "days": days,
-        "target_date": target.strftime("%Y-%m-%d"),
+        "target_date": target.strftime("%d.%m.%y"),
         "sales_today": sales_today,
         "revenue_today": total_revenue,
         "sales_change_yesterday": round(sales_change_yesterday, 1) if sales_change_yesterday is not None else None,
@@ -266,7 +260,7 @@ async def top_models_data(days: int = Query(7, ge=7, le=90)):
 
 
 class UpdateStatsRequest(BaseModel):
-    target_date: str  # YYYY-MM-DD
+    target_date: str
     cash: float = 0.0
     terminal: float = 0.0
     qr: float = 0.0
@@ -289,7 +283,6 @@ async def update_stats(data: UpdateStatsRequest):
 
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Удаляем старые записи за этот день
                 await conn.execute("DELETE FROM daily_payments WHERE DATE(created_at) = $1", target_date)
                 await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = $1", target_date)
                 await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = $1", target_date)
