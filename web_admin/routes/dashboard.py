@@ -34,6 +34,16 @@ def extract_base_model(full_text: str) -> str:
     return full_text
 
 
+def parse_date_any_format(date_str: str) -> date:
+    """Парсит дату из строки, поддерживая DD.MM.YY и YYYY-MM-DD."""
+    for fmt in ["%Y-%m-%d", "%d.%m.%y"]:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Неверный формат даты: {date_str}")
+
+
 async def get_stats_for_date(target_date: date):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -59,7 +69,7 @@ async def get_stats_for_date(target_date: date):
         )
 
     return {
-        "date": target_date.strftime("%d.%m.%y"),          # формат DD.MM.YY
+        "date": target_date.strftime("%d.%m.%y"),
         "payments": payments,
         "total_revenue": total_revenue,
         "sales_count": sales_count,
@@ -114,7 +124,7 @@ async def dashboard(
     today = date.today()
     if target_date:
         try:
-            target = datetime.strptime(target_date, "%Y-%m-%d").date()
+            target = parse_date_any_format(target_date)
         except ValueError:
             target = today
     else:
@@ -127,7 +137,6 @@ async def dashboard(
     preorders_count = stats["preorders_count"]
     bookings_count = stats["bookings_count"]
 
-    # Графики за 7 дней (всегда от target_date-6 дней)
     start_date = target - timedelta(days=6)
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -139,7 +148,6 @@ async def dashboard(
             ORDER BY day
         ''', start_date, target)
         sales_dict = {row['day'].isoformat(): row['count'] for row in sales_rows}
-        # Даты на оси X в формате DD.MM.YY
         dates = [(start_date + timedelta(days=i)).strftime("%d.%m.%y") for i in range(7)]
         sales_counts = [sales_dict.get((start_date + timedelta(days=i)).isoformat(), 0) for i in range(7)]
 
@@ -155,7 +163,6 @@ async def dashboard(
         revenue_dict = {row['day'].isoformat(): float(row['revenue']) for row in revenue_rows}
         revenue_counts = [revenue_dict.get((start_date + timedelta(days=i)).isoformat(), 0) for i in range(7)]
 
-    # Топ-5 моделей
     top_cache_key = f"dashboard:top_models:{days}:{target.isoformat()}"
     cached_top = await cache.get(top_cache_key)
     if cached_top:
@@ -179,7 +186,6 @@ async def dashboard(
         top_counts = [item[1] for item in top_5]
         await cache.set(top_cache_key, (top_labels, top_counts), ttl=43200)
 
-    # Сравнение с предыдущим периодом только для сегодня
     if target == today:
         prev_stats = await get_previous_period_stats()
         sales_change_yesterday = 0
@@ -260,7 +266,7 @@ async def top_models_data(days: int = Query(7, ge=7, le=90)):
 
 
 class UpdateStatsRequest(BaseModel):
-    target_date: str
+    target_date: str  # может быть DD.MM.YY или YYYY-MM-DD
     cash: float = 0.0
     terminal: float = 0.0
     qr: float = 0.0
@@ -274,8 +280,12 @@ class UpdateStatsRequest(BaseModel):
 
 @router.post("/update_stats")
 async def update_stats(data: UpdateStatsRequest):
+    try:
+        target_date = parse_date_any_format(data.target_date)
+    except ValueError as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+
     pool = await get_pool()
-    target_date = datetime.strptime(data.target_date, "%Y-%m-%d").date()
     try:
         total_payments = data.cash + data.terminal + data.qr + data.transfer + data.invoice + data.installment
         if total_payments > 0 and data.sales_count == 0:
