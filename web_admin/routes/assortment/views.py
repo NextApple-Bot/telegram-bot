@@ -2,14 +2,31 @@
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from typing import Optional, List
+from typing import Optional
 import re
+from datetime import datetime
 
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
+
+# --- ФИЛЬТР ДАТЫ (дублирован для этого модуля) ---
+def _format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value
+
+templates.env.filters["format_date"] = _format_date
+# ----------------------------------------
 
 ALLOWED_SORT_FIELDS = {
     "id": "i.id",
@@ -84,7 +101,6 @@ async def list_assortment(
         rows = await conn.fetch(base_query, *params)
         items = [dict(row) for row in rows]
 
-        # Проверяем наличие столбца sort_order и формируем соответствующий ORDER BY
         if await has_sort_order_column(conn):
             order_clause = "ORDER BY sort_order, name"
         else:
@@ -221,14 +237,11 @@ async def move_category_down(cat_id: int):
     return JSONResponse({"success": True})
 
 
-# --- НОВЫЕ ЭНДПОИНТЫ ДЛЯ УЛУЧШЕНИЙ ---
-
 @router.post("/categories/{cat_id}/delete")
 async def delete_category(cat_id: int):
     """Удаляет категорию, если она пуста (нет товаров)."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Проверяем, что категория не служебная
         name = await conn.fetchval("SELECT name FROM categories WHERE id = $1", cat_id)
         if not name or name == '__SYSTEM__':
             raise HTTPException(status_code=400, detail="Эту категорию нельзя удалить")
@@ -251,7 +264,6 @@ async def rename_category(cat_id: int, new_name: str = Query(..., min_length=1))
         if not name or name == '__SYSTEM__':
             raise HTTPException(status_code=400, detail="Эту категорию нельзя переименовать")
         
-        # Проверка на дубликат имени
         exists = await conn.fetchval("SELECT id FROM categories WHERE LOWER(name) = LOWER($1) AND id != $2", new_name, cat_id)
         if exists:
             raise HTTPException(status_code=400, detail="Категория с таким именем уже существует")
@@ -263,10 +275,7 @@ async def rename_category(cat_id: int, new_name: str = Query(..., min_length=1))
 
 @router.post("/categories/reorder")
 async def reorder_categories(order: List[int]):
-    """
-    Принимает список ID категорий в новом порядке.
-    Обновляет sort_order для каждой категории.
-    """
+    """Принимает список ID категорий в новом порядке."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
