@@ -8,7 +8,6 @@
     </a>
 </div>
 
-<!-- Форма периода (аналогична stats.html) -->
 <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
     <div class="btn-group" role="group" aria-label="Режим периода">
         <button type="button" class="btn btn-outline-secondary mode-btn {% if mode == 'preset' %}active{% endif %}" data-mode="preset">Предустановки</button>
@@ -96,4 +95,15 @@
         });
     });
 </script>
+<style>
+    @media (max-width: 480px) {
+        .mode-btn {
+            width: 100%;
+            margin-bottom: 0.25rem;
+        }
+        .btn-primary {
+            width: 100%;
+        }
+    }
+</style>
 {% endblock %}
