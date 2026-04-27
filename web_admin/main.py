@@ -36,22 +36,21 @@ def safe_fromjson(value):
 templates.env.filters["fromjson"] = safe_fromjson
 
 
-# НОВЫЙ ФИЛЬТР: форматирование даты в DD.MM.YY
-def format_date(value, fmt="%d.%m.%y"):
+# ФИЛЬТР ДЛЯ ДАТ (DD.MM.YY)
+def format_date_filter(value, fmt="%d.%m.%y"):
     if isinstance(value, datetime):
         return value.strftime(fmt)
     if isinstance(value, str):
-        # Попытка распарсить строку как дату, если пришла строка
         for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
             try:
                 dt = datetime.strptime(value, fmt_in)
                 return dt.strftime(fmt)
             except ValueError:
                 continue
-    return value  # если не дата, возвращаем как есть
+    return value
 
 
-templates.env.filters["format_date"] = format_date
+templates.env.filters["format_date"] = format_date_filter
 
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
