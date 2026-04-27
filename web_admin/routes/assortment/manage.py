@@ -274,8 +274,14 @@ async def add_item(
 
 @router.post("/add_category")
 async def add_category(request: Request, name: str = Form(...)):
+    name = name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название не может быть пустым")
     pool = await get_pool()
     async with pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM categories WHERE LOWER(name) = LOWER($1)", name)
+        if exists:
+            raise HTTPException(status_code=400, detail="Категория с таким именем уже существует")
         max_order = await conn.fetchval('SELECT COALESCE(MAX(sort_order), -1) FROM categories')
         await conn.execute(
             'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
