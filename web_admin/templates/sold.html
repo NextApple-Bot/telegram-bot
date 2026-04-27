@@ -41,7 +41,7 @@
                     <td>{{ item.text }}</td>
                     <td>{{ item.serial or '—' }}</td>
                     <td>{{ item.category_id or '—' }}</td>
-                    <td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M') if item.deleted_at else '—' }}</td>
+                    <td>{{ item.deleted_at|format_date if item.deleted_at else '—' }}</td>
                     <td>
                         <form action="/admin/sold/restore/{{ item.id }}" method="post" onsubmit="return confirm('Восстановить товар?');">
                             <button class="btn btn-sm btn-success">↩️ Восстановить</button>
