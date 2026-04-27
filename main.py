@@ -81,6 +81,11 @@ except Exception as e:
 
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
+    # ---------- ХИРУРГИЧЕСКИЙ УДАР ----------
+    if config and hasattr(config, 'RENDER_URL') and not config.RENDER_URL:
+        logger.critical("❌ RENDER_URL не задан. Бот не сможет принимать вебхуки. Аварийное завершение.")
+        sys.exit(1)
+    # ----------------------------------------
     try:
         await get_pool()
         logger.info("✅ Пул соединений БД инициализирован")
