@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import logging
+from typing import Optional
 
 from bot.db import get_pool
 
@@ -10,82 +11,100 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
+# --- ФИЛЬТР ДАТЫ ---
+def _format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value
+
+templates.env.filters["format_date"] = _format_date
+# -------------------
+
+def parse_date_any_format(date_str: str) -> date:
+    """Парсит дату из строки, поддерживая DD.MM.YY и YYYY-MM-DD."""
+    for fmt in ["%Y-%m-%d", "%d.%m.%y"]:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Неверный формат даты: {date_str}")
+
+async def get_stats_for_date(target_date: date):
+    """Собирает статистику продаж, предзаказов и броней за указанный день."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # --- Финансы из daily_payments (наиболее точные данные) ---
+        rows = await conn.fetch('''
+            SELECT payment_type, SUM(amount) as total
+            FROM daily_payments
+            WHERE DATE(created_at) = $1
+            GROUP BY payment_type
+        ''', target_date)
+        payments = {row['payment_type']: float(row['total']) for row in rows}
+        total_revenue = sum(payments.values())
+
+        # --- Количество сущностей ---
+        sales_count = await conn.fetchval(
+            'SELECT COALESCE(SUM(count), 0) FROM sales WHERE DATE(sold_at) = $1', target_date
+        )
+        preorders_count = await conn.fetchval(
+            'SELECT COUNT(*) FROM preorders WHERE DATE(created_at) = $1', target_date
+        )
+        bookings_count = await conn.fetchval(
+            'SELECT COUNT(*) FROM bookings WHERE DATE(booked_at) = $1', target_date
+        )
+
+        # --- Детализация по платежам из daily_payments ---
+        # Для категорий, не имеющих платежей, устанавливаем 0
+        detailed_payments = {
+            'cash': payments.get('cash', 0.0),
+            'terminal': payments.get('terminal', 0.0),
+            'qr': payments.get('qr', 0.0),
+            'transfer': payments.get('transfer', 0.0),
+            'invoice': payments.get('invoice', 0.0),
+            'installment': payments.get('installment', 0.0),
+        }
+
+    return {
+        "date": target_date.strftime("%d.%m.%y"),
+        "total_revenue": total_revenue,
+        "sales_count": sales_count,
+        "preorders_count": preorders_count,
+        "bookings_count": bookings_count,
+        "detailed_payments": detailed_payments,
+    }
+
+
 @router.get("/", response_class=HTMLResponse)
-async def stats_page(request: Request, days: int = Query(7, ge=1, le=90)):
+async def stats_page(
+    request: Request,
+    target_date: Optional[str] = Query(None),
+):
+    today = date.today()
+    if target_date:
+        try:
+            target = parse_date_any_format(target_date)
+        except ValueError:
+            target = today
+    else:
+        target = today
+
     try:
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days - 1)
-        logger.info(f"Fetching stats from {start_date} to {end_date}")
-
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            sales_rows = await conn.fetch('''
-                SELECT DATE(sold_at) as day, COUNT(*) as count,
-                       COALESCE(SUM(cash), 0) + COALESCE(SUM(terminal), 0) + COALESCE(SUM(qr), 0) +
-                       COALESCE(SUM(transfer), 0) + COALESCE(SUM(invoice), 0) + COALESCE(SUM(installment), 0) as revenue
-                FROM sales
-                WHERE sold_at >= $1
-                GROUP BY day
-                ORDER BY day
-            ''', start_date)
-            pre_rows = await conn.fetch('''
-                SELECT DATE(created_at) as day, COUNT(*) as count,
-                       COALESCE(SUM(cash), 0) + COALESCE(SUM(terminal), 0) + COALESCE(SUM(qr), 0) +
-                       COALESCE(SUM(transfer), 0) + COALESCE(SUM(invoice), 0) + COALESCE(SUM(installment), 0) as revenue
-                FROM preorders
-                WHERE created_at >= $1
-                GROUP BY day
-                ORDER BY day
-            ''', start_date)
-            book_rows = await conn.fetch('''
-                SELECT DATE(booked_at) as day, COUNT(*) as count,
-                       COALESCE(SUM(total_amount), 0) as revenue
-                FROM bookings
-                WHERE booked_at >= $1
-                GROUP BY day
-                ORDER BY day
-            ''', start_date)
-
-        sales_dict = {}
-        for row in sales_rows:
-            if row['day']:
-                sales_dict[row['day'].isoformat()] = {'count': int(row['count']), 'revenue': float(row['revenue'])}
-        pre_dict = {}
-        for row in pre_rows:
-            if row['day']:
-                pre_dict[row['day'].isoformat()] = {'count': int(row['count']), 'revenue': float(row['revenue'])}
-        book_dict = {}
-        for row in book_rows:
-            if row['day']:
-                book_dict[row['day'].isoformat()] = {'count': int(row['count']), 'revenue': float(row['revenue'])}
-
-        dates = [(start_date + timedelta(days=i)).isoformat() for i in range(days)]
-
-        sales_counts = [sales_dict.get(d, {}).get('count', 0) for d in dates]
-        pre_counts = [pre_dict.get(d, {}).get('count', 0) for d in dates]
-        book_counts = [book_dict.get(d, {}).get('count', 0) for d in dates]
-
-        total_sales_count = sum(sales_counts)
-        total_pre_count = sum(pre_counts)
-        total_book_count = sum(book_counts)
-        total_sales_revenue = sum(v.get('revenue', 0.0) for v in sales_dict.values())
-        total_pre_revenue = sum(v.get('revenue', 0.0) for v in pre_dict.values())
-        total_book_revenue = sum(v.get('revenue', 0.0) for v in book_dict.values())
-
-        return templates.TemplateResponse("stats.html", {
-            "request": request,
-            "dates": dates,
-            "sales_counts": sales_counts,
-            "pre_counts": pre_counts,
-            "book_counts": book_counts,
-            "total_sales_count": total_sales_count,
-            "total_pre_count": total_pre_count,
-            "total_book_count": total_book_count,
-            "total_sales_revenue": total_sales_revenue,
-            "total_pre_revenue": total_pre_revenue,
-            "total_book_revenue": total_book_revenue,
-            "days": days
-        })
+        stats = await get_stats_for_date(target)
     except Exception as e:
         logger.exception("Error in stats_page")
         raise HTTPException(status_code=500, detail=str(e))
+
+    return templates.TemplateResponse("stats.html", {
+        "request": request,
+        "target_date": target.strftime("%d.%m.%y"),
+        "target_date_iso": target.strftime("%Y-%m-%d"),
+        "stats": stats,
+    })
