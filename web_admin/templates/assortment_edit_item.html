@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card">
     <div class="card-body">
-        <form method="post" id="editForm">
+        <form method="post" id="editForm" onsubmit="return validateForm()">
             <div class="row g-3">
                 <div class="col-md-12"><label class="form-label">Текст товара</label><input type="text" class="form-control" name="text" value="{{ item.text }}" required></div>
                 <div class="col-md-6"><label class="form-label">Серийный номер</label><input type="text" class="form-control" name="serial" value="{{ item.serial or '' }}"></div>
@@ -15,8 +15,8 @@
             <div id="bookingFields" style="display: {% if item.is_booked %}block{% else %}none{% endif %};" class="bg-light p-4 rounded-3 mb-3">
                 <h5 class="mb-3">Данные бронирования</h5>
                 <div class="row g-3">
-                    <div class="col-md-3"><label class="form-label">Стоимость</label><input type="number" step="0.01" class="form-control" name="booking_price" value="{{ item.booking_price or '' }}"></div>
-                    <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="booking_prepayment" value="{{ item.booking_prepayment or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Стоимость *</label><input type="number" step="0.01" class="form-control" name="booking_price" id="booking_price" value="{{ item.booking_price or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="booking_prepayment" id="booking_prepayment" value="{{ item.booking_prepayment or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">Способ оплаты</label><select name="booking_payment_type" class="form-select"><option value="">Не указан</option><option value="cash" {% if item.booking_payment_type=='cash' %}selected{% endif %}>Наличные</option><option value="terminal" {% if item.booking_payment_type=='terminal' %}selected{% endif %}>Терминал</option><option value="qr" {% if item.booking_payment_type=='qr' %}selected{% endif %}>QR-код</option><option value="transfer" {% if item.booking_payment_type=='transfer' %}selected{% endif %}>Перевод</option><option value="invoice" {% if item.booking_payment_type=='invoice' %}selected{% endif %}>По счёту</option><option value="installment" {% if item.booking_payment_type=='installment' %}selected{% endif %}>Рассрочка</option></select></div>
                     <div class="col-md-3"><label class="form-label">Площадка</label><input type="text" class="form-control" name="booking_platform" value="{{ item.booking_platform or '' }}"></div>
                     <div class="col-md-4"><label class="form-label">ФИО</label><input type="text" class="form-control" name="booking_full_name" value="{{ item.booking_full_name or '' }}"></div>
@@ -27,9 +27,9 @@
             <div id="saleFields" style="display: {% if item.is_sold %}block{% else %}none{% endif %};" class="bg-light p-4 rounded-3 mb-3">
                 <h5 class="mb-3">Данные продажи</h5>
                 <div class="row g-3">
-                    <div class="col-md-3"><label class="form-label">Стоимость</label><input type="number" step="0.01" class="form-control" name="sale_price" value="{{ item.sale_price or '' }}"></div>
-                    <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="sale_prepayment" value="{{ item.sale_prepayment or '' }}"></div>
-                    <div class="col-md-3"><label class="form-label">Оплата</label><input type="number" step="0.01" class="form-control" name="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Стоимость *</label><input type="number" step="0.01" class="form-control" name="sale_price" id="sale_price" value="{{ item.sale_price or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="sale_prepayment" id="sale_prepayment" value="{{ item.sale_prepayment or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Оплата *</label><input type="number" step="0.01" class="form-control" name="sale_payment_amount" id="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">Способ оплаты</label><select name="sale_payment_type" class="form-select"><option value="cash" {% if item.sale_payment_type=='cash' %}selected{% endif %}>Наличные</option><option value="terminal" {% if item.sale_payment_type=='terminal' %}selected{% endif %}>Терминал</option><option value="qr" {% if item.sale_payment_type=='qr' %}selected{% endif %}>QR-код</option><option value="transfer" {% if item.sale_payment_type=='transfer' %}selected{% endif %}>Перевод</option><option value="invoice" {% if item.sale_payment_type=='invoice' %}selected{% endif %}>По счёту</option><option value="installment" {% if item.sale_payment_type=='installment' %}selected{% endif %}>Рассрочка</option><option value="paid" {% if item.sale_payment_type=='paid' %}selected{% endif %}>Оплачен</option></select></div>
                     <div class="col-md-4"><label class="form-label">Площадка</label><input type="text" class="form-control" name="sale_platform" value="{{ item.sale_platform or '' }}"></div>
                     <div class="col-md-4"><label class="form-label">ФИО</label><input type="text" class="form-control" name="sale_full_name" value="{{ item.sale_full_name or '' }}"></div>
@@ -52,18 +52,20 @@
     const isBookedCheckbox = document.getElementById('is_booked');
     const saleDiv = document.getElementById('saleFields');
     const isSoldCheckbox = document.getElementById('is_sold');
-    const bookingRequiredFields = ['booking_price'];
-    const saleRequiredFields = ['sale_price', 'sale_payment_amount'];
 
     function updateVisibility() {
         const bookingVisible = isBookedCheckbox.checked;
         const saleVisible = isSoldCheckbox.checked;
         bookingDiv.style.display = bookingVisible ? 'block' : 'none';
         saleDiv.style.display = saleVisible ? 'block' : 'none';
-        bookingRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = bookingVisible; });
-        saleRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = saleVisible; });
-        if (bookingVisible) { isSoldCheckbox.checked = false; saleDiv.style.display = 'none'; saleRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = false; }); }
-        if (saleVisible) { isBookedCheckbox.checked = false; bookingDiv.style.display = 'none'; bookingRequiredFields.forEach(id => { const f = document.getElementById(id); if (f) f.required = false; }); }
+        if (bookingVisible) {
+            isSoldCheckbox.checked = false;
+            saleDiv.style.display = 'none';
+        }
+        if (saleVisible) {
+            isBookedCheckbox.checked = false;
+            bookingDiv.style.display = 'none';
+        }
     }
     isBookedCheckbox.addEventListener('change', updateVisibility);
     isSoldCheckbox.addEventListener('change', updateVisibility);
@@ -144,24 +146,56 @@
     }
     addBtn.addEventListener('click', () => container.appendChild(createAccessoryRow()));
 
-    document.getElementById('editForm').addEventListener('submit', function() {
+    // Валидация перед отправкой
+    function validateForm() {
+        const isSold = document.getElementById('is_sold').checked;
+        const isBooked = document.getElementById('is_booked').checked;
+
+        if (isSold) {
+            const salePrice = parseFloat(document.getElementById('sale_price').value) || 0;
+            const salePayment = parseFloat(document.getElementById('sale_payment_amount').value) || 0;
+            if (salePrice <= 0) {
+                alert('Укажите стоимость продажи.');
+                document.getElementById('sale_price').focus();
+                return false;
+            }
+            if (salePayment <= 0 && document.getElementById('sale_payment_type').value !== 'paid') {
+                alert('Укажите сумму оплаты (или выберите "Оплачен").');
+                document.getElementById('sale_payment_amount').focus();
+                return false;
+            }
+        }
+
+        if (isBooked) {
+            const bookingPrice = parseFloat(document.getElementById('booking_price').value) || 0;
+            if (bookingPrice <= 0) {
+                alert('Укажите стоимость брони.');
+                document.getElementById('booking_price').focus();
+                return false;
+            }
+        }
+
+        // Очистка числовых полей перед отправкой
         numberFields.forEach(id => { const f = document.getElementById(id); if (f) f.value = parseFloat(f.value.replace(/[^\d.-]/g, '').replace(',', '.')) || 0; });
         document.querySelectorAll('.accessory-price').forEach(f => { f.value = parseFloat(f.value.replace(/[^\d.-]/g, '').replace(',', '.')) || 0; });
+
+        return true;
+    }
+
+    // Сбрасываем класс загрузки, если валидация не прошла
+    document.getElementById('editForm').addEventListener('submit', function(e) {
+        if (!validateForm()) {
+            e.preventDefault();
+            const submitBtn = this.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.classList.remove('btn-loading');
+        }
     });
 </script>
 <style>
     @media (max-width: 480px) {
-        .col-md-3, .col-md-4, .col-md-6, .col-md-12 {
-            width: 100%;
-        }
-        .btn {
-            width: 100%;
-            margin-bottom: 0.5rem;
-        }
-        .accessory-row > div {
-            width: 100%;
-            margin-bottom: 0.5rem;
-        }
+        .col-md-3, .col-md-4, .col-md-6, .col-md-12 { width: 100%; }
+        .btn { width: 100%; margin-bottom: 0.5rem; }
+        .accessory-row > div { width: 100%; margin-bottom: 0.5rem; }
     }
 </style>
 {% endblock %}
