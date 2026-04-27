@@ -3,24 +3,19 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-    .stats-card {
-        border-left: 4px solid var(--primary);
-        transition: all 0.2s;
+    .period-btn.active {
+        background-color: var(--primary) !important;
+        color: white !important;
     }
-    .stats-card:hover {
-        box-shadow: var(--shadow-lg);
-    }
-    .kpi-value {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: var(--text-dark);
-        line-height: 1.2;
+    .period-btn {
+        border-radius: 30px;
+        padding: 0.3rem 1.2rem;
     }
 </style>
 {% endblock %}
-{% block page_title %}Статистика за {{ target_date }}{% endblock %}
+{% block page_title %}Статистика{% endblock %}
 {% block content %}
-<!-- Выбор даты -->
+<!-- Выбор даты и периода -->
 <div class="row align-items-end mb-4">
     <div class="col-auto">
         <label class="form-label fw-semibold">Дата</label>
@@ -29,73 +24,186 @@
     <div class="col-auto">
         <button class="btn btn-primary" id="changeDateBtn">Показать</button>
     </div>
+    <div class="col-auto ms-auto">
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-secondary period-btn {% if days == 7 %}active{% endif %}" data-period="7">7 дней</button>
+            <button type="button" class="btn btn-outline-secondary period-btn {% if days == 14 %}active{% endif %}" data-period="14">14 дней</button>
+            <button type="button" class="btn btn-outline-secondary period-btn {% if days == 30 %}active{% endif %}" data-period="30">30 дней</button>
+        </div>
+    </div>
 </div>
 
+<!-- Итоговые карточки -->
 <div class="row g-4 mb-4">
-    <!-- Продажи -->
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card stats-card h-100">
             <div class="card-body">
                 <div class="d-flex align-items-center mb-2">
                     <i class="bi bi-cart-check-fill me-2 fs-4" style="color: var(--primary);"></i>
-                    <h5 class="card-title mb-0 fw-semibold">Продажи</h5>
+                    <h6 class="card-title mb-0 fw-semibold">Продажи</h6>
                 </div>
-                <div class="kpi-value">{{ stats.sales_count }}</div>
+                <div class="kpi-value">{{ total_sales }}</div>
             </div>
         </div>
     </div>
-    <!-- Предзаказы -->
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card stats-card h-100">
             <div class="card-body">
                 <div class="d-flex align-items-center mb-2">
                     <i class="bi bi-box-seam me-2 fs-4" style="color: var(--warning);"></i>
-                    <h5 class="card-title mb-0 fw-semibold">Предзаказы</h5>
+                    <h6 class="card-title mb-0 fw-semibold">Предзаказы</h6>
                 </div>
-                <div class="kpi-value">{{ stats.preorders_count }}</div>
+                <div class="kpi-value">{{ total_preorders }}</div>
             </div>
         </div>
     </div>
-    <!-- Брони -->
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card stats-card h-100">
             <div class="card-body">
                 <div class="d-flex align-items-center mb-2">
                     <i class="bi bi-bookmark-check-fill me-2 fs-4" style="color: var(--success);"></i>
-                    <h5 class="card-title mb-0 fw-semibold">Брони</h5>
+                    <h6 class="card-title mb-0 fw-semibold">Брони</h6>
                 </div>
-                <div class="kpi-value">{{ stats.bookings_count }}</div>
+                <div class="kpi-value">{{ total_bookings }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-currency-dollar me-2 fs-4" style="color: var(--danger);"></i>
+                    <h6 class="card-title mb-0 fw-semibold">Выручка</h6>
+                </div>
+                <div class="kpi-value">{{ "{:,.0f}".format(total_revenue) }} ₽</div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-12">
-        <div class="card">
+<!-- Графики -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
             <div class="card-header fw-semibold">
-                <i class="bi bi-coin me-2"></i> Финансы за {{ target_date }}
+                <i class="bi bi-graph-up me-2"></i>Динамика продаж, предзаказов, броней
             </div>
-            <div class="card-body p-0">
-                <table class="table table-borderless mb-0">
-                    <tr><th class="ps-4">Наличные</th><td class="text-end pe-4">{{ stats.detailed_payments.cash|round(0) }} ₽</td></tr>
-                    <tr><th class="ps-4">Терминал</th><td class="text-end pe-4">{{ stats.detailed_payments.terminal|round(0) }} ₽</td></tr>
-                    <tr><th class="ps-4">QR-код</th><td class="text-end pe-4">{{ stats.detailed_payments.qr|round(0) }} ₽</td></tr>
-                    <tr><th class="ps-4">Перевод</th><td class="text-end pe-4">{{ stats.detailed_payments.transfer|round(0) }} ₽</td></tr>
-                    <tr><th class="ps-4">Оплата по счету</th><td class="text-end pe-4">{{ stats.detailed_payments.invoice|round(0) }} ₽</td></tr>
-                    <tr><th class="ps-4">Рассрочка</th><td class="text-end pe-4">{{ stats.detailed_payments.installment|round(0) }} ₽</td></tr>
-                    <tr class="border-top"><th class="ps-4 fw-bold">Итого</th><td class="text-end pe-4 fw-bold fs-5">{{ stats.total_revenue|round(0) }} ₽</td></tr>
-                </table>
+            <div class="card-body">
+                <canvas id="activityChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up-arrow me-2"></i>Динамика выручки
+            </div>
+            <div class="card-body">
+                <canvas id="revenueChart" width="400" height="200"></canvas>
             </div>
         </div>
     </div>
 </div>
 
 <script>
+    // Переключение периода
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const days = this.dataset.period;
+            const dateVal = document.getElementById('targetDateInput').value;
+            let url = '?days=' + days;
+            if (dateVal) url += '&target_date=' + dateVal;
+            window.location.href = url;
+        });
+    });
+
+    // Кнопка выбора даты
     document.getElementById('changeDateBtn').addEventListener('click', function() {
         const dateVal = document.getElementById('targetDateInput').value;
+        const params = new URLSearchParams(window.location.search);
         if (dateVal) {
-            window.location.href = '?target_date=' + dateVal;
+            params.set('target_date', dateVal);
+        } else {
+            params.delete('target_date');
+        }
+        window.location.href = '?' + params.toString();
+    });
+
+    // График активности (продажи, предзаказы, брони)
+    new Chart(document.getElementById('activityChart'), {
+        type: 'line',
+        data: {
+            labels: {{ dates|tojson }},
+            datasets: [
+                {
+                    label: 'Продажи',
+                    data: {{ sales_counts|tojson }},
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#2563eb',
+                },
+                {
+                    label: 'Предзаказы',
+                    data: {{ pre_counts|tojson }},
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#f59e0b',
+                },
+                {
+                    label: 'Брони',
+                    data: {{ book_counts|tojson }},
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#10b981',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: { mode: 'index' }
+            },
+            scales: {
+                y: { beginAtZero: true, stepSize: 1, precision: 0, grid: { color: '#e2e8f0' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    // График выручки
+    new Chart(document.getElementById('revenueChart'), {
+        type: 'line',
+        data: {
+            labels: {{ dates|tojson }},
+            datasets: [{
+                label: 'Выручка (₽)',
+                data: {{ revenue_vals|tojson }},
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                tension: 0.3,
+                borderWidth: 2,
+                pointBackgroundColor: '#ef4444',
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `${ctx.raw.toLocaleString()} ₽`
+                    }
+                }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { callback: (v) => v.toLocaleString() + ' ₽' } },
+                x: { grid: { display: false } }
+            }
         }
     });
 </script>
