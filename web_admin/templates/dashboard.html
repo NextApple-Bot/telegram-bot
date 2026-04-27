@@ -165,16 +165,259 @@
         </div>
     </div>
 </div>
+<script>
+    // Твой оригинальный скрипт продавцов
+    document.querySelectorAll('.seller-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const sellerId = this.dataset.sellerId;
+            const targetDate = "{{ target_date_iso }}";
+            const formData = new FormData();
+            formData.append('seller_id', sellerId);
+            formData.append('target_date', targetDate);
+            try {
+                const resp = await fetch('/admin/dashboard/toggle_seller_day', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await resp.json();
+                if (result.success) {
+                    if (result.status === 'added') {
+                        this.classList.remove('btn-outline-secondary');
+                        this.classList.add('btn-primary');
+                        this.dataset.present = 'true';
+                    } else {
+                        this.classList.remove('btn-primary');
+                        this.classList.add('btn-outline-secondary');
+                        this.dataset.present = 'false';
+                    }
+                } else {
+                    alert('Ошибка');
+                }
+            } catch (e) {
+                alert('Ошибка сети');
+            }
+        });
+    });
+</script>
 
-<!-- ... остальной контент дашборда ... -->
-... (остальные блоки графиков и модалка без изменений) ...
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100"><div class="card-header fw-semibold"><i class="bi bi-graph-up me-2"></i>Динамика продаж (7 дней)</div><div class="card-body"><canvas id="salesChart" width="400" height="200"></canvas></div></div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100"><div class="card-header fw-semibold"><i class="bi bi-graph-up-arrow me-2"></i>Динамика выручки (7 дней)</div><div class="card-body"><canvas id="revenueChart" width="400" height="200"></canvas></div></div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center fw-semibold">
+                <span><i class="bi bi-trophy me-2"></i>Топ-5 моделей</span>
+                <select id="periodSelect" class="form-select form-select-sm w-auto">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                    <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
+                </select>
+            </div>
+            <div class="card-body"><canvas id="topModelsChart" width="400" height="200"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования статистики (оригинал) -->
+<div class="modal fade" id="editStatsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title fw-semibold">Редактировать статистику за <span id="editDateLabel">{{ target_date }}</span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <form id="editStatsForm">
+                    <input type="hidden" name="target_date" value="{{ target_date_iso }}">
+                    <h6 class="fw-semibold mb-3">Платежи</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4"><label class="form-label">Наличные (₽)</label><input type="number" step="0.01" class="form-control" name="cash" value="{{ payments.cash }}"></div>
+                        <div class="col-md-4"><label class="form-label">Терминал (₽)</label><input type="number" step="0.01" class="form-control" name="terminal" value="{{ payments.terminal }}"></div>
+                        <div class="col-md-4"><label class="form-label">QR-код (₽)</label><input type="number" step="0.01" class="form-control" name="qr" value="{{ payments.qr }}"></div>
+                        <div class="col-md-4"><label class="form-label">Перевод (₽)</label><input type="number" step="0.01" class="form-control" name="transfer" value="{{ payments.transfer }}"></div>
+                        <div class="col-md-4"><label class="form-label">По счёту (₽)</label><input type="number" step="0.01" class="form-control" name="invoice" value="{{ payments.invoice }}"></div>
+                        <div class="col-md-4"><label class="form-label">Рассрочка (₽)</label><input type="number" step="0.01" class="form-control" name="installment" value="{{ payments.installment }}"></div>
+                    </div>
+                    <h6 class="fw-semibold mb-3">Количество</h6>
+                    <div class="row g-3">
+                        <div class="col-md-4"><label class="form-label">Продажи</label><input type="number" step="1" class="form-control" name="sales_count" value="{{ stats.sales_count }}"></div>
+                        <div class="col-md-4"><label class="form-label">Предзаказы</label><input type="number" step="1" class="form-control" name="preorders_count" value="{{ stats.preorders_count }}"></div>
+                        <div class="col-md-4"><label class="form-label">Брони</label><input type="number" step="1" class="form-control" name="bookings_count" value="{{ stats.bookings_count }}"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveStatsBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Кнопка выбора даты
+    document.getElementById('changeDateBtn').addEventListener('click', function() {
+        const dateVal = document.getElementById('targetDateInput').value;
+        if (dateVal) {
+            window.location.href = '?target_date=' + dateVal;
+        }
+    });
+
+    // Графики
+    new Chart(document.getElementById('salesChart'), {
+        type: 'line',
+        data: {
+            labels: {{ chart_dates|tojson }},
+            datasets: [{
+                label: 'Продажи',
+                data: {{ chart_sales|tojson }},
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: '#2563eb',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { tooltip: { mode: 'index' } },
+            scales: {
+                y: { beginAtZero: true, stepSize: 1, precision: 0, grid: { color: '#e2e8f0' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    new Chart(document.getElementById('revenueChart'), {
+        type: 'line',
+        data: {
+            labels: {{ chart_dates|tojson }},
+            datasets: [{
+                label: 'Выручка (₽)',
+                data: {{ chart_revenue|tojson }},
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: '#10b981',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toLocaleString()} ₽` } }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { callback: (v) => v.toLocaleString() + ' ₽' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    let pieChart = null;
+    const pieCtx = document.getElementById('topModelsChart').getContext('2d');
+    const colors = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
+
+    function updateTopModels(days) {
+        fetch(`/admin/dashboard/top_models_data?days=${days}&target_date={{ target_date_iso }}`)
+            .then(res => res.json())
+            .then(data => {
+                if (pieChart) pieChart.destroy();
+                if (data.labels.length === 0) {
+                    pieCtx.clearRect(0, 0, 400, 200);
+                    pieCtx.fillStyle = '#f1f5f9';
+                    pieCtx.fillRect(0, 0, 400, 200);
+                    pieCtx.fillStyle = '#334155';
+                    pieCtx.font = '14px Inter';
+                    pieCtx.textAlign = 'center';
+                    pieCtx.fillText('Нет данных за период', 200, 110);
+                    return;
+                }
+                pieChart = new Chart(pieCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{ data: data.counts, backgroundColor: colors, borderWidth: 0, hoverOffset: 6 }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'right', labels: { boxWidth: 12, padding: 16, color: '#334155' } },
+                            tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } }
+                        },
+                        cutout: '65%'
+                    }
+                });
+            });
+    }
+
+    document.getElementById('periodSelect').addEventListener('change', (e) => updateTopModels(e.target.value));
+
+    {% if top_labels %}
+    pieChart = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ top_labels|tojson }},
+            datasets: [{ data: {{ top_counts|tojson }}, backgroundColor: colors, borderWidth: 0, hoverOffset: 6 }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 12, padding: 16, color: '#334155' } },
+                tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } }
+            },
+            cutout: '65%'
+        }
+    });
+    {% else %}
+    pieCtx.fillStyle = '#f1f5f9';
+    pieCtx.fillRect(0, 0, 400, 200);
+    pieCtx.fillStyle = '#334155';
+    pieCtx.font = '14px Inter';
+    pieCtx.textAlign = 'center';
+    pieCtx.fillText('Нет данных за период', 200, 110);
+    {% endif %}
+
+    // Сохранение статистики
+    document.getElementById('saveStatsBtn').addEventListener('click', async () => {
+        const form = document.getElementById('editStatsForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        for (let k in data) {
+            if (k !== 'target_date') data[k] = parseFloat(data[k]) || 0;
+        }
+        try {
+            const res = await fetch('/admin/dashboard/update_stats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.success) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editStatsModal'));
+                modal.hide();
+                window.location.href = '?target_date=' + encodeURIComponent(data.target_date) + '&_t=' + Date.now();
+            } else {
+                alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
+            }
+        } catch (e) {
+            alert('Ошибка сети: ' + e.message);
+        }
+    });
+</script>
+
 {% endblock %}
 {% block extra_scripts %}
 <script>
-    // Pull-to-refresh
+    // Pull-to-refresh (только на дашборде)
     let touchStartY = 0;
-    let touchEndY = 0;
-    const threshold = 150;
+    const threshold = 120;
     const dashboardBody = document.querySelector('.main-content');
 
     dashboardBody.addEventListener('touchstart', function(e) {
@@ -185,17 +428,14 @@
 
     dashboardBody.addEventListener('touchend', function(e) {
         if (window.scrollY === 0 && touchStartY > 0) {
-            touchEndY = e.changedTouches[0].clientY;
-            const delta = touchEndY - touchStartY;
-            if (delta > threshold) {
-                // Показываем индикатор
+            const touchEndY = e.changedTouches[0].clientY;
+            if (touchEndY - touchStartY > threshold) {
+                // Показать стеклянный индикатор
                 const indicator = document.createElement('div');
                 indicator.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;';
-                indicator.innerHTML = '<div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(0,0,0,0.1);border-top-color:#007aff;animation:spin 0.6s linear infinite;backdrop-filter:blur(4px);box-shadow:0 0 15px rgba(0,122,255,0.5);"></div>';
+                indicator.innerHTML = '<div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(0,0,0,0.1);border-top-color:#007aff;animation:apple-spin 0.7s linear infinite;backdrop-filter:blur(4px);box-shadow:0 0 15px rgba(0,122,255,0.5);"></div>';
                 document.body.appendChild(indicator);
-                setTimeout(() => {
-                    location.reload();
-                }, 200);
+                setTimeout(() => location.reload(), 300);
             }
             touchStartY = 0;
         }
