@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.gzip import GZipMiddleware
 import logging
 import json
+from datetime import datetime
 
 from bot import config
 from .auth import is_authenticated
@@ -21,6 +22,7 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 
 templates = Jinja2Templates(directory="web_admin/templates")
 
+
 def safe_fromjson(value):
     if not value:
         return []
@@ -30,7 +32,27 @@ def safe_fromjson(value):
         logger.warning(f"Ошибка парсинга JSON: {value[:100]}")
         return []
 
+
 templates.env.filters["fromjson"] = safe_fromjson
+
+
+# НОВЫЙ ФИЛЬТР: форматирование даты в DD.MM.YY
+def format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        # Попытка распарсить строку как дату, если пришла строка
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value  # если не дата, возвращаем как есть
+
+
+templates.env.filters["format_date"] = format_date
+
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
@@ -42,6 +64,7 @@ app.include_router(sold.router, prefix="/sold", tags=["sold"])
 app.include_router(stats.router, prefix="/stats", tags=["stats"])
 app.include_router(debug.router, prefix="/admin", tags=["debug"])
 
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     if request.url.path.startswith("/admin/auth/login") or request.url.path.startswith("/admin/static"):
@@ -49,6 +72,7 @@ async def auth_middleware(request: Request, call_next):
     if not is_authenticated(request):
         return RedirectResponse(url="/admin/auth/login")
     return await call_next(request)
+
 
 @app.get("/")
 async def root():
