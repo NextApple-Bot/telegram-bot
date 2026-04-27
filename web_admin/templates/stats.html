@@ -11,7 +11,9 @@
     .kpi-value { font-size: 2.2rem; font-weight: 700; color: var(--text-dark); line-height: 1.2; }
     .mode-btn { border-radius: 20px; padding: 0.3rem 1.2rem; }
     .mode-btn.active { background-color: var(--primary) !important; color: white !important; }
-    .chart-container { position: relative; width: 100%; }
+    .chart-container { position: relative; width: 100%; max-width: 300px; margin: 0 auto; }
+    .payment-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; justify-content: center; }
+    .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; }
 </style>
 {% endblock %}
 {% block page_title %}Статистика{% endblock %}
@@ -25,11 +27,10 @@
     </div>
 </div>
 
-<!-- Форма в зависимости от режима -->
+<!-- Форма периода -->
 <form method="get" id="statsForm" class="row g-3 align-items-end mb-4">
     <input type="hidden" name="mode" id="modeField" value="{{ mode }}">
 
-    <!-- PRESET -->
     <div id="presetFields" style="display: {% if mode == 'preset' %}block{% else %}none{% endif %};">
         <div class="row g-2 align-items-end">
             <div class="col-auto">
@@ -47,7 +48,6 @@
         </div>
     </div>
 
-    <!-- MONTH -->
     <div id="monthFields" style="display: {% if mode == 'month' %}block{% else %}none{% endif %};">
         <div class="col-auto">
             <label class="form-label">Месяц</label>
@@ -55,7 +55,6 @@
         </div>
     </div>
 
-    <!-- RANGE -->
     <div id="rangeFields" style="display: {% if mode == 'range' %}block{% else %}none{% endif %};">
         <div class="row g-2 align-items-end">
             <div class="col-auto">
@@ -74,62 +73,60 @@
     </div>
 </form>
 
-<!-- Итоговые карточки -->
+<!-- Карточки KPI -->
 <div class="row g-4 mb-4">
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card stats-card h-100">
-            <div class="card-body">
-                <div class="d-flex align-items-center mb-2">
-                    <i class="bi bi-cart-check-fill me-2 fs-4" style="color: var(--primary);"></i>
-                    <h6 class="card-title mb-0 fw-semibold">Продажи</h6>
-                </div>
-                <div class="kpi-value">{{ total_sales }}</div>
+            <div class="card-body text-center">
+                <i class="bi bi-cart-check-fill fs-2" style="color: var(--primary);"></i>
+                <h5 class="mt-2">Продажи</h5>
+                <div class="kpi-value">{{ sales_count }}</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card stats-card h-100">
-            <div class="card-body">
-                <div class="d-flex align-items-center mb-2">
-                    <i class="bi bi-box-seam me-2 fs-4" style="color: var(--warning);"></i>
-                    <h6 class="card-title mb-0 fw-semibold">Предзаказы</h6>
-                </div>
-                <div class="kpi-value">{{ total_pre }}</div>
+            <div class="card-body text-center">
+                <i class="bi bi-box-seam fs-2" style="color: var(--warning);"></i>
+                <h5 class="mt-2">Предзаказы</h5>
+                <div class="kpi-value">{{ preorders_count }}</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-4">
         <div class="card stats-card h-100">
-            <div class="card-body">
-                <div class="d-flex align-items-center mb-2">
-                    <i class="bi bi-bookmark-check-fill me-2 fs-4" style="color: var(--success);"></i>
-                    <h6 class="card-title mb-0 fw-semibold">Брони</h6>
-                </div>
-                <div class="kpi-value">{{ total_book }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card stats-card h-100">
-            <div class="card-body">
-                <div class="d-flex align-items-center mb-2">
-                    <i class="bi bi-currency-dollar me-2 fs-4" style="color: var(--danger);"></i>
-                    <h6 class="card-title mb-0 fw-semibold">Выручка</h6>
-                </div>
-                <div class="kpi-value">{{ "{:,.0f}".format(total_revenue) }} ₽</div>
+            <div class="card-body text-center">
+                <i class="bi bi-bookmark-check-fill fs-2" style="color: var(--success);"></i>
+                <h5 class="mt-2">Брони</h5>
+                <div class="kpi-value">{{ bookings_count }}</div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Единый комбинированный график -->
-<div class="card">
-    <div class="card-header fw-semibold">
-        <i class="bi bi-graph-up me-2"></i> Активность и выручка
+<!-- Круговые диаграммы и график выручки -->
+<div class="row g-4">
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-pie-chart me-2"></i> Структура оплат
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="paymentChart"></canvas>
+                </div>
+                <div class="payment-legend mt-3" id="paymentLegend"></div>
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-        <div class="chart-container">
-            <canvas id="combinedChart" height="120"></canvas>
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-graph-up-arrow me-2"></i> Выручка по дням
+            </div>
+            <div class="card-body">
+                <canvas id="revenueChart" height="200"></canvas>
+            </div>
         </div>
     </div>
 </div>
@@ -144,115 +141,81 @@
         });
     });
 
-    // Комбинированный график
-    const ctx = document.getElementById('combinedChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
+    // === Круговая диаграмма платежей ===
+    const payCtx = document.getElementById('paymentChart').getContext('2d');
+    const payLabels = {{ payment_labels|tojson }};
+    const payData = {{ payment_values|tojson }};
+    const payColors = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
+
+    new Chart(payCtx, {
+        type: 'doughnut',
         data: {
-            labels: {{ labels|tojson }},
-            datasets: [
-                {
-                    label: 'Продажи',
-                    data: {{ sales_counts|tojson }},
-                    backgroundColor: '#2563eb',
-                    borderRadius: 4,
-                    order: 2,
-                    yAxisID: 'y',
-                },
-                {
-                    label: 'Предзаказы',
-                    data: {{ pre_counts|tojson }},
-                    backgroundColor: '#f59e0b',
-                    borderRadius: 4,
-                    order: 2,
-                    yAxisID: 'y',
-                },
-                {
-                    label: 'Брони',
-                    data: {{ book_counts|tojson }},
-                    backgroundColor: '#10b981',
-                    borderRadius: 4,
-                    order: 2,
-                    yAxisID: 'y',
-                },
-                {
-                    label: 'Выручка (₽)',
-                    data: {{ revenue_vals|tojson }},
-                    type: 'line',
-                    borderColor: '#ef4444',
-                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
-                    borderWidth: 3,
-                    pointBackgroundColor: '#ef4444',
-                    tension: 0.3,
-                    fill: false,
-                    order: 1,
-                    yAxisID: 'y1',
-                }
-            ]
+            labels: payLabels,
+            datasets: [{
+                data: payData,
+                backgroundColor: payColors.slice(0, payLabels.length),
+                borderWidth: 0,
+                hoverOffset: 6
+            }]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
+            maintainAspectRatio: true,
             plugins: {
-                legend: {
-                    position: 'top',
-                    labels: {
-                        usePointStyle: true,
-                        boxWidth: 8,
-                    }
-                },
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: function(ctx) {
-                            if (ctx.dataset.label === 'Выручка (₽)') {
-                                return ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + ' ₽';
-                            }
-                            return ctx.dataset.label + ': ' + ctx.raw;
+                        label: (ctx) => {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const value = ctx.raw;
+                            const percent = ((value / total) * 100).toFixed(1);
+                            return `${ctx.label}: ${value.toLocaleString()} ₽ (${percent}%)`;
                         }
                     }
                 }
             },
+            cutout: '60%',
+        }
+    });
+
+    // Кастомная легенда
+    const legendDiv = document.getElementById('paymentLegend');
+    payLabels.forEach((label, i) => {
+        const item = document.createElement('span');
+        item.className = 'badge bg-light text-dark';
+        item.innerHTML = `<span class="legend-dot" style="background-color:${payColors[i]}"></span>${label}`;
+        legendDiv.appendChild(item);
+    });
+
+    // === График выручки ===
+    new Chart(document.getElementById('revenueChart'), {
+        type: 'line',
+        data: {
+            labels: {{ chart_dates|tojson }},
+            datasets: [{
+                label: 'Выручка (₽)',
+                data: {{ chart_revenue|tojson }},
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                fill: true,
+                tension: 0.3,
+                pointBackgroundColor: '#ef4444',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toLocaleString()} ₽` } }
+            },
             scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: {
-                        maxRotation: 45,
-                        autoSkip: true,
-                        maxTicksLimit: {% if use_weeks %}20{% else %}14{% endif %}
-                    }
-                },
                 y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    title: {
-                        display: true,
-                        text: 'Количество'
-                    },
                     beginAtZero: true,
-                    precision: 0,
-                    grid: { color: '#e2e8f0' }
+                    grid: { color: '#e2e8f0' },
+                    ticks: { callback: (v) => v.toLocaleString() + ' ₽' }
                 },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    title: {
-                        display: true,
-                        text: 'Сумма (₽)'
-                    },
-                    beginAtZero: true,
-                    grid: {
-                        drawOnChartArea: false,
-                    },
-                    ticks: {
-                        callback: (v) => v.toLocaleString() + ' ₽'
-                    }
-                }
+                x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 14 } }
             }
         }
     });
