@@ -3,35 +3,75 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-    .period-btn.active {
-        background-color: var(--primary) !important;
-        color: white !important;
+    .stats-card {
+        border-left: 4px solid var(--primary);
+        transition: all 0.2s;
     }
-    .period-btn {
-        border-radius: 30px;
-        padding: 0.3rem 1.2rem;
-    }
+    .stats-card:hover { box-shadow: var(--shadow-lg); }
+    .kpi-value { font-size: 2.2rem; font-weight: 700; color: var(--text-dark); line-height: 1.2; }
+    .mode-btn { border-radius: 20px; padding: 0.3rem 1.2rem; }
+    .mode-btn.active { background-color: var(--primary) !important; color: white !important; }
 </style>
 {% endblock %}
 {% block page_title %}Статистика{% endblock %}
 {% block content %}
-<!-- Выбор даты и периода -->
-<div class="row align-items-end mb-4">
-    <div class="col-auto">
-        <label class="form-label fw-semibold">Дата</label>
-        <input type="date" class="form-control" id="targetDateInput" value="{{ target_date_iso }}">
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-primary" id="changeDateBtn">Показать</button>
-    </div>
-    <div class="col-auto ms-auto">
-        <div class="btn-group" role="group">
-            <button type="button" class="btn btn-outline-secondary period-btn {% if days == 7 %}active{% endif %}" data-period="7">7 дней</button>
-            <button type="button" class="btn btn-outline-secondary period-btn {% if days == 14 %}active{% endif %}" data-period="14">14 дней</button>
-            <button type="button" class="btn btn-outline-secondary period-btn {% if days == 30 %}active{% endif %}" data-period="30">30 дней</button>
-        </div>
+<!-- Переключатель режимов -->
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <div class="btn-group" role="group" aria-label="Режим периода">
+        <button type="button" class="btn btn-outline-secondary mode-btn {% if mode == 'preset' %}active{% endif %}" data-mode="preset">Предустановки</button>
+        <button type="button" class="btn btn-outline-secondary mode-btn {% if mode == 'month' %}active{% endif %}" data-mode="month">Месяц</button>
+        <button type="button" class="btn btn-outline-secondary mode-btn {% if mode == 'range' %}active{% endif %}" data-mode="range">Диапазон</button>
     </div>
 </div>
+
+<!-- Форма в зависимости от режима -->
+<form method="get" id="statsForm" class="row g-3 align-items-end mb-4">
+    <input type="hidden" name="mode" id="modeField" value="{{ mode }}">
+
+    <!-- PRESET -->
+    <div id="presetFields" style="display: {% if mode == 'preset' %}block{% else %}none{% endif %};">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">Дата</label>
+                <input type="date" class="form-control" name="target_date" value="{{ target_date }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Период</label>
+                <select name="days" class="form-select">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                    <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- MONTH -->
+    <div id="monthFields" style="display: {% if mode == 'month' %}block{% else %}none{% endif %};">
+        <div class="col-auto">
+            <label class="form-label">Месяц</label>
+            <input type="month" class="form-control" name="month" value="{{ current_month }}">
+        </div>
+    </div>
+
+    <!-- RANGE -->
+    <div id="rangeFields" style="display: {% if mode == 'range' %}block{% else %}none{% endif %};">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">С</label>
+                <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label">По</label>
+                <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Показать</button>
+    </div>
+</form>
 
 <!-- Итоговые карточки -->
 <div class="row g-4 mb-4">
@@ -53,7 +93,7 @@
                     <i class="bi bi-box-seam me-2 fs-4" style="color: var(--warning);"></i>
                     <h6 class="card-title mb-0 fw-semibold">Предзаказы</h6>
                 </div>
-                <div class="kpi-value">{{ total_preorders }}</div>
+                <div class="kpi-value">{{ total_pre }}</div>
             </div>
         </div>
     </div>
@@ -64,7 +104,7 @@
                     <i class="bi bi-bookmark-check-fill me-2 fs-4" style="color: var(--success);"></i>
                     <h6 class="card-title mb-0 fw-semibold">Брони</h6>
                 </div>
-                <div class="kpi-value">{{ total_bookings }}</div>
+                <div class="kpi-value">{{ total_book }}</div>
             </div>
         </div>
     </div>
@@ -82,113 +122,92 @@
 </div>
 
 <!-- Графики -->
-<div class="row g-4 mb-4">
-    <div class="col-md-6">
-        <div class="card h-100">
+<div class="row g-4">
+    <div class="col-12">
+        <div class="card">
             <div class="card-header fw-semibold">
-                <i class="bi bi-graph-up me-2"></i>Динамика продаж, предзаказов, броней
+                <i class="bi bi-graph-up me-2"></i> Активность (продажи, предзаказы, брони)
             </div>
             <div class="card-body">
-                <canvas id="activityChart" width="400" height="200"></canvas>
+                <canvas id="activityChart" height="120"></canvas>
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card h-100">
+    <div class="col-12">
+        <div class="card">
             <div class="card-header fw-semibold">
-                <i class="bi bi-graph-up-arrow me-2"></i>Динамика выручки
+                <i class="bi bi-graph-up-arrow me-2"></i> Выручка
             </div>
             <div class="card-body">
-                <canvas id="revenueChart" width="400" height="200"></canvas>
+                <canvas id="revenueChart" height="120"></canvas>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // Переключение периода
-    document.querySelectorAll('.period-btn').forEach(btn => {
+    // Переключение режимов
+    document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            const days = this.dataset.period;
-            const dateVal = document.getElementById('targetDateInput').value;
-            let url = '?days=' + days;
-            if (dateVal) url += '&target_date=' + dateVal;
-            window.location.href = url;
+            const mode = this.dataset.mode;
+            document.getElementById('modeField').value = mode;
+            document.getElementById('statsForm').submit();
         });
     });
 
-    // Кнопка выбора даты
-    document.getElementById('changeDateBtn').addEventListener('click', function() {
-        const dateVal = document.getElementById('targetDateInput').value;
-        const params = new URLSearchParams(window.location.search);
-        if (dateVal) {
-            params.set('target_date', dateVal);
-        } else {
-            params.delete('target_date');
-        }
-        window.location.href = '?' + params.toString();
-    });
-
-    // График активности (продажи, предзаказы, брони)
+    // График активности – столбцы
     new Chart(document.getElementById('activityChart'), {
-        type: 'line',
+        type: 'bar',
         data: {
-            labels: {{ dates|tojson }},
+            labels: {{ labels|tojson }},
             datasets: [
                 {
                     label: 'Продажи',
                     data: {{ sales_counts|tojson }},
-                    borderColor: '#2563eb',
-                    backgroundColor: 'rgba(37, 99, 235, 0.05)',
-                    tension: 0.3,
-                    borderWidth: 2,
-                    pointBackgroundColor: '#2563eb',
+                    backgroundColor: '#2563eb',
+                    borderRadius: 4,
                 },
                 {
                     label: 'Предзаказы',
                     data: {{ pre_counts|tojson }},
-                    borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245, 158, 11, 0.05)',
-                    tension: 0.3,
-                    borderWidth: 2,
-                    pointBackgroundColor: '#f59e0b',
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 4,
                 },
                 {
                     label: 'Брони',
                     data: {{ book_counts|tojson }},
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.05)',
-                    tension: 0.3,
-                    borderWidth: 2,
-                    pointBackgroundColor: '#10b981',
+                    backgroundColor: '#10b981',
+                    borderRadius: 4,
                 }
             ]
         },
         options: {
             responsive: true,
             plugins: {
+                legend: { position: 'top' },
                 tooltip: { mode: 'index' }
             },
             scales: {
-                y: { beginAtZero: true, stepSize: 1, precision: 0, grid: { color: '#e2e8f0' } },
-                x: { grid: { display: false } }
+                y: { beginAtZero: true, precision: 0, grid: { color: '#e2e8f0' } },
+                x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: {% if use_weeks %}20{% else %}14{% endif %} } }
             }
         }
     });
 
-    // График выручки
+    // График выручки – линия
     new Chart(document.getElementById('revenueChart'), {
         type: 'line',
         data: {
-            labels: {{ dates|tojson }},
+            labels: {{ labels|tojson }},
             datasets: [{
                 label: 'Выручка (₽)',
                 data: {{ revenue_vals|tojson }},
                 borderColor: '#ef4444',
                 backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                fill: true,
                 tension: 0.3,
-                borderWidth: 2,
                 pointBackgroundColor: '#ef4444',
+                borderWidth: 2
             }]
         },
         options: {
@@ -201,8 +220,12 @@
                 }
             },
             scales: {
-                y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { callback: (v) => v.toLocaleString() + ' ₽' } },
-                x: { grid: { display: false } }
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#e2e8f0' },
+                    ticks: { callback: (v) => v.toLocaleString() + ' ₽' }
+                },
+                x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: {% if use_weeks %}20{% else %}14{% endif %} } }
             }
         }
     });
