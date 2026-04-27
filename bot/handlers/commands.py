@@ -13,7 +13,7 @@ from bot import config
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
-from bot.utils.markdown import escape_markdown_v1   # ИСПРАВЛЕНИЕ #1
+from bot.utils.markdown import escape_markdown_v1
 from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
 from bot.utils.helpers import send_and_clean
 
@@ -74,6 +74,7 @@ async def cmd_export_clients(message: Message):
         writer = csv.writer(tmp)
         writer.writerow(['ID', 'ФИО', 'Основной телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник', 'Дата регистрации'])
         for row in rows:
+            created_at = row['created_at'].strftime("%d.%m.%y") if row['created_at'] else ''
             writer.writerow([
                 row['id'],
                 row['full_name'],
@@ -82,7 +83,7 @@ async def cmd_export_clients(message: Message):
                 row['telegram_username'],
                 row['social_network'],
                 row['referral_source'],
-                row['created_at']
+                created_at
             ])
         tmp_path = tmp.name
 
@@ -105,6 +106,7 @@ async def cmd_export_purchases(message: Message):
         writer = csv.writer(tmp)
         writer.writerow(['ID покупки', 'ID клиента', 'Товары (JSON)', 'Сумма', 'Оплата (JSON)', 'Тип', 'Дата'])
         for row in rows:
+            created_at = row['created_at'].strftime("%d.%m.%y") if row['created_at'] else ''
             writer.writerow([
                 row['id'],
                 row['client_id'],
@@ -112,7 +114,7 @@ async def cmd_export_purchases(message: Message):
                 row['total_amount'],
                 row['payment_details'],
                 row['purchase_type'],
-                row['created_at']
+                created_at
             ])
         tmp_path = tmp.name
 
@@ -144,7 +146,8 @@ async def cmd_client_info(message: Message):
         telegram = escape_markdown_v1(f"@{client['telegram_username']}" if client['telegram_username'] else '—')
         social = escape_markdown_v1(client['social_network'] or '—')
         source = escape_markdown_v1(client['referral_source'] or '—')
-        
+        created_at = client['created_at'].strftime("%d.%m.%y") if client['created_at'] else '—'
+
         text = f"👤 *Клиент ID {client['id']}*\n"
         text += f"ФИО: {full_name}\n"
         text += f"Основной телефон: {phone}\n"
@@ -152,13 +155,14 @@ async def cmd_client_info(message: Message):
         text += f"Telegram: {telegram}\n"
         text += f"Соцсети: {social}\n"
         text += f"Источник: {source}\n"
-        text += f"Дата регистрации: {client['created_at']}\n\n"
+        text += f"Дата регистрации: {created_at}\n\n"
 
         purchases = await ClientRepository.get_client_purchases(client['id'])
         if purchases:
             text += "*Покупки:*\n"
             for p in purchases:
-                text += f"📅 {p['created_at']}\n"
+                p_created = p['created_at'].strftime("%d.%m.%y") if p['created_at'] else '—'
+                text += f"📅 {p_created}\n"
                 items = json.loads(p['items_json']) if p['items_json'] else []
                 for item in items:
                     item_text = escape_markdown_v1(item.get('item_text', '')[:50])
@@ -195,12 +199,13 @@ async def cmd_export_full_report(message: Message):
         for row in rows:
             items = json.loads(row['items_json']) if row['items_json'] else []
             items_short = ', '.join([it.get('item_text', '')[:30] + '...' for it in items])
+            p_created = row['created_at'].strftime("%d.%m.%y") if row['created_at'] else ''
             writer.writerow([
                 row['id'],
                 row['full_name'],
                 row['phone'],
                 row['telegram_username'],
-                row['created_at'],
+                p_created,
                 items_short,
                 row['total_amount'],
                 row['payment_details']
