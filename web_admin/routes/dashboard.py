@@ -223,7 +223,8 @@ async def dashboard(
         "top_labels": top_labels,
         "top_counts": top_counts,
         "days": days,
-        "target_date": target.strftime("%d.%m.%y"),
+        "target_date": target.strftime("%d.%m.%y"),          # отображаемая дата (DD.MM.YY)
+        "target_date_iso": target.strftime("%Y-%m-%d"),      # дата для input (ISO)
         "sales_today": sales_today,
         "revenue_today": total_revenue,
         "sales_change_yesterday": round(sales_change_yesterday, 1) if sales_change_yesterday is not None else None,
