@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import logging
+from datetime import datetime
 
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
@@ -10,6 +11,22 @@ from bot.services.assortment import AssortmentService
 logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
+
+# --- ФИЛЬТР ДАТЫ ---
+def _format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value
+
+templates.env.filters["format_date"] = _format_date
+# -------------------
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -21,7 +38,6 @@ async def list_sold(
     pool = await get_pool()
     offset = (page - 1) * per_page
 
-    # Показываем все непроданные удалённые товары (независимо от причины)
     query = """
         SELECT id, item_id, text, serial, category_id, deleted_at, sale_message_id, reason
         FROM deleted_items
