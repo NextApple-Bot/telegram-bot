@@ -18,18 +18,23 @@ class AssortmentService:
 
     @classmethod
     async def load_inventory(cls) -> List[Dict[str, List[str]]]:
-        """Загружает ассортимент с кэшированием через Redis."""
-        # Пытаемся взять из кэша
-        cached = await cache.get(cls.CACHE_KEY)
-        if cached:
-            logger.debug("Ассортимент загружен из Redis-кэша")
-            return cached
-        
-        # Загружаем из БД
+        """Загружает ассортимент с кэшированием через Redis, при сбое кэша идёт в БД."""
+        try:
+            cached = await cache.get(cls.CACHE_KEY)
+            if cached is not None:
+                logger.debug("Ассортимент загружен из Redis-кэша")
+                return cached
+        except Exception as e:
+            logger.error(f"Ошибка при чтении кэша ассортимента: {e}, извлекаем из БД")
+
+        # Всегда загружаем из БД, если кэш не сработал (ошибка или None)
         categories = await ItemRepository.get_all_categories_with_items()
-        # Сохраняем в кэш
-        await cache.set(cls.CACHE_KEY, categories, ttl=cls.CACHE_TTL)
-        logger.debug("Ассортимент загружен из БД и сохранён в Redis-кэш")
+        # Попробуем сохранить в кэш, но если не получится – не страшно
+        try:
+            await cache.set(cls.CACHE_KEY, categories, ttl=cls.CACHE_TTL)
+            logger.debug("Ассортимент загружен из БД и сохранён в Redis-кэш")
+        except Exception as e:
+            logger.warning(f"Не удалось сохранить ассортимент в кэш: {e}")
         return categories
 
     @classmethod
@@ -62,8 +67,6 @@ class AssortmentService:
                         normalized_serial
                     )
                     if deleted_row:
-                        # Проверяем, что запись с таким item_id действительно была удалена (существует в момент транзакции)
-                        # и вставляем в deleted_items с обработкой возможной ошибки внешнего ключа
                         try:
                             await conn.execute(
                                 """
@@ -74,12 +77,10 @@ class AssortmentService:
                             )
                         except Exception as e:
                             logger.warning(f"Не удалось вставить в deleted_items для {serial}: {e}")
-                            # Всё равно считаем, что товар удалён, раз DELETE прошёл
                         await cls.invalidate_cache()
                         return 1
                     return 0
         else:
-            # Используем переданное соединение
             deleted_row = await conn.fetchrow(
                 """
                 DELETE FROM items
