@@ -11,6 +11,7 @@
     .kpi-value { font-size: 2.2rem; font-weight: 700; color: var(--text-dark); line-height: 1.2; }
     .mode-btn { border-radius: 20px; padding: 0.3rem 1.2rem; }
     .mode-btn.active { background-color: var(--primary) !important; color: white !important; }
+    .chart-container { position: relative; width: 100%; }
 </style>
 {% endblock %}
 {% block page_title %}Статистика{% endblock %}
@@ -121,26 +122,14 @@
     </div>
 </div>
 
-<!-- Графики -->
-<div class="row g-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header fw-semibold">
-                <i class="bi bi-graph-up me-2"></i> Активность (продажи, предзаказы, брони)
-            </div>
-            <div class="card-body">
-                <canvas id="activityChart" height="120"></canvas>
-            </div>
-        </div>
+<!-- Единый комбинированный график -->
+<div class="card">
+    <div class="card-header fw-semibold">
+        <i class="bi bi-graph-up me-2"></i> Активность и выручка
     </div>
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header fw-semibold">
-                <i class="bi bi-graph-up-arrow me-2"></i> Выручка
-            </div>
-            <div class="card-body">
-                <canvas id="revenueChart" height="120"></canvas>
-            </div>
+    <div class="card-body">
+        <div class="chart-container">
+            <canvas id="combinedChart" height="120"></canvas>
         </div>
     </div>
 </div>
@@ -155,8 +144,9 @@
         });
     });
 
-    // График активности – столбцы
-    new Chart(document.getElementById('activityChart'), {
+    // Комбинированный график
+    const ctx = document.getElementById('combinedChart').getContext('2d');
+    new Chart(ctx, {
         type: 'bar',
         data: {
             labels: {{ labels|tojson }},
@@ -166,66 +156,103 @@
                     data: {{ sales_counts|tojson }},
                     backgroundColor: '#2563eb',
                     borderRadius: 4,
+                    order: 2,
+                    yAxisID: 'y',
                 },
                 {
                     label: 'Предзаказы',
                     data: {{ pre_counts|tojson }},
                     backgroundColor: '#f59e0b',
                     borderRadius: 4,
+                    order: 2,
+                    yAxisID: 'y',
                 },
                 {
                     label: 'Брони',
                     data: {{ book_counts|tojson }},
                     backgroundColor: '#10b981',
                     borderRadius: 4,
+                    order: 2,
+                    yAxisID: 'y',
+                },
+                {
+                    label: 'Выручка (₽)',
+                    data: {{ revenue_vals|tojson }},
+                    type: 'line',
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    borderWidth: 3,
+                    pointBackgroundColor: '#ef4444',
+                    tension: 0.3,
+                    fill: false,
+                    order: 1,
+                    yAxisID: 'y1',
                 }
             ]
         },
         options: {
             responsive: true,
-            plugins: {
-                legend: { position: 'top' },
-                tooltip: { mode: 'index' }
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
             },
-            scales: {
-                y: { beginAtZero: true, precision: 0, grid: { color: '#e2e8f0' } },
-                x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: {% if use_weeks %}20{% else %}14{% endif %} } }
-            }
-        }
-    });
-
-    // График выручки – линия
-    new Chart(document.getElementById('revenueChart'), {
-        type: 'line',
-        data: {
-            labels: {{ labels|tojson }},
-            datasets: [{
-                label: 'Выручка (₽)',
-                data: {{ revenue_vals|tojson }},
-                borderColor: '#ef4444',
-                backgroundColor: 'rgba(239, 68, 68, 0.05)',
-                fill: true,
-                tension: 0.3,
-                pointBackgroundColor: '#ef4444',
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
             plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        boxWidth: 8,
+                    }
+                },
                 tooltip: {
                     callbacks: {
-                        label: (ctx) => `${ctx.raw.toLocaleString()} ₽`
+                        label: function(ctx) {
+                            if (ctx.dataset.label === 'Выручка (₽)') {
+                                return ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + ' ₽';
+                            }
+                            return ctx.dataset.label + ': ' + ctx.raw;
+                        }
                     }
                 }
             },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: { color: '#e2e8f0' },
-                    ticks: { callback: (v) => v.toLocaleString() + ' ₽' }
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        maxRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: {% if use_weeks %}20{% else %}14{% endif %}
+                    }
                 },
-                x: { grid: { display: false }, ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: {% if use_weeks %}20{% else %}14{% endif %} } }
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Количество'
+                    },
+                    beginAtZero: true,
+                    precision: 0,
+                    grid: { color: '#e2e8f0' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Сумма (₽)'
+                    },
+                    beginAtZero: true,
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                    ticks: {
+                        callback: (v) => v.toLocaleString() + ' ₽'
+                    }
+                }
             }
         }
     });
