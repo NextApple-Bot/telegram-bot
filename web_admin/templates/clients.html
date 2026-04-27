@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card">
     <div class="card-body">
-        <div class="row g-2 mb-3 align-items-end">
+        <div class="row g-2 mb-3 align-items-end" id="clientFilters">
             <div class="col-md-3">
                 <label class="form-label">Поиск</label>
                 <input type="text" class="form-control" name="search" placeholder="Имя, телефон, Telegram" value="{{ search or '' }}">
@@ -26,7 +26,7 @@
                 </select>
             </div>
             <div class="col-md-3 text-md-end">
-                <button type="submit" class="btn btn-primary w-100 w-md-auto">Применить</button>
+                <button type="submit" class="btn btn-primary w-100 w-md-auto" id="applyClientFilter">Применить</button>
                 <a href="/admin/clients/export/csv?{{ request.query_params }}" class="btn btn-outline-secondary ms-2">📥 CSV</a>
             </div>
         </div>
@@ -89,7 +89,7 @@
     {% endif %}
 </div>
 <script>
-    document.querySelector('.btn-primary').addEventListener('click', function(e) {
+    document.getElementById('applyClientFilter').addEventListener('click', function(e) {
         e.preventDefault();
         const params = new URLSearchParams(window.location.search);
         const search = document.querySelector('input[name="search"]').value;
@@ -104,4 +104,20 @@
         window.location.search = params.toString();
     });
 </script>
+<style>
+    /* Дополнительные адаптивные улучшения */
+    @media (max-width: 480px) {
+        #clientFilters .col-md-3,
+        #clientFilters .col-md-2 {
+            width: 100%;
+        }
+        #clientFilters .btn-primary {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        .table td, .table th {
+            white-space: nowrap;
+        }
+    }
+</style>
 {% endblock %}
