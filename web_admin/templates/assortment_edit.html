@@ -1,4 +1,3 @@
-{# Файл: web_admin/templates/assortment_edit.html #}
 {% extends "base.html" %}
 {% block title %}Редактировать категорию{% endblock %}
 {% block content %}
@@ -11,35 +10,36 @@
     </div>
     <div class="mb-3">
         <label class="form-label">Товары</label>
-        <table class="table table-sm" id="items-table">
-            <thead>
-                <tr><th>Текст товара</th><th>Действия</th></tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                <tr data-item-id="{{ item.id }}">
-                    <td>
-                        <input type="text" class="form-control" name="items_text" value="{{ item.text }}" style="width: 100%;">
-                    </td>
-                    <td>
-                        <button type="button" class="btn btn-sm btn-danger delete-item-btn">Удалить</button>
-                    </td>
-                </tr>
-                {% endfor %}
-                <tr id="new-item-row">
-                    <td colspan="2">
-                        <button type="button" class="btn btn-sm btn-success" id="add-item-btn">+ Добавить товар</button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-sm" id="items-table">
+                <thead>
+                    <tr><th>Текст товара</th><th>Действия</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr data-item-id="{{ item.id }}">
+                        <td>
+                            <input type="text" class="form-control" name="items_text" value="{{ item.text }}" style="width: 100%;">
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger delete-item-btn">Удалить</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr id="new-item-row">
+                        <td colspan="2">
+                            <button type="button" class="btn btn-sm btn-success" id="add-item-btn">+ Добавить товар</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
         <div class="form-text">Каждый товар можно редактировать индивидуально. Удалённые товары будут удалены из БД.</div>
     </div>
     <button type="submit" class="btn btn-primary">Сохранить все изменения</button>
-    <a href="/admin/assortment" class="btn btn-secondary">Отмена</a>
+    <a href="/admin/assortment" class="btn btn-outline-secondary">Отмена</a>
 </form>
 
-<!-- Быстрое добавление товара -->
 <div class="card mt-4">
     <div class="card-header">➕ Быстрое добавление товара</div>
     <div class="card-body">
@@ -56,14 +56,12 @@
 </div>
 
 <script>
-    // Обработка удаления строки
     document.querySelectorAll('.delete-item-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             this.closest('tr').remove();
         });
     });
 
-    // Добавление новой строки
     document.getElementById('add-item-btn').addEventListener('click', function() {
         const tbody = document.querySelector('#items-table tbody');
         const newRow = document.createElement('tr');
@@ -71,11 +69,21 @@
             <td><input type="text" class="form-control" name="items_text" value="" style="width: 100%;"></td>
             <td><button type="button" class="btn btn-sm btn-danger delete-item-btn">Удалить</button></td>
         `;
-        // Добавляем перед строкой с кнопкой "Добавить"
         tbody.insertBefore(newRow, document.getElementById('new-item-row'));
         newRow.querySelector('.delete-item-btn').addEventListener('click', function() {
             this.closest('tr').remove();
         });
     });
 </script>
+<style>
+    @media (max-width: 480px) {
+        .btn {
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        .col-md-10, .col-md-2 {
+            width: 100%;
+        }
+    }
+</style>
 {% endblock %}
