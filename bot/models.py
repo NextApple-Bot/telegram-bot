@@ -1,7 +1,7 @@
 # Файл: bot/models.py
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Float, Boolean, DateTime,
-    ForeignKey, UniqueConstraint, Index, Text, JSON, CheckConstraint
+    ForeignKey, UniqueConstraint, Index, Text, JSON, CheckConstraint, Date
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
@@ -124,3 +124,16 @@ class DeletedItem(Base):
     restored = Column(Boolean, default=False)
     deleted_at = Column(DateTime, server_default=func.now())
     sale_message_id = Column(BigInteger)
+
+# ----- НОВЫЕ МОДЕЛИ ДЛЯ ПРОДАВЦОВ -----
+class Seller(Base):
+    __tablename__ = 'sellers'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True, nullable=False)
+
+class SellerDay(Base):
+    __tablename__ = 'seller_days'
+    id = Column(Integer, primary_key=True)
+    seller_id = Column(Integer, ForeignKey('sellers.id', ondelete='CASCADE'), nullable=False)
+    date = Column(Date, nullable=False)
+    __table_args__ = (UniqueConstraint('seller_id', 'date', name='uq_seller_date'),)
