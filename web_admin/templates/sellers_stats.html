@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Статистика продавцов{% endblock %}
+{% block page_title %}Статистика продавцов{% endblock %}
+{% block content %}
+<!-- Форма периода (аналогична stats.html) -->
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <div class="btn-group" role="group" aria-label="Режим периода">
+        <button type="button" class="btn btn-outline-secondary mode-btn {% if mode == 'preset' %}active{% endif %}" data-mode="preset">Предустановки</button>
+        <button type="button" class="btn btn-outline-secondary mode-btn {% if mode == 'month' %}active{% endif %}" data-mode="month">Месяц</button>
+        <button type="button" class="btn btn-outline-secondary mode-btn {% if mode == 'range' %}active{% endif %}" data-mode="range">Диапазон</button>
+    </div>
+</div>
+
+<form method="get" id="statsForm" class="row g-3 align-items-end mb-4">
+    <input type="hidden" name="mode" id="modeField" value="{{ mode }}">
+    <div id="presetFields" style="display: {% if mode == 'preset' %}block{% else %}none{% endif %};">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">Дата</label>
+                <input type="date" class="form-control" name="target_date" value="{{ target_date }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Период</label>
+                <select name="days" class="form-select">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                    <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div id="monthFields" style="display: {% if mode == 'month' %}block{% else %}none{% endif %};">
+        <div class="col-auto">
+            <label class="form-label">Месяц</label>
+            <input type="month" class="form-control" name="month" value="{{ month }}">
+        </div>
+    </div>
+    <div id="rangeFields" style="display: {% if mode == 'range' %}block{% else %}none{% endif %};">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">С</label>
+                <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label">По</label>
+                <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+            </div>
+        </div>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Показать</button>
+    </div>
+</form>
+
+{% if results %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Продавец</th>
+                    <th>Дней работал</th>
+                    <th>Личных продаж (шт.)</th>
+                    <th>Личная выручка (₽)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                <tr>
+                    <td>{{ r.name }}</td>
+                    <td>{{ r.days_worked }}</td>
+                    <td>{{ r.total_count }}</td>
+                    <td>{{ "{:,.0f}".format(r.total_revenue) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">Нет данных за выбранный период.</div>
+{% endif %}
+
+<script>
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const mode = this.dataset.mode;
+            document.getElementById('modeField').value = mode;
+            document.getElementById('statsForm').submit();
+        });
+    });
+</script>
+{% endblock %}
