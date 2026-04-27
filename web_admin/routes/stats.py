@@ -38,12 +38,6 @@ def parse_date_any_format(date_str: str) -> date:
     raise ValueError(f"Неверный формат даты: {date_str}")
 
 
-def week_range(year, week):
-    """Возвращает (понедельник, воскресенье) для ISO‑недели (year, week)."""
-    d = date.fromisocalendar(year, week, 1)  # понедельник
-    return d, d + timedelta(days=6)
-
-
 @router.get("/", response_class=HTMLResponse)
 async def stats_page(
     request: Request,
@@ -61,7 +55,7 @@ async def stats_page(
     start_date = None
     end_date = None
 
-    # --- Определяем период на основе режима ---
+    # --- Определяем период ---
     if mode == "preset":
         if target_date:
             try:
@@ -77,7 +71,6 @@ async def stats_page(
             try:
                 y, m = map(int, month.split("-"))
                 start_date = date(y, m, 1)
-                # последний день месяца
                 if m == 12:
                     end_date = date(y + 1, 1, 1) - timedelta(days=1)
                 else:
@@ -105,7 +98,10 @@ async def stats_page(
         else:
             end_date = today
 
-    # --- Основной запрос данных ---
+    if end_date < start_date:
+        end_date = start_date  # защита от дурака
+
+    # --- Данные ---
     pool = await get_pool()
     async with pool.acquire() as conn:
         sales_rows = await conn.fetch('''
@@ -131,9 +127,9 @@ async def stats_page(
             GROUP BY day ORDER BY day
         ''', start_date, end_date)
 
-    # --- Агрегация по дням или неделям ---
+    # --- Агрегация ---
     num_days = (end_date - start_date).days + 1
-    use_weeks = num_days > 21  # порог для перехода на недели
+    use_weeks = num_days > 21
 
     labels = []
     sales_counts = []
@@ -142,7 +138,6 @@ async def stats_page(
     revenue_vals = []
 
     if use_weeks:
-        # группируем по ISO‑неделям
         week_data = defaultdict(lambda: {"sales": 0, "pre": 0, "book": 0, "rev": 0.0})
         for row in sales_rows:
             d = row['day']
@@ -161,7 +156,6 @@ async def stats_page(
             key = f"{iso[0]}-W{iso[1]:02d}"
             week_data[key]["book"] += int(row['count'])
 
-        # сортируем ключи
         sorted_keys = sorted(week_data.keys())
         labels = sorted_keys
         sales_counts = [week_data[k]["sales"] for k in sorted_keys]
@@ -169,7 +163,6 @@ async def stats_page(
         book_counts = [week_data[k]["book"] for k in sorted_keys]
         revenue_vals = [week_data[k]["rev"] for k in sorted_keys]
     else:
-        # по дням
         sales_dict = {row['day']: (int(row['count']), float(row['revenue'])) for row in sales_rows}
         pre_dict = {row['day']: int(row['count']) for row in pre_rows}
         book_dict = {row['day']: int(row['count']) for row in book_rows}
@@ -188,8 +181,6 @@ async def stats_page(
     total_book = sum(book_counts)
     total_revenue = sum(revenue_vals)
 
-    # --- Формируем значения для полей ввода в шаблоне ---
-    # Для режима month
     current_month = f"{start_date.year}-{start_date.month:02d}"
 
     return templates.TemplateResponse("stats.html", {
