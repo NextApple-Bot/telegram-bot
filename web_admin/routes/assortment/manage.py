@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from typing import Optional, List
 import logging
 import asyncio
+from datetime import datetime
 
 from bot.services.assortment import AssortmentService
 from bot.db import get_pool
@@ -12,6 +13,22 @@ from bot.db import get_pool
 logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
+
+# --- ФИЛЬТР ДАТЫ ---
+def _format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value
+
+templates.env.filters["format_date"] = _format_date
+# -------------------
 
 
 def validate_phone(phone: str) -> bool:
@@ -122,7 +139,6 @@ async def edit_item_submit(
                     conn=conn
                 )
                 if "error" in result:
-                    # Если произошла ошибка, возвращаем её пользователю
                     raise HTTPException(status_code=400, detail=result["error"])
                 await AssortmentService.invalidate_cache()
                 return RedirectResponse(url="/admin/assortment", status_code=303)
