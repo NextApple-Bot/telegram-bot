@@ -1,21 +1,102 @@
 {% extends "base.html" %}
 {% block title %}Статистика{% endblock %}
-{% block page_title %}Статистика за {{ days }} дней{% endblock %}
-{% block extra_head %}<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .stats-card {
+        border-left: 4px solid var(--primary);
+        transition: all 0.2s;
+    }
+    .stats-card:hover {
+        box-shadow: var(--shadow-lg);
+    }
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        line-height: 1.2;
+    }
+</style>
+{% endblock %}
+{% block page_title %}Статистика за {{ target_date }}{% endblock %}
 {% block content %}
-<div class="card">
-    <div class="card-body">
-        <form method="get" class="row g-2 align-items-end">
-            <div class="col-auto"><select name="days" class="form-select"><option value="7" {% if days==7 %}selected{% endif %}>7 дней</option><option value="14" {% if days==14 %}selected{% endif %}>14 дней</option><option value="30" {% if days==30 %}selected{% endif %}>30 дней</option></select></div>
-            <div class="col-auto"><button type="submit" class="btn btn-primary">Показать</button></div>
-        </form>
+<!-- Выбор даты -->
+<div class="row align-items-end mb-4">
+    <div class="col-auto">
+        <label class="form-label fw-semibold">Дата</label>
+        <input type="date" class="form-control" id="targetDateInput" value="{{ target_date_iso }}">
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" id="changeDateBtn">Показать</button>
     </div>
 </div>
-<div class="row g-4">
-    <div class="col-12"><div class="card"><div class="card-body"><canvas id="statsChart" width="400" height="200"></canvas></div></div></div>
-    <div class="col-12"><div class="card"><div class="card-body"><table class="table table-bordered"><thead><tr><th>Тип</th><th>Количество</th><th>Выручка</th></tr></thead><tbody><tr><td>Продажи</td><td>{{ total_sales_count }}</td><td>{{ "{:,.0f}".format(total_sales_revenue) }} ₽</td></tr><tr><td>Предзаказы</td><td>{{ total_pre_count }}</td><td>{{ "{:,.0f}".format(total_pre_revenue) }} ₽</td></tr><tr><td>Брони</td><td>{{ total_book_count }}</td><td>{{ "{:,.0f}".format(total_book_revenue) }} ₽</td></tr></tbody></table></div></div></div>
+
+<div class="row g-4 mb-4">
+    <!-- Продажи -->
+    <div class="col-md-4">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-cart-check-fill me-2 fs-4" style="color: var(--primary);"></i>
+                    <h5 class="card-title mb-0 fw-semibold">Продажи</h5>
+                </div>
+                <div class="kpi-value">{{ stats.sales_count }}</div>
+            </div>
+        </div>
+    </div>
+    <!-- Предзаказы -->
+    <div class="col-md-4">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-box-seam me-2 fs-4" style="color: var(--warning);"></i>
+                    <h5 class="card-title mb-0 fw-semibold">Предзаказы</h5>
+                </div>
+                <div class="kpi-value">{{ stats.preorders_count }}</div>
+            </div>
+        </div>
+    </div>
+    <!-- Брони -->
+    <div class="col-md-4">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-bookmark-check-fill me-2 fs-4" style="color: var(--success);"></i>
+                    <h5 class="card-title mb-0 fw-semibold">Брони</h5>
+                </div>
+                <div class="kpi-value">{{ stats.bookings_count }}</div>
+            </div>
+        </div>
+    </div>
 </div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header fw-semibold">
+                <i class="bi bi-coin me-2"></i> Финансы за {{ target_date }}
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-borderless mb-0">
+                    <tr><th class="ps-4">Наличные</th><td class="text-end pe-4">{{ stats.detailed_payments.cash|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Терминал</th><td class="text-end pe-4">{{ stats.detailed_payments.terminal|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">QR-код</th><td class="text-end pe-4">{{ stats.detailed_payments.qr|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Перевод</th><td class="text-end pe-4">{{ stats.detailed_payments.transfer|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Оплата по счету</th><td class="text-end pe-4">{{ stats.detailed_payments.invoice|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Рассрочка</th><td class="text-end pe-4">{{ stats.detailed_payments.installment|round(0) }} ₽</td></tr>
+                    <tr class="border-top"><th class="ps-4 fw-bold">Итого</th><td class="text-end pe-4 fw-bold fs-5">{{ stats.total_revenue|round(0) }} ₽</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-    new Chart(document.getElementById('statsChart'), { type: 'line', data: { labels: {{ dates|tojson }}, datasets: [ { label: 'Продажи', data: {{ sales_counts|tojson }}, borderColor: '#2563eb' }, { label: 'Предзаказы', data: {{ pre_counts|tojson }}, borderColor: '#10b981' }, { label: 'Брони', data: {{ book_counts|tojson }}, borderColor: '#f59e0b' } ] }, options: { responsive: true } });
+    document.getElementById('changeDateBtn').addEventListener('click', function() {
+        const dateVal = document.getElementById('targetDateInput').value;
+        if (dateVal) {
+            window.location.href = '?target_date=' + dateVal;
+        }
+    });
 </script>
 {% endblock %}
