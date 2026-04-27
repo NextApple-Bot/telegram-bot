@@ -13,6 +13,22 @@ from bot.db import get_pool
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
+# --- ФИЛЬТР ДАТЫ ---
+def _format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value
+
+templates.env.filters["format_date"] = _format_date
+# -------------------
+
 ALLOWED_SORT_FIELDS = {
     "id": "p.id",
     "created_at": "p.created_at",
@@ -81,7 +97,6 @@ async def list_purchases(
             pass
 
     if payment_type and payment_type != "all":
-        # Исправлено: числовое приведение через CAST
         base_query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(params)+1) + " AS NUMERIC), 0) != 0"
         count_query += " AND COALESCE(CAST(p.payment_details->>$" + str(len(count_params)+1) + " AS NUMERIC), 0) != 0"
         params.append(payment_type)
