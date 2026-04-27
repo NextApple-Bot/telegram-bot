@@ -14,7 +14,7 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <button class="btn btn-primary" id="applyPerPage">Применить</button>
+                <button class="btn btn-primary w-100 w-md-auto" id="applyPerPage">Применить</button>
             </div>
         </div>
         <div class="mb-2"><span class="badge bg-secondary">Всего записей: {{ total }}</span></div>
@@ -81,4 +81,14 @@
         window.location.href = `?page=1&per_page=${perPage}`;
     });
 </script>
+<style>
+    @media (max-width: 480px) {
+        .col-md-3 {
+            width: 100%;
+        }
+        .btn-primary {
+            width: 100%;
+        }
+    }
+</style>
 {% endblock %}
