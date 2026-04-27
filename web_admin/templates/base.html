@@ -52,7 +52,7 @@
             width: var(--sidebar-width);
             background: var(--card-bg);
             border-right: 1px solid var(--border-light);
-            transition: width 0.2s ease;
+            transition: width 0.2s ease, transform 0.3s ease;
             z-index: 1040;
             display: flex;
             flex-direction: column;
@@ -112,6 +112,7 @@
             margin-left: var(--sidebar-width);
             transition: margin-left 0.2s ease;
             padding: 1.75rem 2rem;
+            min-height: 100vh;
         }
         .main-content-expanded { margin-left: var(--sidebar-collapsed-width); }
 
@@ -247,6 +248,26 @@
             z-index: 1100;
         }
 
+        /* ОВЕРЛЕЙ ДЛЯ МОБИЛЬНОГО МЕНЮ (ЧТОБЫ НЕ ПРОСВЕЧИВАЛ ВЫСЕР) */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.4);
+            z-index: 1039;
+            animation: fadeIn 0.2s ease;
+        }
+        .sidebar-overlay.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
         /* Планшеты: только иконки */
         @media (max-width: 992px) {
             .sidebar { width: var(--sidebar-collapsed-width); }
@@ -255,16 +276,17 @@
             .sidebar .logo-area h4 { text-align: center; font-size: 1.2rem; }
         }
 
-        /* Мобильные: сайдбар скрыт, бургер активен */
+        /* Мобильные: бургер, оверлей, подписи */
         @media (max-width: 768px) {
             .mobile-menu-toggle { display: block; }
             .sidebar {
                 width: var(--sidebar-width);
                 transform: translateX(-100%);
-                transition: transform 0.2s ease;
+                transition: transform 0.3s ease;
+                z-index: 1050;
             }
             .sidebar.sidebar-mobile-open { transform: translateX(0); }
-            /* ВОТ ЭТО ДЕРЬМО Я ПРОЕБАЛ, СУКА. ТЕПЕРЬ ПОДПИСИ ВОЗВРАЩАЮТСЯ */
+            /* Показываем подписи только в открытом мобильном меню */
             .sidebar.sidebar-mobile-open .nav-link span {
                 display: inline !important;
             }
@@ -287,6 +309,10 @@
     <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Меню">
         <i class="bi bi-list"></i>
     </button>
+
+    <!-- Оверлей -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <div class="sidebar" id="sidebar">
         <div class="logo-area">
             <h4>📊 Bot Admin</h4>
@@ -339,7 +365,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const mobileToggle = document.getElementById('mobileMenuToggle');
         const mainContent = document.getElementById('mainContent');
+
         let collapsed = false;
         document.querySelector('.logo-area').addEventListener('dblclick', () => {
             collapsed = !collapsed;
@@ -352,15 +381,14 @@
             }
         });
 
-        const mobileToggle = document.getElementById('mobileMenuToggle');
         if (mobileToggle) {
             mobileToggle.addEventListener('click', () => {
                 sidebar.classList.toggle('sidebar-mobile-open');
+                overlay.classList.toggle('active');
             });
-            document.addEventListener('click', (e) => {
-                if (!sidebar.contains(e.target) && !mobileToggle.contains(e.target)) {
-                    sidebar.classList.remove('sidebar-mobile-open');
-                }
+            overlay.addEventListener('click', () => {
+                sidebar.classList.remove('sidebar-mobile-open');
+                overlay.classList.remove('active');
             });
         }
     </script>
