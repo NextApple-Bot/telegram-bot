@@ -1,6 +1,7 @@
 # Файл: web_admin/routes/assortment/notifications.py
 import logging
 import asyncio
+from datetime import datetime
 from aiogram import Bot
 from bot import config
 
@@ -43,7 +44,9 @@ async def send_booking_notification(
                     }.get(payment_type, payment_type)
                     prepayment_str += f" ({payment_type_ru})"
 
-            lines = ["БРОНЬ:\n", item_text]
+            # Дата брони теперь в формате ДД.ММ.ГГ
+            today = datetime.now().strftime("%d.%m.%y")
+            lines = ["БРОНЬ:\n", f"{item_text} (Бронь от {today})"]
             if price is not None:
                 lines.append(f"Стоимость – {format_number(price)}")
                 lines.append("")
