@@ -9,7 +9,7 @@ from datetime import datetime
 
 from bot import config
 from .auth import is_authenticated
-from .routes import dashboard, clients, purchases, stats, auth, sold
+from .routes import dashboard, clients, purchases, stats, auth, sold, sellers   # <-- sellers
 from .routes.assortment import views as assortment_views
 from .routes.assortment import manage as assortment_manage
 from .routes import debug
@@ -36,7 +36,6 @@ def safe_fromjson(value):
 templates.env.filters["fromjson"] = safe_fromjson
 
 
-# ФИЛЬТР ДЛЯ ДАТ (DD.MM.YY)
 def format_date_filter(value, fmt="%d.%m.%y"):
     if isinstance(value, datetime):
         return value.strftime(fmt)
@@ -61,6 +60,7 @@ app.include_router(assortment_views.router, prefix="/assortment", tags=["assortm
 app.include_router(assortment_manage.router, prefix="/assortment", tags=["assortment_manage"])
 app.include_router(sold.router, prefix="/sold", tags=["sold"])
 app.include_router(stats.router, prefix="/stats", tags=["stats"])
+app.include_router(sellers.router, prefix="/sellers", tags=["sellers"])   # новый роутер
 app.include_router(debug.router, prefix="/admin", tags=["debug"])
 
 
