@@ -44,7 +44,6 @@ async def send_booking_notification(
                     }.get(payment_type, payment_type)
                     prepayment_str += f" ({payment_type_ru})"
 
-            # Дата брони теперь в формате ДД.ММ.ГГ
             today = datetime.now().strftime("%d.%m.%y")
             lines = ["БРОНЬ:\n", f"{item_text} (Бронь от {today})"]
             if price is not None:
@@ -123,6 +122,12 @@ async def send_sale_notification(
                 pay_type = acc.get('payment_type')
                 if pay_type and pay_type != "paid" and acc['price'] > 0:
                     payments[pay_type] = payments.get(pay_type, 0) + acc['price']
+
+        # ---- НОВОЕ: выводим предоплату отдельной строкой, если она есть ----
+        if prepayment and prepayment > 0:
+            lines.append(f"П/О – {format_number(prepayment)}")
+            lines.append("")
+        # -----------------------------------------------------------------
 
         # Строки оплаты
         if payment_type == "paid":
