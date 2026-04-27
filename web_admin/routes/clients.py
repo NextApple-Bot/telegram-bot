@@ -13,6 +13,22 @@ from bot.repositories import ClientRepository
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
+# --- ФИЛЬТР ДАТЫ ---
+def _format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value
+
+templates.env.filters["format_date"] = _format_date
+# -------------------
+
 ALLOWED_SORT_FIELDS = {
     "id": "id",
     "full_name": "full_name",
