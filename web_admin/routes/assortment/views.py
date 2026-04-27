@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from typing import Optional
+from typing import Optional, List       # <-- ДОБАВЛЕН List
 import re
 from datetime import datetime
 
@@ -12,7 +12,7 @@ from bot.services.assortment import AssortmentService
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-# --- ФИЛЬТР ДАТЫ (дублирован для этого модуля) ---
+# --- ФИЛЬТР ДАТЫ ---
 def _format_date(value, fmt="%d.%m.%y"):
     if isinstance(value, datetime):
         return value.strftime(fmt)
@@ -26,7 +26,7 @@ def _format_date(value, fmt="%d.%m.%y"):
     return value
 
 templates.env.filters["format_date"] = _format_date
-# ----------------------------------------
+# -------------------
 
 ALLOWED_SORT_FIELDS = {
     "id": "i.id",
