@@ -31,7 +31,8 @@
 <div class="row align-items-end mb-4">
     <div class="col-auto">
         <label class="form-label fw-semibold">Дата</label>
-        <input type="date" class="form-control" id="targetDateInput" value="{{ target_date }}">
+        <!-- Используем ISO-формат для input -->
+        <input type="date" class="form-control" id="targetDateInput" value="{{ target_date_iso }}">
     </div>
     <div class="col-auto">
         <button class="btn btn-primary" id="changeDateBtn">Показать</button>
@@ -190,8 +191,8 @@
             </div>
             <div class="modal-body">
                 <form id="editStatsForm">
-                    <!-- Отправляем дату в ISO, сервер поймёт -->
-                    <input type="hidden" name="target_date" value="{{ stats.date }}">
+                    <!-- Отправляем ISO-дату, сервер поймёт -->
+                    <input type="hidden" name="target_date" value="{{ target_date_iso }}">
                     <h6 class="fw-semibold mb-3">Платежи</h6>
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
@@ -314,7 +315,7 @@
     const colors = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
 
     function updateTopModels(days) {
-        fetch(`/admin/dashboard/top_models_data?days=${days}&target_date={{ target_date }}`)
+        fetch(`/admin/dashboard/top_models_data?days=${days}&target_date={{ target_date_iso }}`)
             .then(res => res.json())
             .then(data => {
                 if (pieChart) pieChart.destroy();
@@ -403,7 +404,7 @@
                 const modal = bootstrap.Modal.getInstance(document.getElementById('editStatsModal'));
                 modal.hide();
                 // Перезагружаем страницу с той же датой
-                window.location.href = '?target_date=' + data.target_date + '&_t=' + Date.now();
+                window.location.href = '?target_date=' + encodeURIComponent(data.target_date) + '&_t=' + Date.now();
             } else {
                 alert('Ошибка: ' + (result.error || 'Не удалось сохранить'));
             }
