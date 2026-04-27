@@ -100,7 +100,7 @@ class StatsRepository:
             ''', today)
 
             return {
-                'date': today.strftime('%Y-%m-%d'),
+                'date': today.strftime('%d.%m.%y'),   # Изменено на DD.MM.YY
                 'preorders_count': pre_sums['preorders_count'],
                 'bookings_count': book_sums['bookings_count'],
                 'sales_count': sale_sums['sales_count'],
@@ -131,9 +131,7 @@ class StatsRepository:
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Удаляем статистику продаж, предзаказов, броней
                 await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
                 await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
                 await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
-                # Также удаляем финансовые записи за сегодня
                 await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = $1', today)
