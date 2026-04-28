@@ -41,10 +41,10 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
 
         if base.startswith(cat_name):
             remainder = base[len(cat_name):]
-            if remainder == '' or remainder[0] == ' ':
-                if len(cat_name) > best_len:
-                    best_len = len(cat_name)
-                    best_match = cat['header']
+            # Исправлено: объединены условия if
+            if (remainder == '' or remainder[0] == ' ') and len(cat_name) > best_len:
+                best_len = len(cat_name)
+                best_match = cat['header']
         elif cat_name in base:
             if len(cat_name) > best_len:
                 best_len = len(cat_name)
@@ -132,16 +132,14 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
     # Убираем строки-разделители (полностью из тире)
     lines = [line for line in lines if not re.match(r'^\s*-+\s*$', line)]
 
-    # --- НОВОЕ: склеиваем строки, где серийник на следующей строке (но не заголовки категорий) ---
+    # --- Склеиваем строки, где серийник на следующей строке (но не заголовки категорий) ---
     merged_lines = []
     i = 0
     while i < len(lines):
         line = lines[i]
-        # Если строка не содержит серийник, не является заголовком категории (не заканчивается на ':'),
-        # и следующая строка содержит серийник
-        if (not extract_serials(line) and 
-            not line.strip().endswith(':') and 
-            i + 1 < len(lines) and 
+        if (not extract_serials(line) and
+            not line.strip().endswith(':') and
+            i + 1 < len(lines) and
             extract_serials(lines[i + 1])):
             merged = f"{line} {lines[i + 1]}"
             merged_lines.append(merged)
