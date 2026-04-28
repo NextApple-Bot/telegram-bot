@@ -16,13 +16,8 @@ class ClientRepository:
         telegram_username: Optional[str] = None,
         social_network: Optional[str] = None,
         referral_source: Optional[str] = None,
-        conn=None  # ДОБАВЛЕНО: возможность передать готовое соединение
+        conn=None
     ) -> int:
-        """
-        Возвращает ID клиента, создавая нового при необходимости.
-        Обновляет данные существующего клиента, если они изменились.
-        Если передан conn, использует его, иначе создаёт своё соединение.
-        """
         logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
 
         async def _impl(connection):
@@ -91,9 +86,8 @@ class ClientRepository:
         total_amount: float,
         payment_details: dict,
         purchase_type: str = 'sale',
-        conn=None  # ДОБАВЛЕНО
+        conn=None
     ):
-        """Добавляет запись о покупке для клиента. Может использовать переданное соединение."""
         items_json = json.dumps(items, ensure_ascii=False)
         payment_json = json.dumps(payment_details, ensure_ascii=False)
 
@@ -113,7 +107,6 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_client_purchases(client_id: int) -> List[Dict]:
-        """Возвращает все покупки клиента."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
@@ -122,11 +115,10 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def search_clients(query: str) -> List[Dict]:
-        """Ищет клиентов по имени, телефону или telegram username."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
-                SELECT * FROM clients 
+                SELECT * FROM clients
                 WHERE full_name ILIKE $1 OR phone ILIKE $1 OR telegram_username ILIKE $1
                 ORDER BY updated_at DESC
             ''', f'%{query}%')
@@ -135,7 +127,6 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_available_months() -> List[str]:
-        """Возвращает список месяцев, за которые есть данные (клиенты или покупки)."""
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows1 = await conn.fetch('''
@@ -154,10 +145,6 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_clients_data_for_month(month_str: str) -> List[Dict]:
-        """
-        Возвращает данные клиентов и их покупок за указанный месяц.
-        Формат month_str: 'MM.YYYY'.
-        """
         from datetime import datetime
         month, year = map(int, month_str.split('.'))
         start_date = datetime(year, month, 1).date()
@@ -169,7 +156,7 @@ class ClientRepository:
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
-                SELECT 
+                SELECT
                     c.id as client_id,
                     c.full_name,
                     c.phone,
@@ -185,7 +172,7 @@ class ClientRepository:
                     p.purchase_type,
                     p.created_at as purchase_created_at
                 FROM clients c
-                LEFT JOIN purchases p ON c.id = p.client_id 
+                LEFT JOIN purchases p ON c.id = p.client_id
                     AND p.created_at >= $1 AND p.created_at < $2
                 WHERE (p.id IS NOT NULL) OR (c.created_at >= $1 AND c.created_at < $2)
                 ORDER BY c.id, p.created_at
