@@ -21,7 +21,6 @@ class StatsRepository:
         message_id: int = None,
         conn=None
     ):
-        """Добавляет запись о продаже с уникальным message_id."""
         if conn is None:
             pool = await get_pool()
             async with pool.acquire() as conn:
@@ -64,7 +63,7 @@ class StatsRepository:
         async with pool.acquire() as conn:
             # Продажи
             sale_sums = await conn.fetchrow('''
-                SELECT 
+                SELECT
                     COALESCE(SUM(cash),0) as cash,
                     COALESCE(SUM(terminal),0) as terminal,
                     COALESCE(SUM(qr),0) as qr,
@@ -72,13 +71,13 @@ class StatsRepository:
                     COALESCE(SUM(invoice),0) as invoice,
                     COALESCE(SUM(installment),0) as installment,
                     COUNT(*) as sales_count
-                FROM sales 
+                FROM sales
                 WHERE DATE(sold_at) = $1
             ''', today)
 
             # Предзаказы
             pre_sums = await conn.fetchrow('''
-                SELECT 
+                SELECT
                     COALESCE(SUM(cash),0) as cash,
                     COALESCE(SUM(terminal),0) as terminal,
                     COALESCE(SUM(qr),0) as qr,
@@ -86,21 +85,21 @@ class StatsRepository:
                     COALESCE(SUM(invoice),0) as invoice,
                     COALESCE(SUM(installment),0) as installment,
                     COUNT(*) as preorders_count
-                FROM preorders 
+                FROM preorders
                 WHERE DATE(created_at) = $1
             ''', today)
 
             # Брони
             book_sums = await conn.fetchrow('''
-                SELECT 
+                SELECT
                     COALESCE(SUM(total_amount),0) as total,
                     COUNT(*) as bookings_count
-                FROM bookings 
+                FROM bookings
                 WHERE DATE(booked_at) = $1
             ''', today)
 
             return {
-                'date': today.strftime('%d.%m.%y'),   # Изменено на DD.MM.YY
+                'date': today.strftime('%d.%m.%y'),
                 'preorders_count': pre_sums['preorders_count'],
                 'bookings_count': book_sums['bookings_count'],
                 'sales_count': sale_sums['sales_count'],
@@ -126,7 +125,6 @@ class StatsRepository:
     @staticmethod
     @retry_on_db_error()
     async def reset_today_stats():
-        """Удаляет статистику продаж, предзаказов, броней и финансов за сегодня."""
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
