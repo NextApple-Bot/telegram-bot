@@ -105,10 +105,12 @@ async def handle_sale_from_form(
             client_id = None
             phone = sale_phone.strip() if sale_phone else None
             if phone or sale_full_name:
+                # ИСПРАВЛЕНО: передаём conn
                 client_id = await ClientRepository.get_or_create_client(
                     phone=phone,
                     full_name=sale_full_name.strip() if sale_full_name else None,
                     social_network=sale_platform.strip() if sale_platform else None,
+                    conn=conn
                 )
 
             # Обработка аксессуаров
@@ -174,12 +176,14 @@ async def handle_sale_from_form(
                     for acc in processed_accessories:
                         items_list.append({"item_text": acc['text'], "price": acc['price']})
                 payment_details_json = {pt: amt for pt, amt in all_payments.items() if amt > 0}
+                # ИСПРАВЛЕНО: передаём conn
                 await ClientRepository.add_purchase(
                     client_id=client_id,
                     items=items_list,
                     total_amount=sale_price + accessories_total,
                     payment_details=payment_details_json,
-                    purchase_type='sale'
+                    purchase_type='sale',
+                    conn=conn
                 )
 
             # Отправка уведомления
