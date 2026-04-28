@@ -17,11 +17,12 @@ from bot.repositories import StatsRepository, ClientRepository, ItemRepository
 from bot.db import get_pool
 from bot.utils.sort import get_full_model_name, detect_sim_type
 from bot.utils.markdown import escape_markdown_v1
-from .base import show_inventory, show_help, cancel_action, get_main_menu_keyboard, logger
+from .base import show_inventory, show_help, cancel_action, get_main_menu_keyboard
 from .topics.common import export_assortment_to_topic
 from bot.utils.helpers import send_and_clean
 
 router = Router()
+logger = logging.getLogger(__name__)  # Собственный логгер, а не из base
 
 last_stats_message = TTLCache(maxsize=1000, ttl=3600)
 last_inventory_message = TTLCache(maxsize=1000, ttl=3600)
@@ -125,6 +126,28 @@ async def process_export_assortment(callback: CallbackQuery):
         bot=callback.bot,
         chat_id=callback.from_user.id,
         text="✅ Ассортимент выгружен в топик.",
+        message_thread_id=callback.message.message_thread_id,
+        delete_after=60
+    )
+
+
+@router.callback_query(F.data == "menu:clear")
+async def process_clear(callback: CallbackQuery):
+    """Обработчик кнопки 'Очистить ассортимент' (menu:clear)"""
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ ДА, УДАЛИТЬ ВСЁ", callback_data="reset_assortment:confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+    ])
+    await send_and_clean(
+        bot=callback.bot,
+        chat_id=callback.message.chat.id,
+        text="⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит** все товары и категории из ассортимента.\nДанные о клиентах, покупках, статистике и бронях сохранятся.\n\nВы уверены?",
+        reply_markup=keyboard,
+        parse_mode='Markdown',
         message_thread_id=callback.message.message_thread_id,
         delete_after=60
     )
@@ -258,3 +281,7 @@ async def process_month_selection(callback: CallbackQuery):
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="❌ Произошла ошибка при формировании отчёта.", message_thread_id=callback.message.message_thread_id, delete_after=60)
         keyboard = get_main_menu_keyboard()
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="Выберите действие:", reply_markup=keyboard, message_thread_id=callback.message.message_thread_id, delete_after=60)
+
+
+# Обработчики для кнопок очистки, удаления и т.д. — они остаются без изменений, просто теперь они в основном коде
+# (убедись, что они импортированы и активны в исходном файле)
