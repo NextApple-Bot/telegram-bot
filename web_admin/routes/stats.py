@@ -1,3 +1,4 @@
+# Файл: web_admin/routes/stats.py
 from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-# --- ФИЛЬТР ДАТЫ ---
+
 def _format_date(value, fmt="%d.%m.%y"):
     if isinstance(value, datetime):
         return value.strftime(fmt)
@@ -26,7 +27,7 @@ def _format_date(value, fmt="%d.%m.%y"):
     return value
 
 templates.env.filters["format_date"] = _format_date
-# -------------------
+
 
 def parse_date_any_format(date_str: str) -> date:
     for fmt in ["%Y-%m-%d", "%d.%m.%y"]:
@@ -35,6 +36,7 @@ def parse_date_any_format(date_str: str) -> date:
         except ValueError:
             continue
     raise ValueError(f"Неверный формат даты: {date_str}")
+
 
 @router.get("/", response_class=HTMLResponse)
 async def stats_page(
@@ -97,7 +99,6 @@ async def stats_page(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Данные для круговых диаграмм по типам оплаты
         pay_rows = await conn.fetch('''
             SELECT payment_type, SUM(amount) as total
             FROM daily_payments
@@ -105,7 +106,6 @@ async def stats_page(
             GROUP BY payment_type
         ''', start_date, end_date)
 
-        # Количество сущностей
         sales_count = await conn.fetchval(
             'SELECT COALESCE(SUM(count), 0) FROM sales WHERE sold_at >= $1 AND sold_at <= $2',
             start_date, end_date
@@ -119,7 +119,6 @@ async def stats_page(
             start_date, end_date
         )
 
-        # Выручка по дням для линейного графика
         rev_rows = await conn.fetch('''
             SELECT DATE(sold_at) as day,
                    COALESCE(SUM(cash),0) + COALESCE(SUM(terminal),0) + COALESCE(SUM(qr),0) +
@@ -129,17 +128,8 @@ async def stats_page(
             GROUP BY day ORDER BY day
         ''', start_date, end_date)
 
-    # Платёжная структура
     payment_labels = []
     payment_values = []
-    payment_colors = {
-        'cash': '#2563eb',
-        'terminal': '#f59e0b',
-        'qr': '#10b981',
-        'transfer': '#ef4444',
-        'invoice': '#8b5cf6',
-        'installment': '#ec4899',
-    }
     for row in pay_rows:
         pt = row['payment_type']
         payment_labels.append({
@@ -148,7 +138,6 @@ async def stats_page(
         }.get(pt, pt))
         payment_values.append(float(row['total']))
 
-    # Данные для линейного графика
     num_days = (end_date - start_date).days + 1
     rev_dict = {row['day']: float(row['revenue']) for row in rev_rows}
     chart_dates = [(start_date + timedelta(days=i)).strftime("%d.%m.%y") for i in range(num_days)]
