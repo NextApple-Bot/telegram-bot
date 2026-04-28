@@ -57,6 +57,27 @@ class RedisCache:
         except Exception as e:
             logger.error(f"Redis clear pattern error: {e}")
 
+    # ---- НОВЫЕ МЕТОДЫ ДЛЯ БЛОКИРОВОК ----
+    async def lock(self, key: str, ttl: int = 60, value: str = "locked") -> bool:
+        """Пытается захватить блокировку. Возвращает True, если захватил."""
+        if not self._enabled:
+            # Если Redis нет, считаем, что блокировка всегда успешна (но с предупреждением)
+            logger.warning("Redis не доступен, блокировка не работает — возможны гонки")
+            return True
+        try:
+            acquired = await self._redis.set(key, value, nx=True, ex=ttl)
+            return acquired is not None
+        except Exception as e:
+            logger.error(f"Ошибка lock Redis: {e}")
+            return True  # на ошибке лучше выполнить, чем заблокировать навсегда
+
+    async def unlock(self, key: str) -> None:
+        if self._enabled:
+            try:
+                await self._redis.delete(key)
+            except Exception as e:
+                logger.error(f"Ошибка unlock Redis: {e}")
+
 
 # Глобальный экземпляр
 cache = RedisCache()
