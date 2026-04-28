@@ -9,7 +9,7 @@ from datetime import datetime
 
 from bot import config
 from .auth import is_authenticated
-from .routes import dashboard, clients, purchases, stats, auth, sold, sellers   # <-- sellers
+from .routes import dashboard, clients, purchases, stats, auth, sold, sellers
 from .routes.assortment import views as assortment_views
 from .routes.assortment import manage as assortment_manage
 from .routes import debug
@@ -28,8 +28,8 @@ def safe_fromjson(value):
         return []
     try:
         return json.loads(value)
-    except (json.JSONDecodeError, TypeError):
-        logger.warning(f"Ошибка парсинга JSON: {value[:100]}")
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        logger.warning(f"Ошибка парсинга JSON: {value[:100] if isinstance(value, str) else value}")
         return []
 
 
@@ -60,7 +60,7 @@ app.include_router(assortment_views.router, prefix="/assortment", tags=["assortm
 app.include_router(assortment_manage.router, prefix="/assortment", tags=["assortment_manage"])
 app.include_router(sold.router, prefix="/sold", tags=["sold"])
 app.include_router(stats.router, prefix="/stats", tags=["stats"])
-app.include_router(sellers.router, prefix="/sellers", tags=["sellers"])   # новый роутер
+app.include_router(sellers.router, prefix="/sellers", tags=["sellers"])
 app.include_router(debug.router, prefix="/admin", tags=["debug"])
 
 
