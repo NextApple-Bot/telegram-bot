@@ -1,7 +1,7 @@
 """Add sellers and seller_days tables
 
 Revision ID: 014
-Revises: 012   # <-- изменено с 013 на 012
+Revises: 013   # <-- ИСПРАВЛЕНО (было 012)
 Create Date: 2026-04-27 15:00:00.000000
 
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '014'
-down_revision = '013'   # последняя применённая миграция
+down_revision = '013'   # <-- ИСПРАВЛЕНО
 branch_labels = None
 depends_on = None
 
