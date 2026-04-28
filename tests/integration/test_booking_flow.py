@@ -1,8 +1,7 @@
 import pytest
+from aiogram.types import Chat, Message, User
+
 from bot import config  # Добавлено
-from bot.handlers.topics.preorder import router
-from bot.db import get_pool
-from aiogram.types import Message, Chat, User
 
 
 @pytest.mark.asyncio

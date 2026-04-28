@@ -1,7 +1,9 @@
 # Файл: bot/webhook_utils.py
 import logging
+
 import aiohttp
 from aiogram import Bot, Dispatcher
+
 from bot import config
 
 logger = logging.getLogger(__name__)

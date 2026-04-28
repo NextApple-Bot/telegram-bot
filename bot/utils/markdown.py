@@ -1,5 +1,6 @@
 import re
 
+
 def escape_markdown(text: str) -> str:
     """
     Экранирует специальные символы MarkdownV2.

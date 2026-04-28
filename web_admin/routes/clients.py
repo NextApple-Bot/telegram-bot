@@ -1,14 +1,13 @@
 # Файл: web_admin/routes/clients.py
-from fastapi import APIRouter, Request, Query, HTTPException, Form
-from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from datetime import datetime, timedelta
-from typing import Optional
 import csv
 import io
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Form, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 
 from bot.db import get_pool
-from bot.repositories import ClientRepository
 
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
@@ -44,9 +43,9 @@ async def list_clients(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=10, le=200),
-    search: Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
     sort_by: str = Query("id", regex="^(id|full_name|phone|telegram_username|created_at|updated_at)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
 ):
@@ -115,9 +114,9 @@ async def list_clients(
 @router.get("/export/csv")
 async def export_clients_csv(
     request: Request,
-    search: Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
 ):
     pool = await get_pool()
     query = "SELECT * FROM clients WHERE 1=1"
@@ -201,12 +200,12 @@ async def client_edit_form(request: Request, client_id: int):
 async def client_edit_submit(
     request: Request,
     client_id: int,
-    full_name: Optional[str] = Form(None),
-    phone: Optional[str] = Form(None),
-    phones: Optional[str] = Form(None),
-    telegram_username: Optional[str] = Form(None),
-    social_network: Optional[str] = Form(None),
-    referral_source: Optional[str] = Form(None),
+    full_name: str | None = Form(None),
+    phone: str | None = Form(None),
+    phones: str | None = Form(None),
+    telegram_username: str | None = Form(None),
+    social_network: str | None = Form(None),
+    referral_source: str | None = Form(None),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -242,8 +241,7 @@ async def client_edit_submit(
 @router.post("/delete/{client_id}")
 async def delete_client(request: Request, client_id: int):
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute('DELETE FROM purchases WHERE client_id = $1', client_id)
-            await conn.execute('DELETE FROM clients WHERE id = $1', client_id)
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute('DELETE FROM purchases WHERE client_id = $1', client_id)
+        await conn.execute('DELETE FROM clients WHERE id = $1', client_id)
     return RedirectResponse(url="/admin/clients", status_code=303)

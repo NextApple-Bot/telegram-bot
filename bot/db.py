@@ -1,9 +1,10 @@
 # Файл: bot/db.py
-import os
-import asyncpg
-import logging
 import asyncio
+import logging
+import os
 from functools import wraps
+
+import asyncpg
 
 from bot import config
 
@@ -29,7 +30,7 @@ def retry_on_db_error(retries=3, delay=1, backoff=2):
                     else:
                         logger.error(f"Все попытки исчерпаны: {e}")
                         raise
-                except Exception as e:
+                except Exception:
                     raise
             raise last_exception
         return wrapper

@@ -1,24 +1,21 @@
-import json
 import csv
-import tempfile
-import os
+import json
 import logging
+import os
+import tempfile
 from datetime import datetime
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from cachetools import TTLCache
 
-from bot import config
-from bot.services.assortment import AssortmentService
-from bot.repositories import StatsRepository, ClientRepository, ItemRepository
 from bot.db import get_pool
-from bot.utils.sort import get_full_model_name, detect_sim_type
-from bot.utils.markdown import escape_markdown_v1
-from .base import show_inventory, show_help, cancel_action, get_main_menu_keyboard
-from .topics.common import export_assortment_to_topic
+from bot.repositories import ClientRepository, StatsRepository
 from bot.utils.helpers import send_and_clean
+from bot.utils.sort import detect_sim_type, get_full_model_name
+
+from .base import get_main_menu_keyboard, show_inventory
+from .topics.common import export_assortment_to_topic
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -273,7 +270,7 @@ async def process_month_selection(callback: CallbackQuery):
         keyboard = get_main_menu_keyboard()
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="Выберите действие:", reply_markup=keyboard, message_thread_id=callback.message.message_thread_id, delete_after=60)
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Ошибка при формировании отчёта за {month}")
         await safe_delete(callback.message)
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="❌ Произошла ошибка при формировании отчёта.", message_thread_id=callback.message.message_thread_id, delete_after=60)

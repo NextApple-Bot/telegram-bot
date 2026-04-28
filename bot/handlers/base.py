@@ -1,14 +1,14 @@
-import tempfile
-import os
 import logging
-from aiogram import Router, Bot
-from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+import os
+import tempfile
+
+from aiogram import Bot, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot.services.assortment import AssortmentService
-from bot.utils.sort import build_output_text
-from bot.utils.markdown import escape_markdown_v1
 from bot.utils.helpers import send_and_clean
+from bot.utils.sort import build_output_text
 
 logger = logging.getLogger(__name__)
 

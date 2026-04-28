@@ -1,5 +1,6 @@
 # Файл: bot/handlers/__init__.py
 import logging
+
 from .base import router
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ except Exception as e:
     logger.critical(f"❌ Не удалось загрузить callbacks.router: {e}", exc_info=True)
 
 try:
-    from .topics import assortment_router, arrival_router, preorder_router, sales_router
+    from .topics import arrival_router, assortment_router, preorder_router, sales_router
     router.include_router(assortment_router)
     router.include_router(arrival_router)
     router.include_router(preorder_router)

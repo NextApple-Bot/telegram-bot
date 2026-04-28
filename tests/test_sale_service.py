@@ -1,6 +1,8 @@
 # Файл: tests/test_sale_service.py
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from bot.services.sale import SaleService
 
 

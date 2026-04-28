@@ -1,8 +1,9 @@
 # Файл: web_admin/routes/assortment/notifications.py
 import logging
-import asyncio
 from datetime import datetime
+
 from aiogram import Bot
+
 from bot import config
 
 logger = logging.getLogger(__name__)

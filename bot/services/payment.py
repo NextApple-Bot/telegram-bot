@@ -1,5 +1,6 @@
 # Файл: bot/services/payment.py
 import logging
+
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)

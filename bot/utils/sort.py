@@ -1,5 +1,6 @@
 import re
 
+
 def normalize_name(name):
     """Нормализует имя, удаляя лишние пробелы."""
     return ' '.join(name.split())

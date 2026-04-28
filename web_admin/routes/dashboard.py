@@ -1,13 +1,13 @@
 # Файл: web_admin/routes/dashboard.py
-from fastapi import APIRouter, Request, Query, Form
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from datetime import date, timedelta, datetime
-from collections import Counter
-import re
 import logging
+import re
+from collections import Counter
+from datetime import date, datetime, timedelta
+
+from fastapi import APIRouter, Form, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import Optional
 
 from bot.db import get_pool
 from bot.services.cache import cache
@@ -117,7 +117,7 @@ async def get_previous_period_stats():
 async def dashboard(
     request: Request,
     days: int = Query(7, ge=7, le=90),
-    target_date: Optional[str] = Query(None),
+    target_date: str | None = Query(None),
 ):
     today = date.today()
     if target_date:

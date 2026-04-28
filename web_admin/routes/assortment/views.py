@@ -1,10 +1,10 @@
 # Файл: web_admin/routes/assortment/views.py
-from fastapi import APIRouter, Request, Query, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from typing import Optional, List
 import re
 from datetime import datetime
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
@@ -50,8 +50,8 @@ async def list_assortment(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=10, le=200),
-    search: Optional[str] = Query(None),
-    category_id: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    category_id: str | None = Query(None),
     sort_by: str = Query("id", regex="^(id|text|serial|category_name|is_booked|created_at)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
 ):
@@ -65,7 +65,7 @@ async def list_assortment(
     sort_column = ALLOWED_SORT_FIELDS.get(sort_by, "i.id")
     order_direction = "DESC" if sort_order == "desc" else "ASC"
 
-    base_query = f"""
+    base_query = """
         SELECT i.id, i.text, i.serial, i.is_booked, i.created_at,
                c.id as category_id, c.name as category_name
         FROM items i
@@ -266,7 +266,7 @@ async def rename_category(cat_id: int, new_name: str = Query(..., min_length=1))
 
 
 @router.post("/categories/reorder")
-async def reorder_categories(order: List[int]):
+async def reorder_categories(order: list[int]):
     pool = await get_pool()
     async with pool.acquire() as conn, conn.transaction():
         for idx, cat_id in enumerate(order):

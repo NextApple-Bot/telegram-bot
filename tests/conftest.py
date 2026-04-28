@@ -1,11 +1,12 @@
 import asyncio
-import pytest
-from typing import AsyncGenerator
-from unittest.mock import AsyncMock
-import asyncpg
 import os
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock
 
-from bot.db import get_pool, close_pool, init_db
+import asyncpg
+import pytest
+
+from bot.db import close_pool, get_pool, init_db
 from bot.services.cache import cache
 
 # Переопределяем переменные окружения для тестов
@@ -15,7 +16,9 @@ os.environ.setdefault("SCALING_ENABLED", "false")
 
 # Перезагружаем конфиг после изменения переменных
 from importlib import reload
+
 from bot import config as bot_config
+
 reload(bot_config)
 
 

@@ -1,11 +1,12 @@
 # Файл: web_admin/routes/assortment/sales.py
-import uuid
-import logging
 import asyncio
-from bot.repositories import StatsRepository, ClientRepository
-from bot.db import get_pool
-from bot.services.cache import cache
+import logging
+import uuid
 from datetime import date
+
+from bot.db import get_pool
+from bot.repositories import ClientRepository, StatsRepository
+from bot.services.cache import cache
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,6 @@
 # Файл: bot/services/payment_parser.py
-import re
 import logging
-from typing import Dict
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +21,13 @@ def is_likely_phone_or_serial(num_str: str) -> bool:
     return num_str.isdigit() and len(num_str) >= 10
 
 
-def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
+def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> dict[str, float]:
     if ignore_prepay:
         lines = [line for line in text.splitlines() if not PREPAY_PATTERN.search(line)]
         text = '\n'.join(lines)
 
     lines = text.splitlines()
-    results = {k: 0.0 for k in PAYMENT_KEYWORDS}
+    results = dict.fromkeys(PAYMENT_KEYWORDS, 0.0)
 
     for line in lines:
         found_types = {pt: kw.search(line) for pt, kw in PAYMENT_KEYWORDS.items()}
@@ -62,10 +61,10 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     return results
 
 
-def extract_prepayments(text: str) -> Dict[str, float]:
+def extract_prepayments(text: str) -> dict[str, float]:
     lines = [line for line in text.splitlines() if PREPAY_PATTERN.search(line)]
     if not lines:
-        return {k: 0.0 for k in PAYMENT_KEYWORDS}
+        return dict.fromkeys(PAYMENT_KEYWORDS, 0.0)
 
     prepay_text = '\n'.join(lines)
     return extract_payment_amounts(prepay_text, ignore_prepay=False)

@@ -1,18 +1,18 @@
 # Файл: main.py
-import sys
+import asyncio
 import logging
 import os
-import traceback
-import asyncio
 import signal
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response, JSONResponse
-from starlette.middleware.sessions import SessionMiddleware
+import sys
+import traceback
+
 import uvicorn
 from dotenv import load_dotenv
-import aiohttp
+from starlette.applications import Starlette
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.routing import Route
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,14 +33,15 @@ dp = None
 config = None
 
 try:
+    import redis.asyncio as redis
     from aiogram import Bot, Dispatcher
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.storage.redis import RedisStorage
     from aiogram.types import Update
-    from bot.handlers import router
-    from bot.db import close_pool, get_pool, init_db, check_db_health, check_redis_health
+
     from bot import config as bot_config
-    import redis.asyncio as redis
+    from bot.db import check_db_health, check_redis_health, close_pool, get_pool, init_db
+    from bot.handlers import router
 
     config = bot_config
     logger.info("✅ Конфигурация загружена")

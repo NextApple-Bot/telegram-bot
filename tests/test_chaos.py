@@ -1,5 +1,7 @@
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
+
 from bot.services.cache import cache
 
 

@@ -1,9 +1,10 @@
 # Файл: bot/services/booking.py
 import logging
 from datetime import datetime
+
 from bot.repositories import ItemRepository, StatsRepository
-from bot.utils.validators import extract_serials
 from bot.services.payment_parser import extract_payment_amounts
+from bot.utils.validators import extract_serials
 
 logger = logging.getLogger(__name__)
 

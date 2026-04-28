@@ -1,12 +1,14 @@
-import tempfile
 import os
+import tempfile
 from datetime import datetime
+
 from aiogram import Bot
 from aiogram.types import FSInputFile
 
 from bot import config
 from bot.services.assortment import AssortmentService
 from bot.utils.sort import build_output_text
+
 
 async def export_assortment_to_topic(bot: Bot, admin_id: int):
     """Выгружает текущий ассортимент в топик «Ассортимент» и уведомляет админа."""

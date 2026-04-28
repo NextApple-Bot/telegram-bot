@@ -1,21 +1,22 @@
 import csv
 import json
-import tempfile
-import os
 import logging
+import os
 import secrets
-from aiogram import Router
-from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+import tempfile
+
 import asyncpg
+from aiogram import Router
+from aiogram.filters import Command
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import config
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
-from bot.services.assortment import AssortmentService
-from bot.utils.markdown import escape_markdown_v1
-from .base import show_inventory, cancel_action, get_main_menu_keyboard, show_help
 from bot.utils.helpers import send_and_clean
+from bot.utils.markdown import escape_markdown_v1
+
+from .base import cancel_action, get_main_menu_keyboard, show_help, show_inventory
 
 router = Router()
 logger = logging.getLogger(__name__)

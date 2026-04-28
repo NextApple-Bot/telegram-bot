@@ -1,8 +1,8 @@
 # Файл: bot/utils/validators.py
 import re
-from typing import List
 
-def extract_serials(text: str) -> List[str]:
+
+def extract_serials(text: str) -> list[str]:
     if not isinstance(text, str):
         return []
     serials = set()
@@ -11,9 +11,7 @@ def extract_serials(text: str) -> List[str]:
         candidate = match.group(1).strip()
         if not candidate:
             continue
-        if '№' in candidate:
-            serials.add(candidate.upper())
-        elif re.fullmatch(r'[A-Za-z0-9]{5,30}', candidate):
+        if '№' in candidate or re.fullmatch(r'[A-Za-z0-9]{5,30}', candidate):
             serials.add(candidate.upper())
         elif candidate.isdigit() and len(candidate) >= 10:
             serials.add(candidate)

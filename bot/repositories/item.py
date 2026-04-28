@@ -1,7 +1,8 @@
 # Файл: bot/repositories/item.py
 import logging
+
 import asyncpg
-from typing import Optional, List, Dict
+
 from bot.db import get_pool, retry_on_db_error
 from bot.utils.validators import extract_serials
 
@@ -45,7 +46,7 @@ class ItemRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def add_item(text: str, serial: Optional[str] = None, category_id: Optional[int] = None, category_name: Optional[str] = None):
+    async def add_item(text: str, serial: str | None = None, category_id: int | None = None, category_name: str | None = None):
         """Добавляет товар. Можно указать category_id или category_name."""
         if category_id is None:
             if category_name is None:
@@ -64,7 +65,7 @@ class ItemRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_item_id_by_serial(serial: str, conn=None) -> Optional[int]:
+    async def get_item_id_by_serial(serial: str, conn=None) -> int | None:
         if not serial:
             return None
         normalized = serial.strip().upper()
@@ -79,7 +80,7 @@ class ItemRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_item_by_serial(serial: str, conn=None) -> Optional[Dict]:
+    async def get_item_by_serial(serial: str, conn=None) -> dict | None:
         normalized = serial.strip().upper()
         if conn is None:
             pool = await get_pool()
@@ -102,7 +103,7 @@ class ItemRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_item_by_text(text: str, conn=None) -> Optional[Dict]:
+    async def get_item_by_text(text: str, conn=None) -> dict | None:
         """Ищет товар по точному тексту, возвращает id, текст и имя категории."""
         if conn is None:
             pool = await get_pool()
@@ -154,7 +155,7 @@ class ItemRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_last_deleted_item() -> Optional[Dict]:
+    async def get_last_deleted_item() -> dict | None:
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow('''
@@ -219,7 +220,7 @@ class ItemRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def bulk_replace_assortment(categories: List[Dict[str, List[str]]]) -> None:
+    async def bulk_replace_assortment(categories: list[dict[str, list[str]]]) -> None:
         from bot.services.assortment import AssortmentService
         pool = await get_pool()
         # Исправлено: объединены with

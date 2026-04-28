@@ -1,8 +1,10 @@
 # Файл: bot/services/cache.py
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
+
 import redis.asyncio as redis
+
 from bot import config
 
 logger = logging.getLogger(__name__)
@@ -12,7 +14,7 @@ class RedisCache:
     """Обёртка над Redis для кэширования данных (ассортимент, топ-модели, статистика)."""
 
     def __init__(self):
-        self._redis: Optional[redis.Redis] = None
+        self._redis: redis.Redis | None = None
         self._enabled = bool(config.REDIS_URL)
         if self._enabled:
             self._redis = redis.from_url(config.REDIS_URL, decode_responses=True)
@@ -20,7 +22,7 @@ class RedisCache:
         else:
             logger.warning("⚠️ REDIS_URL не задан, кэширование отключено")
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         if not self._enabled:
             return None
         try:

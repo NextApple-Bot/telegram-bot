@@ -1,6 +1,8 @@
 # Файл: tests/test_services/test_booking_service.py
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from bot.services.booking import BookingService
 
 

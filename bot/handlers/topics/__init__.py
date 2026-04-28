@@ -1,5 +1,5 @@
-from .assortment import router as assortment_router
 from .arrival import router as arrival_router
+from .assortment import router as assortment_router
 from .preorder import router as preorder_router
 from .sales import router as sales_router
 

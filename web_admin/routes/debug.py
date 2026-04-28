@@ -1,10 +1,12 @@
 # Файл: web_admin/routes/debug.py
-from fastapi import APIRouter, Request, HTTPException
+import logging
+import os
+
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+
 from bot.db import get_pool
 from bot.services.cache import cache
-import os
-import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

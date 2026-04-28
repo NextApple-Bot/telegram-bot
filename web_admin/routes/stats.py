@@ -1,11 +1,10 @@
 # Файл: web_admin/routes/stats.py
-from fastapi import APIRouter, Request, Query, HTTPException
+import logging
+from datetime import date, datetime, timedelta
+
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from datetime import date, timedelta, datetime
-from collections import defaultdict
-import logging
-from typing import Optional, List, Dict
 
 from bot.db import get_pool
 
@@ -43,10 +42,10 @@ async def stats_page(
     request: Request,
     mode: str = Query("preset", regex="^(preset|month|range)$"),
     days: int = Query(7, ge=7, le=90),
-    target_date: Optional[str] = Query(None),
-    month: Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
+    target_date: str | None = Query(None),
+    month: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
 ):
     today = date.today()
     start_date = None

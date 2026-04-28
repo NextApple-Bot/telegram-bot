@@ -1,17 +1,15 @@
-import re
-import tempfile
-import os
-import aiofiles
 import logging
+import os
+
+import aiofiles
 from aiogram import F, Router
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import config
-from bot.services.assortment import AssortmentService
-from bot.utils.sort import sort_assortment_to_categories
 from bot.handlers.states import AssortmentConfirmState
 from bot.repositories.item import ItemRepository
+from bot.utils.sort import sort_assortment_to_categories
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -26,7 +24,7 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
     # Диагностика: пишем в лог, что сообщение получено
     logger.info(f"🔔 ПОЛУЧЕНО СООБЩЕНИЕ В АССОРТИМЕНТ: chat_id={message.chat.id}, thread_id={message.message_thread_id}, "
                 f"has_text={bool(message.text)}, has_caption={bool(message.caption)}, has_doc={bool(message.document)}")
-    
+
     if message.document:
         document = message.document
         logger.info(f"Документ: имя={document.file_name}, размер={document.file_size}, mime={document.mime_type}")
@@ -39,7 +37,7 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
         file_path = f"/tmp/{document.file_name}"
         await bot.download(document, destination=file_path)
         try:
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, encoding='utf-8') as f:
                 content = await f.read()
             if not content.strip():
                 await message.reply("❌ Файл пуст.")

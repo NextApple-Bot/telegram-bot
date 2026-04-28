@@ -1,12 +1,11 @@
 # Файл: web_admin/routes/purchases.py
-from fastapi import APIRouter, Request, Query, Form, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from datetime import datetime, timedelta
-from typing import Optional
 import csv
 import io
-import json
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 
 from bot.db import get_pool
 
@@ -46,11 +45,11 @@ async def list_purchases(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=10, le=200),
-    client_search: Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    payment_type: Optional[str] = Query(None),
-    purchase_type: Optional[str] = Query(None),
+    client_search: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    payment_type: str | None = Query(None),
+    purchase_type: str | None = Query(None),
     sort_by: str = Query("id", regex="^(id|created_at|total_amount|purchase_type|client_name)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
 ):
@@ -142,11 +141,11 @@ async def list_purchases(
 @router.get("/export/csv")
 async def export_purchases_csv(
     request: Request,
-    client_search: Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
-    payment_type: Optional[str] = Query(None),
-    purchase_type: Optional[str] = Query(None),
+    client_search: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    payment_type: str | None = Query(None),
+    purchase_type: str | None = Query(None),
 ):
     pool = await get_pool()
     query = """

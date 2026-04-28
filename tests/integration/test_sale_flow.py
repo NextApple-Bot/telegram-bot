@@ -1,10 +1,7 @@
 import pytest
+from aiogram.types import Chat, Message, User
+
 from bot import config  # Добавлено
-from bot.handlers.topics.sales import router
-from bot.services.assortment import AssortmentService
-from bot.db import get_pool
-from bot.utils.parser import extract_payment_amounts
-from aiogram.types import Message, Chat, User
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,19 @@
 # Файл: bot/models.py
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Float, Boolean, DateTime,
-    ForeignKey, UniqueConstraint, Index, Text, JSON, CheckConstraint, Date
+    JSON,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func

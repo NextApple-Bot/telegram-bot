@@ -1,17 +1,19 @@
 #!/usr/bin/env python
 # Файл: manage.py
+import asyncio
+import os
 import subprocess
 import sys
-import os
-import asyncio
 from pathlib import Path
 
 # Добавляем корень проекта в sys.path для импорта bot
 sys.path.insert(0, str(Path(__file__).parent))
 
-from bot.db import get_pool, close_pool
-from bot.background import cleanup_old_records, cleanup_sold_periodically
 from dotenv import load_dotenv
+
+from bot.background import cleanup_old_records, cleanup_sold_periodically
+from bot.db import close_pool
+
 load_dotenv()
 
 

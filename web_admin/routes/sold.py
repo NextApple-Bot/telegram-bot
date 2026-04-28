@@ -1,13 +1,14 @@
 # Файл: web_admin/routes/sold.py
-from fastapi import APIRouter, Request, Query, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 import logging
 from datetime import datetime
 
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from bot import config
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
-from bot import config
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

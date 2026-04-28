@@ -1,16 +1,17 @@
 # Файл: bot/handlers/topics/preorder.py
-import re
 import logging
+import re
+
 from aiogram import F, Router
 from aiogram.types import Message
 
 from bot import config
+from bot.repositories import ClientRepository, StatsRepository
 from bot.services.booking import BookingService
-from bot.services.payment import PaymentService
-from bot.repositories import StatsRepository, ClientRepository
-from bot.utils.parser import extract_prepayments, parse_client_data, extract_payment_amounts
-from bot.utils.helpers import send_and_clean
 from bot.services.message_service import mark_message_processed, safe_react
+from bot.services.payment import PaymentService
+from bot.utils.helpers import send_and_clean
+from bot.utils.parser import extract_payment_amounts, extract_prepayments, parse_client_data
 
 logger = logging.getLogger(__name__)
 router = Router()

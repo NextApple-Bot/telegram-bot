@@ -1,7 +1,8 @@
 # Файл: bot/repositories/stats.py
 from datetime import date
+
 from bot.db import get_pool, retry_on_db_error
-from typing import Dict
+
 
 class StatsRepository:
     """Репозиторий для работы со статистикой (продажи, предзаказы, брони)."""
@@ -57,7 +58,7 @@ class StatsRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_today_stats() -> Dict:
+    async def get_today_stats() -> dict:
         today = date.today()
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -127,9 +128,8 @@ class StatsRepository:
     async def reset_today_stats():
         today = date.today()
         pool = await get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
-                await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
-                await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
-                await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = $1', today)
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
+            await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
+            await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
+            await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = $1', today)

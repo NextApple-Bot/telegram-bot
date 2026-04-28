@@ -1,14 +1,14 @@
 # Файл: web_admin/routes/assortment/manage.py
-from fastapi import APIRouter, Request, Form, HTTPException
-from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
-from typing import Optional, List
-import logging
 import asyncio
+import logging
 from datetime import datetime
 
-from bot.services.assortment import AssortmentService
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
+
 from bot.db import get_pool
+from bot.services.assortment import AssortmentService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,27 +69,27 @@ async def edit_item_submit(
     request: Request,
     item_id: int,
     text: str = Form(...),
-    serial: Optional[str] = Form(None),
+    serial: str | None = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
     is_sold: bool = Form(False),
-    booking_price: Optional[float] = Form(None),
-    booking_prepayment: Optional[float] = Form(None),
-    booking_platform: Optional[str] = Form(None),
-    booking_full_name: Optional[str] = Form(None),
-    booking_phone: Optional[str] = Form(None),
-    booking_payment_type: Optional[str] = Form(None),
-    sale_price: Optional[float] = Form(None),
-    sale_prepayment: Optional[float] = Form(None),
-    sale_payment_amount: Optional[float] = Form(None),
-    sale_payment_type: Optional[str] = Form(None),
-    sale_platform: Optional[str] = Form(None),
-    sale_full_name: Optional[str] = Form(None),
-    sale_phone: Optional[str] = Form(None),
-    accessory_name: List[str] = Form([]),
-    accessory_serial: List[str] = Form([]),
-    accessory_price: List[float] = Form([]),
-    accessory_payment_type: List[str] = Form([]),
+    booking_price: float | None = Form(None),
+    booking_prepayment: float | None = Form(None),
+    booking_platform: str | None = Form(None),
+    booking_full_name: str | None = Form(None),
+    booking_phone: str | None = Form(None),
+    booking_payment_type: str | None = Form(None),
+    sale_price: float | None = Form(None),
+    sale_prepayment: float | None = Form(None),
+    sale_payment_amount: float | None = Form(None),
+    sale_payment_type: str | None = Form(None),
+    sale_platform: str | None = Form(None),
+    sale_full_name: str | None = Form(None),
+    sale_phone: str | None = Form(None),
+    accessory_name: list[str] = Form([]),
+    accessory_serial: list[str] = Form([]),
+    accessory_price: list[float] = Form([]),
+    accessory_payment_type: list[str] = Form([]),
 ):
     logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}, is_booked={is_booked}")
 
@@ -226,15 +226,15 @@ async def delete_item(request: Request, item_id: int):
 async def add_item(
     request: Request,
     text: str = Form(...),
-    serial: Optional[str] = Form(None),
+    serial: str | None = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
-    booking_price: Optional[float] = Form(None),
-    booking_prepayment: Optional[float] = Form(None),
-    booking_platform: Optional[str] = Form(None),
-    booking_full_name: Optional[str] = Form(None),
-    booking_phone: Optional[str] = Form(None),
-    booking_payment_type: Optional[str] = Form(None),
+    booking_price: float | None = Form(None),
+    booking_prepayment: float | None = Form(None),
+    booking_platform: str | None = Form(None),
+    booking_full_name: str | None = Form(None),
+    booking_phone: str | None = Form(None),
+    booking_payment_type: str | None = Form(None),
 ):
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")

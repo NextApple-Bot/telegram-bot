@@ -1,18 +1,17 @@
 # Файл: web_admin/main.py
+import json
+import logging
+from datetime import datetime
+
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.gzip import GZipMiddleware
-import logging
-import json
-from datetime import datetime
 
-from bot import config
 from .auth import is_authenticated
-from .routes import dashboard, clients, purchases, stats, auth, sold, sellers
-from .routes.assortment import views as assortment_views
+from .routes import auth, clients, dashboard, debug, purchases, sellers, sold, stats
 from .routes.assortment import manage as assortment_manage
-from .routes import debug
+from .routes.assortment import views as assortment_views
 
 logger = logging.getLogger(__name__)
 

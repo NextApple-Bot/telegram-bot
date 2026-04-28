@@ -1,7 +1,7 @@
 import pytest
+
 from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
-from bot.db import get_pool
 
 
 @pytest.mark.asyncio

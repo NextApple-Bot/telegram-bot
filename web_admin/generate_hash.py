@@ -3,8 +3,9 @@
 Запуск: python generate_hash.py
 Вставьте полученный хэш в .env как ADMIN_PASSWORD_HASH.
 """
-from passlib.context import CryptContext
 import getpass
+
+from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 password = getpass.getpass("Введите пароль для админки: ")

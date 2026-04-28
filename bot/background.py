@@ -2,9 +2,10 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+
+from bot import config
 from bot.db import get_pool
 from bot.services.cache import cache
-from bot import config
 from bot.webhook_utils import check_and_set_webhook
 
 logger = logging.getLogger(__name__)

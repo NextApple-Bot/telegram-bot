@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Request, Form, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette import status
 
-from ..auth import login, logout, is_authenticated
+from ..auth import is_authenticated, login, logout
 
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")

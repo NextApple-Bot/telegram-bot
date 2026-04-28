@@ -1,16 +1,16 @@
 # Файл: alembic/env.py
 import asyncio
+import importlib.util
 import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
-import importlib.util
 
-from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from dotenv import load_dotenv
+from alembic import context
 
 load_dotenv()
 

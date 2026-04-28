@@ -1,4 +1,3 @@
-import pytest
 from bot.services.payment_parser import extract_payment_amounts
 
 

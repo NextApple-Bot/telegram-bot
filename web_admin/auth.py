@@ -1,6 +1,7 @@
 # Файл: web_admin/auth.py
-from starlette.requests import Request
 from passlib.context import CryptContext
+from starlette.requests import Request
+
 from bot import config
 
 # Контекст для bcrypt

@@ -1,21 +1,21 @@
 # Файл: bot/handlers/topics/arrival.py
-import re
-import tempfile
-import os
-import aiofiles
 import logging
+import os
+import re
+
+import aiofiles
 from aiogram import F, Router
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import config
+from bot.db import get_pool
+from bot.handlers.states import ArrivalConfirmState
 from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
-from bot.handlers.states import ArrivalConfirmState
-from bot.utils.validators import extract_serials
-from bot.utils.sort import extract_base_name, normalize_name
-from bot.db import get_pool
 from bot.utils.helpers import send_and_clean
+from bot.utils.sort import extract_base_name, normalize_name
+from bot.utils.validators import extract_serials
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         file_path = f"/tmp/{document.file_name}"
         await bot.download(document, destination=file_path)
         try:
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, encoding='utf-8') as f:
                 content = await f.read()
             lines = [line.strip() for line in content.splitlines() if line.strip()]
         finally:

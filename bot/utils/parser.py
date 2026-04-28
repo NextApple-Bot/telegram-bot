@@ -1,9 +1,12 @@
 # Файл: bot/utils/parser.py
-import re
 import logging
-from typing import Dict
+import re
 
-from bot.services.payment_parser import extract_payment_amounts, extract_prepayments, PAYMENT_KEYWORDS
+from bot.services.payment_parser import (
+    PAYMENT_KEYWORDS,
+    extract_payment_amounts,
+    extract_prepayments,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +26,7 @@ def parse_client_data(text: str) -> dict:
         'social_network': None,
         'referral_source': None,
         'items': [],
-        'payments': {key: 0.0 for key in PAYMENT_KEYWORDS}
+        'payments': dict.fromkeys(PAYMENT_KEYWORDS, 0.0)
     }
 
     lines = text.split('\n')
@@ -36,9 +39,7 @@ def parse_client_data(text: str) -> dict:
         for match in PHONE_PATTERN.finditer(line):
             full_number = match.group(0)
             clean_phone = re.sub(r'[\s\-\(\)]', '', full_number)
-            if clean_phone.startswith('8'):
-                clean_phone = '+7' + clean_phone[1:]
-            elif clean_phone.startswith('7') and not clean_phone.startswith('+7'):
+            if clean_phone.startswith('8') or clean_phone.startswith('7') and not clean_phone.startswith('+7'):
                 clean_phone = '+7' + clean_phone[1:]
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)

@@ -1,6 +1,6 @@
 # Файл: bot/services/assortment.py
 import logging
-from typing import List, Dict
+
 from bot.repositories import ItemRepository
 from bot.services.cache import cache
 
@@ -16,7 +16,7 @@ class AssortmentService:
         logger.debug("Кэш ассортимента инвалидирован (Redis)")
 
     @classmethod
-    async def load_inventory(cls) -> List[Dict[str, List[str]]]:
+    async def load_inventory(cls) -> list[dict[str, list[str]]]:
         try:
             cached = await cache.get(cls.CACHE_KEY)
             if cached is not None:
@@ -34,7 +34,7 @@ class AssortmentService:
         return categories
 
     @classmethod
-    async def save_inventory(cls, categories: List[Dict[str, List[str]]]):
+    async def save_inventory(cls, categories: list[dict[str, list[str]]]):
         await ItemRepository.bulk_replace_assortment(categories)
         await cls.invalidate_cache()
         logger.info(f"Ассортимент сохранён: {len(categories)} категорий")

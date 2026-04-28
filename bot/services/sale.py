@@ -1,8 +1,9 @@
 # Файл: bot/services/sale.py
 import logging
+
+from bot.db import get_pool
 from bot.repositories import ItemRepository, StatsRepository
 from bot.utils.validators import extract_serials
-from bot.db import get_pool
 
 logger = logging.getLogger(__name__)
 

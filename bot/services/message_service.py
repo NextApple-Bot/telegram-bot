@@ -1,8 +1,9 @@
 # Файл: bot/services/message_service.py
 import logging
-from typing import Optional
-from aiogram.types import Message, ReactionTypeEmoji
+
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Message, ReactionTypeEmoji
+
 from bot.db import get_pool
 
 logger = logging.getLogger(__name__)

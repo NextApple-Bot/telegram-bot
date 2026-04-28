@@ -1,10 +1,10 @@
 # Файл: web_admin/routes/sellers.py
-from fastapi import APIRouter, Request, Query, Form, HTTPException
+import logging
+from datetime import date, datetime, timedelta
+
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from datetime import datetime, date, timedelta
-from typing import Optional
-import logging
 
 from bot.db import get_pool
 
@@ -101,12 +101,12 @@ async def unmark_seller_day(seller_id: int = Form(...), target_date: str = Form(
 @router.get("/stats", response_class=HTMLResponse)
 async def sellers_stats(
     request: Request,
-    target_date: Optional[str] = Query(None),
+    target_date: str | None = Query(None),
     mode: str = Query("preset", regex="^(preset|month|range)$"),
     days: int = Query(7, ge=7, le=90),
-    month: Optional[str] = Query(None),
-    date_from: Optional[str] = Query(None),
-    date_to: Optional[str] = Query(None),
+    month: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
 ):
     today = date.today()
     start_date = None

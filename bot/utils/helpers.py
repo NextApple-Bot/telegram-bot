@@ -1,8 +1,10 @@
 # Файл: bot/utils/helpers.py
 import asyncio
 import logging
+
 from aiogram import Bot
 from aiogram.types import Message
+
 from bot import config
 
 logger = logging.getLogger(__name__)

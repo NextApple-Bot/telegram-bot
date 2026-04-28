@@ -1,7 +1,7 @@
 import json
-from typing import Optional, List, Dict
-from bot.db import get_pool, retry_on_db_error
 import logging
+
+from bot.db import get_pool, retry_on_db_error
 
 logger = logging.getLogger(__name__)
 
@@ -10,12 +10,12 @@ class ClientRepository:
 
     @staticmethod
     async def get_or_create_client(
-        phone: Optional[str] = None,
-        phones: Optional[List[str]] = None,
-        full_name: Optional[str] = None,
-        telegram_username: Optional[str] = None,
-        social_network: Optional[str] = None,
-        referral_source: Optional[str] = None,
+        phone: str | None = None,
+        phones: list[str] | None = None,
+        full_name: str | None = None,
+        telegram_username: str | None = None,
+        social_network: str | None = None,
+        referral_source: str | None = None,
         conn=None
     ) -> int:
         logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
@@ -106,7 +106,7 @@ class ClientRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_client_purchases(client_id: int) -> List[Dict]:
+    async def get_client_purchases(client_id: int) -> list[dict]:
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
@@ -114,7 +114,7 @@ class ClientRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def search_clients(query: str) -> List[Dict]:
+    async def search_clients(query: str) -> list[dict]:
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch('''
@@ -126,7 +126,7 @@ class ClientRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_available_months() -> List[str]:
+    async def get_available_months() -> list[str]:
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows1 = await conn.fetch('''
@@ -144,7 +144,7 @@ class ClientRepository:
 
     @staticmethod
     @retry_on_db_error()
-    async def get_clients_data_for_month(month_str: str) -> List[Dict]:
+    async def get_clients_data_for_month(month_str: str) -> list[dict]:
         from datetime import datetime
         month, year = map(int, month_str.split('.'))
         start_date = datetime(year, month, 1).date()
