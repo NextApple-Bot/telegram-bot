@@ -1,20 +1,19 @@
 import asyncio
 import pytest
-from typing import AsyncGenerator, Dict, Any
+from typing import AsyncGenerator
+from unittest.mock import AsyncMock
 import asyncpg
 import os
-from unittest.mock import AsyncMock, patch
 
-from bot.db import get_pool, close_pool
+from bot.db import get_pool, close_pool, init_db
 from bot.services.cache import cache
-from bot import config
 
 # Переопределяем переменные окружения для тестов
-os.environ["DATABASE_URL"] = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/bot_test")
-os.environ["REDIS_URL"] = ""  # отключаем Redis в тестах
-os.environ["SCALING_ENABLED"] = "false"
+os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/bot_test")
+os.environ.setdefault("REDIS_URL", "")
+os.environ.setdefault("SCALING_ENABLED", "false")
 
-# Перезагружаем конфиг
+# Перезагружаем конфиг после изменения переменных
 from importlib import reload
 from bot import config as bot_config
 reload(bot_config)
@@ -29,24 +28,23 @@ def event_loop():
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
-    """Создаёт таблицы в тестовой БД и очищает перед сессией."""
-    pool = await asyncpg.create_pool(os.environ["TEST_DATABASE_URL"])
+    """Создаёт чистую тестовую БД перед запуском всех тестов."""
+    test_db_url = os.environ["DATABASE_URL"]
+    pool = await asyncpg.create_pool(test_db_url)
     async with pool.acquire() as conn:
-        # Удаляем все таблицы (чистая БД)
-        await conn.execute("DROP SCHEMA public CASCADE")
+        # Сбрасываем схему
+        await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
         await conn.execute("CREATE SCHEMA public")
-        # Инициализируем БД через нашу функцию init_db
-        from bot.db import init_db
+        # Инициализируем таблицы через init_db
         await init_db()
     await pool.close()
     yield
-    # После тестов можно закрыть пул
     await close_pool()
 
 
 @pytest.fixture
 async def db_conn() -> AsyncGenerator:
-    """Фикстура для получения соединения с БД в тесте."""
+    """Возвращает соединение с БД для теста."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         yield conn
@@ -54,7 +52,7 @@ async def db_conn() -> AsyncGenerator:
 
 @pytest.fixture
 def mock_bot():
-    """Создаёт мок объекта Bot aiogram."""
+    """Мок aiogram Bot."""
     bot = AsyncMock()
     bot.send_message = AsyncMock()
     bot.send_document = AsyncMock()
@@ -73,3 +71,11 @@ def mock_state():
     state.get_data = AsyncMock(return_value={})
     state.clear = AsyncMock()
     return state
+
+
+@pytest.fixture(autouse=True)
+def disable_redis_cache():
+    """Отключает Redis в тестах (используем пустую реализацию)."""
+    cache._enabled = False
+    yield
+    cache._enabled = bool(os.getenv("REDIS_URL"))
