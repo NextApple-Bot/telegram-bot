@@ -1,4 +1,5 @@
 import pytest
+from bot import config  # Добавлено
 from bot.handlers.topics.sales import router
 from bot.services.assortment import AssortmentService
 from bot.db import get_pool
@@ -31,36 +32,27 @@ async def test_sale_flow_success(mock_bot, db_conn):
         from_user=User(id=12345, is_bot=False, first_name="Admin")
     )
 
-    # 3. Обрабатываем сообщение (имитация вызова хендлера)
-    from aiogram import Dispatcher
-    dp = Dispatcher()
-    dp.include_router(router)
-    # Эмуляция вызова: напрямую вызываем хендлер
+    # 3. Обрабатываем сообщение
     from bot.handlers.topics.sales import handle_sales_message
     await handle_sales_message(message, mock_bot)
 
     # 4. Проверки
-    # Товар должен быть удалён из items
     item = await db_conn.fetchrow("SELECT * FROM items WHERE serial='ABC123'")
     assert item is None
 
-    # Должна быть запись в deleted_items
     deleted = await db_conn.fetchrow("SELECT * FROM deleted_items WHERE serial='ABC123'")
     assert deleted is not None
     assert deleted['reason'] == 'sale'
 
-    # Должна быть запись в sales с message_id
     sale = await db_conn.fetchrow("SELECT * FROM sales WHERE message_id=$1", message.message_id)
     assert sale is not None
     assert sale['cash'] == 120000.0
 
-    # Должна быть запись в daily_payments
     payment = await db_conn.fetchrow("SELECT * FROM daily_payments WHERE sale_message_id=$1", message.message_id)
     assert payment is not None
     assert payment['payment_type'] == 'cash'
     assert payment['amount'] == 120000.0
 
-    # Должен быть создан клиент
     client = await db_conn.fetchrow("SELECT * FROM clients WHERE phone='+79991234567'")
     assert client is not None
     assert client['full_name'] == 'Иван Иванов'
