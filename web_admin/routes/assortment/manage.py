@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-# --- ФИЛЬТР ДАТЫ ---
+
 def _format_date(value, fmt="%d.%m.%y"):
     if isinstance(value, datetime):
         return value.strftime(fmt)
@@ -28,7 +28,6 @@ def _format_date(value, fmt="%d.%m.%y"):
     return value
 
 templates.env.filters["format_date"] = _format_date
-# -------------------
 
 
 def validate_phone(phone: str) -> bool:
@@ -102,7 +101,8 @@ async def edit_item_submit(
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            old = await conn.fetchrow("SELECT is_sold, text, serial, category_id, is_booked FROM items WHERE id = $1", item_id)
+            # ИСПРАВЛЕНО: добавлено FOR UPDATE
+            old = await conn.fetchrow("SELECT is_sold, text, serial, category_id, is_booked FROM items WHERE id = $1 FOR UPDATE", item_id)
             if not old:
                 raise HTTPException(status_code=404, detail="Item not found")
             old_is_sold = old["is_sold"]
@@ -114,13 +114,11 @@ async def edit_item_submit(
             if old_is_sold:
                 raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
-            # ---------- НОВЫЙ СТРОБОСКОПИЧЕСКИЙ ПРОВЕР ----------
             if is_sold and is_booked:
                 raise HTTPException(
                     status_code=400,
-                    detail="Снимите бронь перед продажей, дебил"
+                    detail="Снимите бронь перед продажей"
                 )
-            # ---------------------------------------------------
 
             # Обработка ПРОДАЖИ
             if is_sold:
