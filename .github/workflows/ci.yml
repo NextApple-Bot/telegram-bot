@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:              # <-- Добавлено: ручной запуск
   push:
     branches: [ main, develop ]
   pull_request:
@@ -53,3 +54,10 @@ jobs:
           THREAD_PREORDER: "4"
         run: |
           pytest tests/ -v --cov=bot --cov=web_admin --cov-report=xml
+
+      - name: Upload coverage to Codecov (optional)
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
