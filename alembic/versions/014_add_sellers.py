@@ -1,15 +1,16 @@
 """Add sellers and seller_days tables
 
 Revision ID: 014
-Revises: 013   # <-- ИСПРАВЛЕНО (было 012)
+Revises: 012
 Create Date: 2026-04-27 15:00:00.000000
 
 """
 from alembic import op
 import sqlalchemy as sa
 
+# revision identifiers, used by Alembic.
 revision = '014'
-down_revision = '013'   # <-- ИСПРАВЛЕНО
+down_revision = '012'      # <--- ИСПРАВЛЕНО: было '013', но 013 отсутствует
 branch_labels = None
 depends_on = None
 
