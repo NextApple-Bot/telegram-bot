@@ -11,7 +11,6 @@ exclude = [
     "tests/__pycache__",
 ]
 
-# ----- Новая секция lint (вместо устаревших top-level) -----
 [lint]
 # Правила линтинга
 select = [
@@ -27,10 +26,10 @@ select = [
 ]
 
 ignore = [
-    "E501",   # line too long (handled by formatter)
+    "E501",   # line too long
     "B008",   # do not perform function calls in argument defaults
     "SIM105", # suppressible-exception
-    "RUF001", # ambiguous unicode (кириллица в строковых литералах – не критично)
+    "RUF001", # ambiguous unicode in string
     "RUF002", # ambiguous unicode in docstring
     "RUF003", # ambiguous unicode in comment
 ]
@@ -38,9 +37,7 @@ ignore = [
 fixable = ["ALL"]
 unfixable = []
 
-# Форматтер (black-совместимый)
 line-length = 100
-indent-width = 4
 
 [lint.isort]
 force-single-line = false
@@ -53,3 +50,4 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+indent-width = 4
