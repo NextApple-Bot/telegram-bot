@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, Query, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, date, timedelta
-from typing import Optional, List
+from typing import Optional
 import logging
 
 from bot.db import get_pool
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-# --- ФИЛЬТР ДАТЫ ---
+
 def _format_date(value, fmt="%d.%m.%y"):
     if isinstance(value, datetime):
         return value.strftime(fmt)
@@ -26,7 +26,7 @@ def _format_date(value, fmt="%d.%m.%y"):
     return value
 
 templates.env.filters["format_date"] = _format_date
-# -------------------
+
 
 def parse_date_any_format(date_str: str) -> date:
     for fmt in ["%Y-%m-%d", "%d.%m.%y"]:
@@ -37,7 +37,6 @@ def parse_date_any_format(date_str: str) -> date:
     raise ValueError(f"Неверный формат даты: {date_str}")
 
 
-# --- CRUD ---
 @router.get("/manage", response_class=HTMLResponse)
 async def manage_sellers(request: Request):
     pool = await get_pool()
@@ -72,7 +71,6 @@ async def delete_seller(seller_id: int):
     return RedirectResponse(url="/admin/sellers/manage", status_code=303)
 
 
-# --- Отметка рабочих дней (используется с дашборда) ---
 @router.post("/mark_day")
 async def mark_seller_day(seller_id: int = Form(...), target_date: str = Form(...)):
     target = parse_date_any_format(target_date)
@@ -83,8 +81,8 @@ async def mark_seller_day(seller_id: int = Form(...), target_date: str = Form(..
                 "INSERT INTO seller_days (seller_id, date) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                 seller_id, target
             )
-        except Exception as e:
-            raise HTTPException(status_code=400, detail="Ошибка отметки дня")
+        except Exception as err:
+            raise HTTPException(status_code=400, detail="Ошибка отметки дня") from err
     return RedirectResponse(url=f"/admin/dashboard?target_date={target_date}", status_code=303)
 
 
@@ -100,7 +98,6 @@ async def unmark_seller_day(seller_id: int = Form(...), target_date: str = Form(
     return RedirectResponse(url=f"/admin/dashboard?target_date={target_date}", status_code=303)
 
 
-# --- Статистика ---
 @router.get("/stats", response_class=HTMLResponse)
 async def sellers_stats(
     request: Request,
