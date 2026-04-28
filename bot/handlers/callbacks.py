@@ -1,4 +1,3 @@
-# Файл: bot/handlers/callbacks.py
 import json
 import csv
 import tempfile
@@ -22,7 +21,7 @@ from .topics.common import export_assortment_to_topic
 from bot.utils.helpers import send_and_clean
 
 router = Router()
-logger = logging.getLogger(__name__)  # Собственный логгер, а не из base
+logger = logging.getLogger(__name__)
 
 last_stats_message = TTLCache(maxsize=1000, ttl=3600)
 last_inventory_message = TTLCache(maxsize=1000, ttl=3600)
@@ -133,7 +132,6 @@ async def process_export_assortment(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:clear")
 async def process_clear(callback: CallbackQuery):
-    """Обработчик кнопки 'Очистить ассортимент' (menu:clear)"""
     try:
         await callback.answer()
     except Exception as e:
@@ -170,10 +168,10 @@ async def process_remains(callback: CallbackQuery):
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch('''
-            SELECT i.text 
+            SELECT i.text
             FROM items i
             JOIN categories c ON i.category_id = c.id
-            WHERE i.is_booked = false 
+            WHERE i.is_booked = false
               AND c.name NOT IN ('Б/У:', 'Б/У', 'NS:', 'NS')
         ''')
 
@@ -281,7 +279,3 @@ async def process_month_selection(callback: CallbackQuery):
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="❌ Произошла ошибка при формировании отчёта.", message_thread_id=callback.message.message_thread_id, delete_after=60)
         keyboard = get_main_menu_keyboard()
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="Выберите действие:", reply_markup=keyboard, message_thread_id=callback.message.message_thread_id, delete_after=60)
-
-
-# Обработчики для кнопок очистки, удаления и т.д. — они остаются без изменений, просто теперь они в основном коде
-# (убедись, что они импортированы и активны в исходном файле)
