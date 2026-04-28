@@ -18,18 +18,11 @@ NUMBER_PATTERN = re.compile(r'(\d[\d\s]*(?:[.,]\d+)?)')
 
 
 def is_likely_phone_or_serial(num_str: str) -> bool:
-    if not num_str.isdigit():
-        return False
-    if len(num_str) >= 10:
-        return True
-    return False
+    """Проверяет, похоже ли число на телефонный номер или серийный номер."""
+    return num_str.isdigit() and len(num_str) >= 10
 
 
 def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str, float]:
-    """
-    Извлекает суммы оплаты из текста. Возвращает словарь с типами платежей.
-    Улучшенная версия: корректно связывает числа с типами.
-    """
     if ignore_prepay:
         lines = [line for line in text.splitlines() if not PREPAY_PATTERN.search(line)]
         text = '\n'.join(lines)
@@ -38,18 +31,15 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
     results = {k: 0.0 for k in PAYMENT_KEYWORDS}
 
     for line in lines:
-        # Находим все типы оплаты, упомянутые в строке
         found_types = {pt: kw.search(line) for pt, kw in PAYMENT_KEYWORDS.items()}
         line_pay_types = [pt for pt, match in found_types.items() if match]
         if not line_pay_types:
             continue
 
-        # Если есть специфичный тип (не cash), исключаем cash
         specific_types = [pt for pt in line_pay_types if pt != 'cash']
         if specific_types:
             line_pay_types = specific_types
 
-        # Извлекаем все числа из строки
         numbers = []
         for match in NUMBER_PATTERN.finditer(line):
             num_str = match.group(1).replace(' ', '').replace(',', '.')
@@ -64,18 +54,15 @@ def extract_payment_amounts(text: str, ignore_prepay: bool = False) -> Dict[str,
         if not numbers:
             continue
 
-        # Связываем по порядку: первое число -> первый тип, второе -> второй и т.д.
         for i, pt in enumerate(line_pay_types):
             if i < len(numbers):
                 results[pt] += numbers[i]
             else:
-                # Если чисел меньше, чем типов, прерываем
                 break
     return results
 
 
 def extract_prepayments(text: str) -> Dict[str, float]:
-    """Извлекает суммы предоплаты (строки с П/О или предоплата)."""
     lines = [line for line in text.splitlines() if PREPAY_PATTERN.search(line)]
     if not lines:
         return {k: 0.0 for k in PAYMENT_KEYWORDS}
