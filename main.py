@@ -81,8 +81,8 @@ except Exception as e:
 
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
-    # ---------- ХИРУРГИЧЕСКИЙ УДАР ----------
-    if config and hasattr(config, 'RENDER_URL') and not config.RENDER_URL:
+    # ---------- ХИРУРГИЧЕСКИЙ УДАР (ИСПРАВЛЕНО) ----------
+    if config and not getattr(config, 'RENDER_URL', None):
         logger.critical("❌ RENDER_URL не задан. Бот не сможет принимать вебхуки. Аварийное завершение.")
         sys.exit(1)
     # ----------------------------------------
