@@ -3,7 +3,9 @@ import json
 import csv
 import tempfile
 import os
+import logging
 from datetime import datetime
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.exceptions import TelegramBadRequest
@@ -15,7 +17,7 @@ from bot.repositories import StatsRepository, ClientRepository, ItemRepository
 from bot.db import get_pool
 from bot.utils.sort import get_full_model_name, detect_sim_type
 from bot.utils.markdown import escape_markdown_v1
-from .base import logger, show_inventory, show_help, cancel_action, get_main_menu_keyboard
+from .base import show_inventory, show_help, cancel_action, get_main_menu_keyboard, logger
 from .topics.common import export_assortment_to_topic
 from bot.utils.helpers import send_and_clean
 
@@ -32,6 +34,100 @@ async def safe_delete(message):
         await message.delete()
     except Exception as e:
         logger.warning(f"Не удалось удалить сообщение: {e}")
+
+
+@router.callback_query(F.data == "menu:inventory")
+async def process_inventory(callback: CallbackQuery):
+    try:
+        await callback.answer("⏳ Загружаю ассортимент...")
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+    chat_id = callback.message.chat.id
+    if chat_id in last_inventory_message:
+        try:
+            await callback.bot.delete_message(chat_id, last_inventory_message[chat_id])
+        except Exception:
+            pass
+    msg = await show_inventory(callback.bot, chat_id)
+    if msg:
+        last_inventory_message[chat_id] = msg.message_id
+        await safe_delete(callback.message)
+        keyboard = get_main_menu_keyboard()
+        await send_and_clean(
+            bot=callback.bot, chat_id=chat_id,
+            text="Выберите действие:",
+            reply_markup=keyboard,
+            message_thread_id=callback.message.message_thread_id,
+            delete_after=60
+        )
+
+
+@router.callback_query(F.data == "menu:stats")
+async def process_stats(callback: CallbackQuery):
+    try:
+        await callback.answer("⏳ Загружаю статистику...")
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+    chat_id = callback.message.chat.id
+    if chat_id in last_stats_message:
+        try:
+            await callback.bot.delete_message(chat_id, last_stats_message[chat_id])
+        except Exception:
+            pass
+    stats = await StatsRepository.get_today_stats()
+    stats_text = (
+        f"📊 Статистика на {stats['date']}\n\n"
+        f"Продажи: {stats['sales_count']}\n"
+        f"Предзаказы: {stats['preorders_count']}\n"
+        f"Брони: {stats['bookings_count']}\n\n"
+        f"💰 Суммы продаж:\n"
+        f"Наличные: {stats['sales']['cash']:.0f} ₽\n"
+        f"Терминал: {stats['sales']['terminal']:.0f} ₽\n"
+        f"QR-код: {stats['sales']['qr']:.0f} ₽\n"
+        f"Перевод: {stats['sales']['transfer']:.0f} ₽\n"
+        f"По счёту: {stats['sales']['invoice']:.0f} ₽\n"
+        f"Рассрочка: {stats['sales']['installment']:.0f} ₽\n\n"
+        f"💸 Предзаказы:\n"
+        f"Наличные: {stats['preorders']['cash']:.0f} ₽\n"
+        f"Терминал: {stats['preorders']['terminal']:.0f} ₽\n"
+        f"QR-код: {stats['preorders']['qr']:.0f} ₽\n"
+        f"Перевод: {stats['preorders']['transfer']:.0f} ₽\n"
+        f"По счёту: {stats['preorders']['invoice']:.0f} ₽\n"
+        f"Рассрочка: {stats['preorders']['installment']:.0f} ₽\n\n"
+        f"🔖 Брони: {stats['bookings_total']:.0f} ₽"
+    )
+    await safe_delete(callback.message)
+    msg = await send_and_clean(
+        bot=callback.bot, chat_id=chat_id,
+        text=stats_text,
+        message_thread_id=callback.message.message_thread_id,
+        delete_after=60
+    )
+    last_stats_message[chat_id] = msg.message_id
+    keyboard = get_main_menu_keyboard()
+    await send_and_clean(
+        bot=callback.bot, chat_id=chat_id,
+        text="Выберите действие:",
+        reply_markup=keyboard,
+        message_thread_id=callback.message.message_thread_id,
+        delete_after=60
+    )
+
+
+@router.callback_query(F.data == "menu:export_assortment")
+async def process_export_assortment(callback: CallbackQuery):
+    try:
+        await callback.answer("⏳ Выгружаю ассортимент...")
+    except Exception as e:
+        logger.warning(f"Не удалось ответить на callback: {e}")
+    await export_assortment_to_topic(callback.bot, callback.from_user.id)
+    await send_and_clean(
+        bot=callback.bot,
+        chat_id=callback.from_user.id,
+        text="✅ Ассортимент выгружен в топик.",
+        message_thread_id=callback.message.message_thread_id,
+        delete_after=60
+    )
 
 
 @router.callback_query(F.data == "menu:remains")
@@ -73,7 +169,7 @@ async def process_remains(callback: CallbackQuery):
         key = (full_name, sim)
         groups[key] = groups.get(key, 0) + 1
 
-    today = datetime.now().strftime("%d.%m.%y")   # изменено
+    today = datetime.now().strftime("%d.%m.%y")
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
         writer = csv.writer(tmp)
         writer.writerow(['Модель', 'Тип SIM', 'Количество'])
@@ -135,7 +231,6 @@ async def process_month_selection(callback: CallbackQuery):
                         items_text = '; '.join([f"{it.get('item_text', '')[:50]} ({it.get('price', '')}₽)" for it in items])
                     except Exception:
                         items_text = row['items_json']
-                # Дата регистрации и дата покупки форматируются
                 client_created = row['client_created_at'].strftime("%d.%m.%y") if row['client_created_at'] else ''
                 purchase_created = row['purchase_created_at'].strftime("%d.%m.%y") if row['purchase_created_at'] else ''
                 writer.writerow([
@@ -163,6 +258,3 @@ async def process_month_selection(callback: CallbackQuery):
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="❌ Произошла ошибка при формировании отчёта.", message_thread_id=callback.message.message_thread_id, delete_after=60)
         keyboard = get_main_menu_keyboard()
         await send_and_clean(bot=callback.bot, chat_id=chat_id, text="Выберите действие:", reply_markup=keyboard, message_thread_id=callback.message.message_thread_id, delete_after=60)
-
-
-# ... (остальные обработчики остаются без изменений, но они не работают с датами напрямую)
