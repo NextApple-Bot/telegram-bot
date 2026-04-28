@@ -1,4 +1,3 @@
-
 import re
 
 def normalize_name(name):
@@ -52,10 +51,8 @@ def extract_base_name(item):
     else:
         model_part = without_brackets.strip()
     memory = extract_memory(without_brackets)
-    if memory:
-        base = f"{model_part} {memory}"
-    else:
-        base = model_part
+    # Исправлено SIM108: тернарный оператор
+    base = f"{model_part} {memory}" if memory else model_part
     base = normalize_name(base)
     base = normalize_model(base)
     return base
@@ -123,7 +120,6 @@ def parse_categories(lines):
     return categories
 
 def _add_category(categories, header, items):
-    """Вспомогательная функция для добавления категории в список."""
     norm_header = header.lower().rstrip(':')
     for cat in categories:
         if cat['header'].lower().rstrip(':') == norm_header:
@@ -132,12 +128,10 @@ def _add_category(categories, header, items):
     categories.append({"header": header, "items": items})
 
 def sort_assortment_to_categories(input_text):
-    """Парсит текст и возвращает категории с товарами (без сортировки внутри)."""
     lines = input_text.splitlines()
     return parse_categories(lines)
 
 def sort_items_in_category(items, header):
-    """Сортирует товары внутри категории в зависимости от типа категории."""
     header_lower = header.lower()
     output = []
 
@@ -192,7 +186,6 @@ def sort_items_in_category(items, header):
         return sorted(items)
 
 def build_output_text(categories):
-    """Формирует текст для выгрузки ассортимента из списка категорий."""
     output_lines = []
     for cat in categories:
         header = cat['header']
@@ -218,7 +211,6 @@ def build_output_text(categories):
     return '\n'.join(output_lines)
 
 def find_category_for_item(item, categories):
-    """Находит индекс категории, подходящей для товара."""
     normalized_item = normalize_name(item)
     normalized_item = normalize_model(normalized_item).lower()
     base = extract_base_name(item).lower()
@@ -240,10 +232,6 @@ def find_category_for_item(item, categories):
     return None
 
 def add_item_to_categories(item, categories):
-    """
-    Добавляет товар в подходящую категорию, создавая новую при необходимости.
-    Возвращает обновлённый список категорий и индекс добавленной категории.
-    """
     if item.strip().startswith("Б/У -") or item.strip().startswith("Б/У "):
         for idx, cat in enumerate(categories):
             cat_name = normalize_name(cat['header']).lower()
