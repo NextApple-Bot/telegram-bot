@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '014'
-down_revision = '012'   # последняя применённая миграция
+down_revision = '013'   # последняя применённая миграция
 branch_labels = None
 depends_on = None
 
