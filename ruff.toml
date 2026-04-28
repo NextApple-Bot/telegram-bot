@@ -1,0 +1,54 @@
+# Минимальная версия Python
+target-version = "py311"
+
+# Исключённые директории
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "alembic/versions",
+    "tests/__pycache__",
+]
+
+# Правила линтинга
+# E: pycodestyle, F: Pyflakes, I: isort, UP: pyupgrade, B: bugbear, C4: comprehensions
+# SIM: simplify, TCH: typing, RUF: ruff-specific
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "RUF", # ruff-specific rules
+]
+
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults (may be too strict)
+    "SIM105", # suppressible-exception (sometimes we want to log)
+]
+
+# Автофикс
+fixable = ["ALL"]
+unfixable = []
+
+# Форматтер (black-совместимый)
+line-length = 100
+indent-width = 4
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[isort]
+force-single-line = false
+lines-after-imports = 2
+lines-between-types = 1
+known-first-party = ["bot", "web_admin"]
