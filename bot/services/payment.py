@@ -12,7 +12,7 @@ class PaymentService:
     async def add_payment(payment_type: str, amount: float, source_type: str) -> None:
         """
         Сохраняет один платёж в таблицу daily_payments.
-        
+
         Args:
             payment_type: 'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment'
             amount: сумма платежа
