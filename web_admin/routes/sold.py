@@ -7,13 +7,13 @@ from datetime import datetime
 
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
-from bot import config                   # <-- добавлен импорт config
+from bot import config
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
-# --- ФИЛЬТР ДАТЫ ---
+
 def _format_date(value, fmt="%d.%m.%y"):
     if isinstance(value, datetime):
         return value.strftime(fmt)
@@ -27,7 +27,6 @@ def _format_date(value, fmt="%d.%m.%y"):
     return value
 
 templates.env.filters["format_date"] = _format_date
-# -------------------
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -104,7 +103,7 @@ async def restore_sold(deleted_id: int, request: Request):
                 await conn.execute("DELETE FROM daily_payments WHERE sale_message_id = $1", sale_message_id)
                 logger.info(f"Удалены продажа и финансы для sale_message_id={sale_message_id}")
 
-                # --- НОВОЕ: пытаемся удалить исходное сообщение из Telegram ---
+                # Пытаемся удалить исходное сообщение из Telegram
                 try:
                     from aiogram import Bot
                     bot = Bot(token=config.TOKEN)
@@ -115,7 +114,6 @@ async def restore_sold(deleted_id: int, request: Request):
                     await bot.session.close()
                     logger.info(f"Сообщение о продаже {sale_message_id} удалено из топика")
                 except Exception as e:
-                    # Не критично, если сообщение не удалилось (например, для продаж из админки)
                     logger.warning(f"Не удалось удалить сообщение {sale_message_id}: {e}")
             else:
                 logger.warning(f"Не найден sale_message_id для записи deleted_id={deleted_id}, статистика не удалена")
@@ -125,6 +123,21 @@ async def restore_sold(deleted_id: int, request: Request):
                 INSERT INTO items (text, serial, category_id, is_booked)
                 VALUES ($1, $2, $3, FALSE)
             """, row["text"], row["serial"], category_id)
+
+            # НОВАЯ ЛОГИКА: проверяем, был ли товар в брони до продажи
+            if item_id:
+                was_booked = await conn.fetchval("""
+                    SELECT 1 FROM bookings WHERE item_id = $1
+                """, item_id)
+                if was_booked:
+                    # Восстанавливаем флаг брони, но без переноса старой даты
+                    await conn.execute("""
+                        UPDATE items SET is_booked = TRUE
+                        WHERE text = $1 AND serial = $2
+                    """, row["text"], row["serial"])
+                    # Удаляем запись о брони, чтобы не было дублей
+                    await conn.execute("DELETE FROM bookings WHERE item_id = $1", item_id)
+                    logger.info(f"Товар {item_id} восстановлен с флагом брони, запись брони удалена")
 
             await conn.execute("""
                 UPDATE deleted_items SET restored = TRUE WHERE id = $1
