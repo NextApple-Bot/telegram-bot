@@ -1,4 +1,5 @@
 import pytest
+from bot import config  # Добавлено
 from bot.handlers.topics.preorder import router
 from bot.db import get_pool
 from aiogram.types import Message, Chat, User
@@ -6,7 +7,6 @@ from aiogram.types import Message, Chat, User
 
 @pytest.mark.asyncio
 async def test_booking_flow_success(mock_bot, db_conn):
-    # Подготовка: товар
     await db_conn.execute("""
         INSERT INTO categories (name, sort_order) VALUES ('iPad', 1)
     """)
@@ -16,7 +16,6 @@ async def test_booking_flow_success(mock_bot, db_conn):
         VALUES ('iPad Pro 11', 'IPAD789', $1, false)
     """, cat_id)
 
-    # Сообщение с бронированием
     content = """БРОНЬ:
 iPad Pro 11 (IPAD789) - 80000₽
 П/О 20000 (нал)
@@ -34,18 +33,15 @@ iPad Pro 11 (IPAD789) - 80000₽
     from bot.handlers.topics.preorder import handle_preorder
     await handle_preorder(message)
 
-    # Проверки
     item = await db_conn.fetchrow("SELECT * FROM items WHERE serial='IPAD789'")
     assert item is not None
     assert item['is_booked'] is True
     assert "Бронь от" in item['text']
 
-    # Проверка bookings
     booking = await db_conn.fetchrow("SELECT * FROM bookings WHERE item_id=$1", item['id'])
     assert booking is not None
     assert booking['total_amount'] == 80000.0
 
-    # Проверка daily_payments (предоплата)
     payment = await db_conn.fetchrow("SELECT * FROM daily_payments WHERE type='preorder' AND amount=20000")
     assert payment is not None
     assert payment['payment_type'] == 'cash'
