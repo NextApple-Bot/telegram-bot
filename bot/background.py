@@ -63,14 +63,14 @@ async def run_with_lock(lock_key: str, task_func, ttl: int = LOCK_TTL):
         await task_func()
         return
 
-    redis_client = cache._redis
-    acquired = await redis_client.set(lock_key, "locked", nx=True, ex=ttl)
+    # ИСПРАВЛЕНО: используем методы lock/unlock из cache
+    acquired = await cache.lock(lock_key, ttl=ttl)
     if acquired:
         logger.info(f"Блокировка {lock_key} захвачена, выполняем {task_func.__name__}")
         try:
             await task_func()
         finally:
-            await redis_client.delete(lock_key)
+            await cache.unlock(lock_key)
             logger.info(f"Блокировка {lock_key} освобождена")
     else:
         logger.info(f"Блокировка {lock_key} уже захвачена, пропускаем выполнение {task_func.__name__}")
