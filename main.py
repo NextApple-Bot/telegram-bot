@@ -22,9 +22,8 @@ logger = logging.getLogger(__name__)
 
 class HealthCheckFilter(logging.Filter):
     def filter(self, record):
-        if hasattr(record, 'message') and '/health' in record.getMessage():
-            return False
-        return True
+        # Исправлено SIM103: возврат условия напрямую
+        return not (hasattr(record, 'message') and '/health' in record.getMessage())
 
 logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 load_dotenv()
@@ -81,11 +80,9 @@ except Exception as e:
 
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
-    # ---------- ХИРУРГИЧЕСКИЙ УДАР (ИСПРАВЛЕНО) ----------
     if config and not getattr(config, 'RENDER_URL', None):
         logger.critical("❌ RENDER_URL не задан. Бот не сможет принимать вебхуки. Аварийное завершение.")
         sys.exit(1)
-    # ----------------------------------------
     try:
         await get_pool()
         logger.info("✅ Пул соединений БД инициализирован")
