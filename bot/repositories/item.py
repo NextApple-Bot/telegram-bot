@@ -222,39 +222,38 @@ class ItemRepository:
     async def bulk_replace_assortment(categories: List[Dict[str, List[str]]]) -> None:
         from bot.services.assortment import AssortmentService
         pool = await get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute('TRUNCATE TABLE categories CASCADE')
-                category_names = [cat['header'] for cat in categories]
-                if category_names:
-                    # Вставляем категории с sort_order по порядку следования в списке
-                    for idx, name in enumerate(category_names):
-                        await conn.execute(
-                            'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
-                            name, idx
-                        )
+        # Исправлено: объединены with
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute('TRUNCATE TABLE categories CASCADE')
+            category_names = [cat['header'] for cat in categories]
+            if category_names:
+                for idx, name in enumerate(category_names):
+                    await conn.execute(
+                        'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
+                        name, idx
+                    )
 
-                rows = await conn.fetch('SELECT id, name FROM categories')
-                cat_id_map = {row['name']: row['id'] for row in rows}
+            rows = await conn.fetch('SELECT id, name FROM categories')
+            cat_id_map = {row['name']: row['id'] for row in rows}
 
-                items_data = []
-                for cat in categories:
-                    cat_id = cat_id_map[cat['header']]
-                    for item_text in cat['items']:
-                        serials = extract_serials(item_text)
-                        serial = serials[0].strip().upper() if serials else None
-                        is_booked = 'Бронь от' in item_text
-                        items_data.append((item_text, serial, cat_id, is_booked))
+            items_data = []
+            for cat in categories:
+                cat_id = cat_id_map[cat['header']]
+                for item_text in cat['items']:
+                    serials = extract_serials(item_text)
+                    serial = serials[0].strip().upper() if serials else None
+                    is_booked = 'Бронь от' in item_text
+                    items_data.append((item_text, serial, cat_id, is_booked))
 
-                if items_data:
-                    values_placeholder = []
-                    params = []
-                    idx = 1
-                    for text, serial, cat_id, is_booked in items_data:
-                        values_placeholder.append(f"(${idx}, ${idx+1}, ${idx+2}, ${idx+3})")
-                        params.extend([text, serial, cat_id, is_booked])
-                        idx += 4
-                    query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
-                    await conn.execute(query, *params)
+            if items_data:
+                values_placeholder = []
+                params = []
+                idx = 1
+                for text, serial, cat_id, is_booked in items_data:
+                    values_placeholder.append(f"(${idx}, ${idx+1}, ${idx+2}, ${idx+3})")
+                    params.extend([text, serial, cat_id, is_booked])
+                    idx += 4
+                query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
+                await conn.execute(query, *params)
 
         await AssortmentService.invalidate_cache()
