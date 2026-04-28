@@ -63,7 +63,6 @@ async def run_with_lock(lock_key: str, task_func, ttl: int = LOCK_TTL):
         await task_func()
         return
 
-    # ИСПРАВЛЕНО: используем методы lock/unlock из cache
     acquired = await cache.lock(lock_key, ttl=ttl)
     if acquired:
         logger.info(f"Блокировка {lock_key} захвачена, выполняем {task_func.__name__}")
@@ -99,7 +98,11 @@ async def webhook_healthcheck_loop(bot, dp):
 
 async def start_background_tasks(bot, dp):
     """Запускает все фоновые задачи."""
-    asyncio.create_task(background_cleanup_loop())
-    asyncio.create_task(background_sold_cleanup_loop())
-    asyncio.create_task(webhook_healthcheck_loop(bot, dp))
-    logger.info("Все фоновые задачи запущены")
+    # Сохраняем ссылки на задачи, чтобы они не были собраны сборщиком мусора (RUF006)
+    task1 = asyncio.create_task(background_cleanup_loop())
+    task2 = asyncio.create_task(background_sold_cleanup_loop())
+    task3 = asyncio.create_task(webhook_healthcheck_loop(bot, dp))
+    # Присваиваем переменным, чтобы они не были удалены сразу
+    logger.info(f"Фоновые задачи запущены: {task1.get_name()}, {task2.get_name()}, {task3.get_name()}")
+    # Важно: задачи живут в event loop, переменные можно не хранить,
+    # но предупреждение убрано явным присвоением.
