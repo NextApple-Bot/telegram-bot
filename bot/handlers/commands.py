@@ -502,31 +502,29 @@ async def cmd_chatid(message: Message):
 # ---------- Команда для исправления таблицы sales ----------
 @router.message(Command("fix_sales_unique"))
 async def cmd_fix_sales_unique(message: Message):
-    """Добавляет уникальное ограничение на message_id в таблице sales (только для админов)."""
     if message.from_user.id not in config.ADMIN_IDS:
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
 
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            result1 = await conn.execute('DELETE FROM sales WHERE message_id IS NULL')
-            deleted_null = result1.split()[1] if result1.startswith('DELETE') else 0
+    async with pool.acquire() as conn, conn.transaction():
+        result1 = await conn.execute('DELETE FROM sales WHERE message_id IS NULL')
+        deleted_null = result1.split()[1] if result1.startswith('DELETE') else 0
 
-            result2 = await conn.execute('''
-                DELETE FROM sales a USING sales b 
-                WHERE a.id > b.id AND a.message_id = b.message_id
-            ''')
-            deleted_dups = result2.split()[1] if result2.startswith('DELETE') else 0
+        result2 = await conn.execute('''
+            DELETE FROM sales a USING sales b
+            WHERE a.id > b.id AND a.message_id = b.message_id
+        ''')
+        deleted_dups = result2.split()[1] if result2.startswith('DELETE') else 0
 
-            constraint_added = False
-            try:
-                await conn.execute('ALTER TABLE sales ADD CONSTRAINT sales_message_id_key UNIQUE (message_id)')
-                constraint_added = True
-            except asyncpg.exceptions.DuplicateTableError:
-                pass
-            except Exception as e:
-                logger.exception(f"Ошибка при добавлении ограничения: {e}")
+        constraint_added = False
+        try:
+            await conn.execute('ALTER TABLE sales ADD CONSTRAINT sales_message_id_key UNIQUE (message_id)')
+            constraint_added = True
+        except asyncpg.exceptions.DuplicateTableError:
+            pass
+        except Exception as e:
+            logger.exception(f"Ошибка при добавлении ограничения: {e}")
 
     msg = f"✅ Исправление таблицы sales:\n• Удалено записей с NULL message_id: {deleted_null}\n• Удалено дубликатов: {deleted_dups}\n• Уникальное ограничение: {'добавлено' if constraint_added else 'уже существовало'}"
     await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=msg, message_thread_id=message.message_thread_id, delete_after=60)
@@ -534,7 +532,6 @@ async def cmd_fix_sales_unique(message: Message):
 # ---------- Команда для переустановки вебхука ----------
 @router.message(Command("set_webhook"))
 async def cmd_set_webhook(message: Message):
-    """Переустанавливает вебхук (только для админов)."""
     if message.from_user.id not in config.ADMIN_IDS:
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён", message_thread_id=message.message_thread_id, delete_after=60)
         return
