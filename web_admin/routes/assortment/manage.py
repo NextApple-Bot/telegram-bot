@@ -5,36 +5,15 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from bot.db import get_pool
 from bot.repositories import ClientRepository
 from bot.services.assortment import AssortmentService
+from web_admin.main import templates          # <-- единый шаблонизатор
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-templates = Jinja2Templates(directory="web_admin/templates")
-
-
-def _format_date(value, fmt="%d.%m.%Y"):
-    if value is None:
-        return ""
-    if isinstance(value, datetime):
-        return value.strftime(fmt)
-    if isinstance(value, date):
-        return value.strftime(fmt)
-    if isinstance(value, str):
-        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
-            try:
-                dt = datetime.strptime(value, fmt_in)
-                return dt.strftime(fmt)
-            except ValueError:
-                continue
-    return str(value)
-
-
-templates.env.filters["format_date"] = _format_date
-
+# templates больше не создаём локально!
 
 def validate_phone(phone: str) -> bool:
     if not phone:
