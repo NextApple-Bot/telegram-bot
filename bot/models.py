@@ -30,7 +30,7 @@ class Client(Base):
     telegram_username = Column(String)
     social_network = Column(String)
     referral_source = Column(String)
-    birth_date = Column(Date, nullable=True)       # <-- добавлено
+    birth_date = Column(String, nullable=True)       # теперь VARCHAR
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
 
@@ -79,7 +79,6 @@ class Item(Base):
     is_sold = Column(Boolean, default=False)
 
 
-# Уникальный индекс для серийных номеров (игнорируя NULL)
 Item.__table_args__ = (
     Index('idx_items_serial_unique', 'serial', unique=True, postgresql_where=Item.serial.isnot(None)),
 )
@@ -124,8 +123,8 @@ class Booking(Base):
 class DailyPayment(Base):
     __tablename__ = 'daily_payments'
     id = Column(Integer, primary_key=True)
-    type = Column(String, nullable=False)          # 'sale' or 'preorder'
-    payment_type = Column(String, nullable=False)  # cash, terminal, ...
+    type = Column(String, nullable=False)
+    payment_type = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     sale_message_id = Column(BigInteger)
