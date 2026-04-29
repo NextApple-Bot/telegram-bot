@@ -1,13 +1,17 @@
-# tests/conftest.py
 import os
 from collections.abc import AsyncGenerator
+from importlib import reload
 from unittest.mock import AsyncMock
 
 import asyncpg
 import pytest
 from dotenv import load_dotenv
 
-# Загружаем .env на всякий случай (в CI не обязателен)
+import bot.config as bot_config
+from bot.db import close_pool, get_pool, init_db
+from bot.services.cache import cache
+
+# Загружаем .env (в CI не обязателен, но не мешает)
 load_dotenv()
 
 # Принудительно задаём тестовую БД с отключением SSL
@@ -17,12 +21,7 @@ os.environ.setdefault("REDIS_URL", "")
 os.environ["SCALING_ENABLED"] = "false"
 
 # Перезагружаем конфиг после подмены переменных
-from importlib import reload
-import bot.config as bot_config
 reload(bot_config)
-
-from bot.db import close_pool, get_pool, init_db
-from bot.services.cache import cache
 
 
 @pytest.fixture(scope="session")
