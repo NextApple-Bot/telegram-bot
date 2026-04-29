@@ -1,7 +1,7 @@
 # Файл: bot/repositories/client.py
 import json
 import logging
-from datetime import date as date_type, datetime
+from datetime import datetime
 
 from bot.db import get_pool, retry_on_db_error
 

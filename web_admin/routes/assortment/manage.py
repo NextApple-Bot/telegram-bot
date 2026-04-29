@@ -1,7 +1,6 @@
 # Файл: web_admin/routes/assortment/manage.py
 import asyncio
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse

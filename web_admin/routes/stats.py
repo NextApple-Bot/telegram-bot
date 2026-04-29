@@ -3,7 +3,6 @@ from datetime import date
 
 from fastapi import APIRouter, Query, Request
 
-from bot.db import get_pool
 from web_admin.templates import templates
 
 router = APIRouter()
