@@ -45,20 +45,24 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
+        # Телефоны
         for match in PHONE_PATTERN.finditer(line):
             full_number = match.group(0)
             clean_phone = re.sub(r'[\s\-\(\)]', '', full_number)
-            if clean_phone.startswith('8') or clean_phone.startswith('7') and not clean_phone.startswith('+7'):
+            if clean_phone.startswith('8') or (clean_phone.startswith('7') and not clean_phone.startswith('+7')):
                 clean_phone = '+7' + clean_phone[1:]
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)
 
+        # Дата рождения
         if not result['birth_date']:
             birth = parse_birth_date(line)
             if birth:
                 result['birth_date'] = birth
 
+        # ФИО – теперь ищем в любой строке, если ещё не нашли
         if not result['full_name']:
+            # Сначала проверяем явные метки "ФИО:"
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
                 if len(parts) > 1:
@@ -68,30 +72,38 @@ def parse_client_data(text: str) -> dict:
                     if match:
                         result['full_name'] = match.group(1).strip()
             else:
-                if re.search(r'\d', line):
-                    words = line.split()
-                    if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
-                        result['full_name'] = line
+                # Ищем строку из 2–4 слов, каждое начинается с заглавной русской буквы
+                words = line.split()
+                if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
+                    result['full_name'] = line
 
+        # Telegram
         if '@' in line and not result['telegram_username']:
             match = re.search(r'@(\w+)', line)
             if match:
                 result['telegram_username'] = match.group(1)
 
+        # Соцсети / площадка
         if re.search(r'соц\s*сети|social|площадка', line, re.IGNORECASE):
-            parts = line.split(':', 1)
+            parts = line.split('–', 1)  # длинное тире
             if len(parts) > 1:
                 result['social_network'] = parts[1].strip()
             else:
-                match = re.search(r'[—-]\s*(.+)', line)
-                if match:
-                    result['social_network'] = match.group(1).strip()
+                parts = line.split('-', 1)
+                if len(parts) > 1:
+                    result['social_network'] = parts[1].strip()
+                else:
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        result['social_network'] = parts[1].strip()
 
+        # Откуда узнал
         if re.search(r'как\s+о\s+нас\s+узнал|откуда|referral', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
                 result['referral_source'] = parts[1].strip()
 
+        # Товары (с серийниками в скобках)
         if re.search(r'\([A-Z0-9-]{5,}\)', line):
             item_text = line
             price_match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|рублей|р\.?)', line, re.IGNORECASE)
@@ -105,6 +117,7 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
+        # Суммы
         payments = extract_payment_amounts(line, ignore_prepay=False)
         for typ, val in payments.items():
             if typ in result['payments']:
