@@ -18,22 +18,25 @@ class ClientRepository:
         telegram_username: str | None = None,
         social_network: str | None = None,
         referral_source: str | None = None,
-        birth_date: str | None = None,
+        birth_date: str | date_type | None = None,
         conn=None
     ) -> int:
-        logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}, birth_date={birth_date}")
+        logger.info(f"🔍 get_or_create_client: phone={phone}, full_name={full_name}, birth_date={birth_date}")
 
         parsed_birth = None
         if birth_date:
             if isinstance(birth_date, date_type):
-                parsed_birth = birth_date.isoformat()
+                parsed_birth = birth_date
             elif isinstance(birth_date, str):
                 try:
-                    parsed_birth = datetime.strptime(birth_date, "%Y-%m-%d").date().isoformat()
+                    # Преобразуем строку ISO (ГГГГ-ММ-ДД) в объект date
+                    parsed_birth = datetime.strptime(birth_date, "%Y-%m-%d").date()
                 except ValueError:
+                    # На всякий случай попробуем дд.мм.гггг
                     try:
-                        parsed_birth = datetime.strptime(birth_date, "%d.%m.%Y").date().isoformat()
+                        parsed_birth = datetime.strptime(birth_date, "%d.%m.%Y").date()
                     except ValueError:
+                        logger.warning(f"Некорректный формат birth_date: {birth_date}")
                         parsed_birth = None
 
         async def _impl(connection):
@@ -66,7 +69,8 @@ class ClientRepository:
                         if new_phones_str != existing_phones:
                             updates.append("phones = $" + str(len(params)+1))
                             params.append(new_phones_str)
-                    if parsed_birth and parsed_birth != (row['birth_date'].isoformat() if row['birth_date'] else None):
+                    # Обновляем дату, если она задана и отличается
+                    if parsed_birth is not None and parsed_birth != row['birth_date']:
                         updates.append("birth_date = $" + str(len(params)+1))
                         params.append(parsed_birth)
                     if updates:
