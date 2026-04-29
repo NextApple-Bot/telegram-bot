@@ -21,29 +21,20 @@ os.environ["SCALING_ENABLED"] = "false"
 reload(bot_config)
 
 # ------------------------------------------------------------
-# 2. Запрещаем uvloop (чтобы pytest‑asyncio использовал стандартный asyncio)
+# 2. Отключаем uvloop, чтобы избежать проблем с event loop
 # ------------------------------------------------------------
 os.environ["UVLOOP_NO_EXTENSIONS"] = "1"
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Создаёт один event loop на всю сессию – обязательно для asyncpg."""
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        yield loop
-    finally:
-        loop.close()
-
-
+# ------------------------------------------------------------
+# 3. Сессионная фикстура для подготовки БД
+# ------------------------------------------------------------
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
     """
     Один раз за сессию:
-    – создаём свой пул (без SSL) и сбрасываем схему public
-    – вызываем штатный init_db для создания всех таблиц
-    – закрываем пул (дальше всё пойдёт через get_pool)
+    – создаём отдельный пул для сброса схемы (без SSL)
+    – инициализируем таблицы через общий init_db
+    – закрываем пул (дальше работает глобальный get_pool)
     """
     pool = await asyncpg.create_pool(
         TEST_DB_URL,
@@ -56,18 +47,17 @@ async def setup_test_db():
         await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
         await conn.execute("CREATE SCHEMA public")
 
-    await init_db()          # создаёт глобальный пул в том же event loop
+    await init_db()          # создаёт глобальный пул (ssl=False) в сессионном цикле
     await pool.close()
     yield
     await close_pool()
 
-
+# ------------------------------------------------------------
+# 4. Фикстура соединения для тестов (функциональный scope)
+# ------------------------------------------------------------
 @pytest.fixture
 async def db_conn() -> AsyncGenerator:
-    """
-    Выдаёт выделенное соединение из общего пула.
-    Транзакция откатывается после теста для изоляции.
-    """
+    """Выдаёт соединение из глобального пула, откатывая транзакцию после теста."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("BEGIN")
@@ -79,7 +69,9 @@ async def db_conn() -> AsyncGenerator:
             except Exception:
                 pass
 
-
+# ------------------------------------------------------------
+# 5. Моки
+# ------------------------------------------------------------
 @pytest.fixture
 def mock_bot():
     bot = AsyncMock()
@@ -88,7 +80,6 @@ def mock_bot():
     bot.delete_message = AsyncMock()
     bot.react = AsyncMock()
     return bot
-
 
 @pytest.fixture
 def mock_state():
@@ -100,7 +91,9 @@ def mock_state():
     state.clear = AsyncMock()
     return state
 
-
+# ------------------------------------------------------------
+# 6. Отключение Redis в тестах
+# ------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def disable_redis_cache():
     cache._enabled = False
