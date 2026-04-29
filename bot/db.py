@@ -53,7 +53,8 @@ async def get_pool():
                     min_size=min_size,
                     max_size=max_size,
                     command_timeout=60,
-                    max_inactive_connection_lifetime=300
+                    max_inactive_connection_lifetime=300,
+                    ssl=False   # ← ГАРАНТИРУЕТ ОТКЛЮЧЕНИЕ SSL
                 )
                 logger.info(f"✅ Пул соединений создан (min={min_size}, max={max_size})")
                 break
