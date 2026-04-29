@@ -3,7 +3,7 @@ from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import RedirectResponse
 
 from bot.db import get_pool
-from web_admin.main import templates
+from web_admin.templates import templates
 
 router = APIRouter()
 
@@ -43,7 +43,6 @@ async def seller_stats(
     date_from: str | None = None,
     date_to: str | None = None,
 ):
-    # заглушка
     return templates.TemplateResponse("sellers_stats.html", {
         "request": request,
         "mode": mode,
