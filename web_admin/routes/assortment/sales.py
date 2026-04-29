@@ -1,226 +1,306 @@
-# Файл: web_admin/routes/assortment/sales.py
+# Файл: web_admin/routes/assortment/manage.py
 import asyncio
 import logging
-import uuid
-from datetime import date
+from datetime import datetime
+
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
 
 from bot.db import get_pool
-from bot.repositories import ClientRepository, StatsRepository
-from bot.services.cache import cache
+from bot.repositories import ClientRepository
+from bot.services.assortment import AssortmentService
 
 logger = logging.getLogger(__name__)
+router = APIRouter()
+templates = Jinja2Templates(directory="web_admin/templates")
 
 
-def generate_sale_message_id() -> int:
-    return uuid.uuid4().int & 0x7FFFFFFFFFFFFFFF
+def _format_date(value, fmt="%d.%m.%y"):
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
+            try:
+                dt = datetime.strptime(value, fmt_in)
+                return dt.strftime(fmt)
+            except ValueError:
+                continue
+    return value
+
+templates.env.filters["format_date"] = _format_date
 
 
-async def delete_item_and_log_sale(
+def validate_phone(phone: str) -> bool:
+    if not phone:
+        return True
+    import re
+    return bool(re.match(r'^\+7\d{10}$', phone))
+
+
+@router.get("/edit/{item_id}")
+async def edit_item_form(request: Request, item_id: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT i.id, i.text, i.serial, i.is_booked, i.created_at,
+                   c.id as category_id, c.name as category_name,
+                   i.booking_price, i.booking_prepayment, i.booking_platform,
+                   i.booking_full_name, i.booking_phone, i.booking_payment_type,
+                   i.sale_price, i.sale_prepayment, i.sale_payment_type,
+                   i.sale_platform, i.sale_full_name, i.sale_phone, i.is_sold,
+                   i.sale_payment_amount
+            FROM items i
+            JOIN categories c ON i.category_id = c.id
+            WHERE i.id = $1
+        """, item_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Item not found")
+        item = dict(row)
+        categories = await conn.fetch("SELECT id, name FROM categories ORDER BY sort_order, name")
+    return templates.TemplateResponse("assortment_edit_item.html", {
+        "request": request,
+        "item": item,
+        "categories": [dict(cat) for cat in categories],
+    })
+
+
+@router.post("/edit/{item_id}")
+async def edit_item_submit(
+    request: Request,
     item_id: int,
-    text: str,
-    serial: str,
-    category_id: int,
-    price: float,
-    prepayment: float,
-    payment_type: str,
-    payment_amount: float,
-    message_id: int,
-    conn
+    text: str = Form(...),
+    serial: str | None = Form(None),
+    category_id: int = Form(...),
+    is_booked: bool = Form(False),
+    is_sold: bool = Form(False),
+    booking_price: float | None = Form(None),
+    booking_prepayment: float | None = Form(None),
+    booking_platform: str | None = Form(None),
+    booking_full_name: str | None = Form(None),
+    booking_phone: str | None = Form(None),
+    booking_payment_type: str | None = Form(None),
+    booking_birth_date: str | None = Form(None),          # добавлено
+    sale_price: float | None = Form(None),
+    sale_prepayment: float | None = Form(None),
+    sale_payment_amount: float | None = Form(None),
+    sale_payment_type: str | None = Form(None),
+    sale_platform: str | None = Form(None),
+    sale_full_name: str | None = Form(None),
+    sale_phone: str | None = Form(None),
+    sale_birth_date: str | None = Form(None),             # добавлено
+    accessory_name: list[str] = Form([]),
+    accessory_serial: list[str] = Form([]),
+    accessory_price: list[float] = Form([]),
+    accessory_payment_type: list[str] = Form([]),
 ):
-    """
-    Удаляет товар из ассортимента и создаёт запись в sales.
-    Платежи в daily_payments и покупка (purchases) уже обработаны в handle_sale_from_form.
-    """
-    allowed_types = {'cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment', 'paid'}
-    if payment_type not in allowed_types:
-        payment_type = 'cash'
-        logger.warning(f"Некорректный payment_type, заменён на 'cash': {payment_type}")
+    logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}, is_booked={is_booked}")
 
-    try:
-        await conn.execute("""
-            INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
-            VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
-        """, item_id, text, serial, category_id, message_id)
-    except Exception as e:
-        logger.warning(f"Не удалось вставить в deleted_items для item_id={item_id}: {e}")
+    if booking_phone and not validate_phone(booking_phone):
+        raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
+    if sale_phone and not validate_phone(sale_phone):
+        raise HTTPException(status_code=400, detail="Номер телефона продажи должен быть в формате +7XXXXXXXXXX")
 
-    await conn.execute("DELETE FROM items WHERE id = $1", item_id)
-    await StatsRepository.add_sale(
-        count=1,
-        cash=0,
-        terminal=0,
-        qr=0,
-        transfer=0,
-        invoice=0,
-        installment=0,
-        is_accessory=False,
-        message_id=message_id,
-        conn=conn
-    )
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        old = await conn.fetchrow("SELECT is_sold, text, serial, category_id, is_booked FROM items WHERE id = $1 FOR UPDATE", item_id)
+        if not old:
+            raise HTTPException(status_code=404, detail="Item not found")
+        old_is_sold = old["is_sold"]
+        old_text = old["text"]
+        old_serial = old["serial"] or ""
+        old_category_id = old["category_id"]
+        old_is_booked = old["is_booked"]
 
+        if old_is_sold:
+            raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
 
-async def handle_sale_from_form(
-    item_id: int,
-    text: str,
-    serial: str,
-    category_id: int,
-    old_text: str,
-    old_serial: str,
-    old_category_id: int,
-    sale_price: float,
-    sale_prepayment: float,
-    sale_payment_amount: float,
-    sale_payment_type: str,
-    sale_platform: str,
-    sale_full_name: str,
-    sale_phone: str,
-    accessories: list = None,
-    conn = None
-):
-    """
-    Обрабатывает продажу товара и аксессуаров.
-    Также создаёт запись о покупке (purchases) и сохраняет клиента.
-    """
-    try:
-        if not sale_price:
-            raise ValueError("Укажите стоимость продажи")
-        if sale_payment_type != "paid" and (not sale_payment_amount or sale_payment_amount <= 0):
-            raise ValueError("Укажите сумму оплаты")
-        if not sale_payment_type:
-            sale_payment_type = "cash"
+        if is_sold and is_booked:
+            raise HTTPException(status_code=400, detail="Снимите бронь перед продажей")
 
-        sale_message_id = generate_sale_message_id()
-
-        accessories_total = 0
-        processed_accessories = []
-        accessories_payments = {}
-
-        own_conn = False
-        if conn is None:
-            pool = await get_pool()
-            conn = await pool.acquire()
-            own_conn = True
-
-        try:
-            # --- Сохраняем или обновляем клиента ---
-            client_id = None
-            phone = sale_phone.strip() if sale_phone else None
-            if phone or sale_full_name:
-                # ИСПРАВЛЕНО: передаём conn
-                client_id = await ClientRepository.get_or_create_client(
-                    phone=phone,
-                    full_name=sale_full_name.strip() if sale_full_name else None,
-                    social_network=sale_platform.strip() if sale_platform else None,
-                    conn=conn
-                )
-
-            # Обработка аксессуаров
-            if accessories:
-                for acc in accessories:
-                    acc_price = acc['price']
-                    accessories_total += acc_price
-
-                    display_text = acc['name']
-                    item_info = None
-
-                    if acc.get('serial'):
-                        row = await conn.fetchrow("""
-                            SELECT id, text, category_id FROM items
-                            WHERE UPPER(serial) = $1
-                        """, acc['serial'].strip().upper())
-                        if row:
-                            item_info = dict(row)
-                            display_text = item_info['text']
-                            try:
-                                await conn.execute("""
-                                    INSERT INTO deleted_items (item_id, text, serial, category_id, reason, sale_message_id)
-                                    VALUES ($1, $2, $3, $4, 'sale_from_admin', $5)
-                                """, item_info['id'], item_info['text'], acc['serial'], item_info['category_id'], sale_message_id)
-                            except Exception as e:
-                                logger.warning(f"Не удалось вставить аксессуар в deleted_items: {e}")
-                            await conn.execute("DELETE FROM items WHERE id = $1", item_info['id'])
-                            await StatsRepository.add_sale(
-                                count=1,
-                                cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0,
-                                is_accessory=False,
-                                message_id=sale_message_id,
-                                conn=conn
-                            )
-
-                    processed_accessories.append({
-                        "text": display_text,
-                        "price": acc_price,
-                        "payment_type": acc.get('payment_type')
+        # Обработка ПРОДАЖИ
+        if is_sold:
+            accessories = []
+            for name, acc_serial, price, pay_type in zip(
+                accessory_name, accessory_serial, accessory_price, accessory_payment_type, strict=False
+            ):
+                if name.strip() and price is not None and price > 0:
+                    accessories.append({
+                        "name": name.strip(),
+                        "serial": acc_serial.strip() if acc_serial and acc_serial.strip() else None,
+                        "price": price,
+                        "payment_type": pay_type if pay_type else None
                     })
 
-                    pay_type = acc.get('payment_type')
-                    if pay_type and pay_type != "paid" and acc_price > 0:
-                        accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
+            from .sales import handle_sale_from_form
+            result = await handle_sale_from_form(
+                item_id=item_id, text=text, serial=serial, category_id=category_id,
+                old_text=old_text, old_serial=old_serial, old_category_id=old_category_id,
+                sale_price=sale_price, sale_prepayment=sale_prepayment,
+                sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
+                sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
+                sale_birth_date=sale_birth_date,           # передаём
+                accessories=accessories,
+                conn=conn
+            )
+            if "error" in result:
+                raise HTTPException(status_code=400, detail=result["error"])
+            await AssortmentService.invalidate_cache()
+            return RedirectResponse(url="/admin/assortment", status_code=303)
 
-            # Собираем все платежи
-            all_payments = dict(accessories_payments)
-            if sale_payment_type != "paid" and sale_payment_amount > 0:
-                all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
+        # Обработка БРОНИ
+        if is_booked:
+            if not booking_price:
+                raise HTTPException(status_code=400, detail="Укажите стоимость брони")
 
-            # Сохраняем платежи в daily_payments
-            for pay_type, amount in all_payments.items():
-                if amount > 0:
-                    await conn.execute("""
-                        INSERT INTO daily_payments (type, payment_type, amount, sale_message_id)
-                        VALUES ('sale', $1, $2, $3)
-                    """, pay_type, amount, sale_message_id)
-
-            # --- Создаём запись о покупке (purchases) ---
-            if client_id:
-                items_list = [{"item_text": text, "price": sale_price, "serial": serial}]
-                if processed_accessories:
-                    for acc in processed_accessories:
-                        items_list.append({"item_text": acc['text'], "price": acc['price']})
-                payment_details_json = {pt: amt for pt, amt in all_payments.items() if amt > 0}
-                # ИСПРАВЛЕНО: передаём conn
-                await ClientRepository.add_purchase(
-                    client_id=client_id,
-                    items=items_list,
-                    total_amount=sale_price + accessories_total,
-                    payment_details=payment_details_json,
-                    purchase_type='sale',
+            # Создаём/обновляем клиента
+            if booking_phone or booking_full_name:
+                await ClientRepository.get_or_create_client(
+                    phone=booking_phone,
+                    full_name=booking_full_name,
+                    social_network=booking_platform,
+                    birth_date=booking_birth_date,
                     conn=conn
                 )
 
-            # Отправка уведомления
-            from .notifications import send_sale_notification
-            asyncio.create_task(send_sale_notification(
+            await conn.execute("""
+                UPDATE items
+                SET text = $1, serial = $2, category_id = $3, is_booked = $4,
+                    booking_price = $5, booking_prepayment = $6, booking_platform = $7,
+                    booking_full_name = $8, booking_phone = $9, booking_payment_type = $10,
+                    sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
+                    sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
+                    sale_payment_amount = NULL, is_sold = FALSE
+                WHERE id = $11
+            """, text, serial.strip().upper() if serial else None, category_id, is_booked,
+               booking_price, booking_prepayment, booking_platform,
+               booking_full_name, booking_phone, booking_payment_type, item_id)
+
+            if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
+                await conn.execute("""
+                    INSERT INTO daily_payments (type, payment_type, amount)
+                    VALUES ('preorder', $1, $2)
+                """, booking_payment_type, booking_prepayment)
+
+            from .notifications import send_booking_notification
+            asyncio.create_task(send_booking_notification(
                 item_text=text,
-                price=sale_price,
-                payment_type=sale_payment_type,
-                prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
-                payment_amount=sale_payment_amount if sale_payment_type != "paid" else None,
-                platform=sale_platform,
-                full_name=sale_full_name,
-                phone=sale_phone,
-                accessories=processed_accessories
+                serial=serial.strip().upper() if serial else "без серийного номера",
+                price=booking_price,
+                prepayment=booking_prepayment,
+                platform=booking_platform,
+                full_name=booking_full_name,
+                phone=booking_phone,
+                payment_type=booking_payment_type,
+                is_cancel=False
             ))
+            logger.info(f"Бронь товара {item_id} успешно сохранена")
+        else:
+            await conn.execute("""
+                UPDATE items
+                SET text = $1, serial = $2, category_id = $3, is_booked = $4,
+                    booking_price = NULL, booking_prepayment = NULL, booking_platform = NULL,
+                    booking_full_name = NULL, booking_phone = NULL, booking_payment_type = NULL,
+                    sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
+                    sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
+                    sale_payment_amount = NULL, is_sold = FALSE
+                WHERE id = $5
+            """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
 
-            # Удаление товара и фиксация продажи
-            await delete_item_and_log_sale(
-                item_id=item_id,
-                text=old_text,
-                serial=old_serial,
-                category_id=old_category_id,
-                price=sale_price + accessories_total,
-                prepayment=sale_prepayment or 0,
-                payment_type=sale_payment_type,
-                payment_amount=sale_payment_amount if sale_payment_type != "paid" else 0,
-                message_id=sale_message_id,
-                conn=conn
-            )
+            if old_is_booked and not is_booked:
+                from .notifications import send_booking_notification
+                asyncio.create_task(send_booking_notification(
+                    item_text=old_text,
+                    serial=old_serial,
+                    is_cancel=True
+                ))
 
-            # Инвалидируем кэш дашборда
-            await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
-        finally:
-            if own_conn:
-                await conn.close()
-        return {"success": True}
-    except Exception as e:
-        logger.exception("Ошибка в handle_sale_from_form")
-        return {"error": str(e)}
+    await AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/delete/{item_id}")
+async def delete_item(request: Request, item_id: int):
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        row = await conn.fetchrow("SELECT text, serial, category_id FROM items WHERE id = $1", item_id)
+        if row:
+            await conn.execute("""
+                INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
+                VALUES ($1, $2, $3, $4, 'admin_manual')
+            """, item_id, row["text"], row["serial"], row["category_id"])
+            await conn.execute("DELETE FROM items WHERE id = $1", item_id)
+    await AssortmentService.invalidate_cache()
+    referer = request.headers.get("referer")
+    if referer:
+        return RedirectResponse(url=referer, status_code=303)
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/add")
+async def add_item(
+    request: Request,
+    text: str = Form(...),
+    serial: str | None = Form(None),
+    category_id: int = Form(...),
+    is_booked: bool = Form(False),
+    booking_price: float | None = Form(None),
+    booking_prepayment: float | None = Form(None),
+    booking_platform: str | None = Form(None),
+    booking_full_name: str | None = Form(None),
+    booking_phone: str | None = Form(None),
+    booking_payment_type: str | None = Form(None),
+):
+    if booking_phone and not validate_phone(booking_phone):
+        raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO items (text, serial, category_id, is_booked,
+                               booking_price, booking_prepayment, booking_platform,
+                               booking_full_name, booking_phone, booking_payment_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        """, text, serial.strip().upper() if serial else None, category_id, is_booked,
+           booking_price, booking_prepayment, booking_platform,
+           booking_full_name, booking_phone, booking_payment_type)
+        if is_booked:
+            if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
+                await conn.execute("""
+                    INSERT INTO daily_payments (type, payment_type, amount)
+                    VALUES ('preorder', $1, $2)
+                """, booking_payment_type, booking_prepayment)
+
+            from .notifications import send_booking_notification
+            asyncio.create_task(send_booking_notification(
+                item_text=text,
+                serial=serial.strip().upper() if serial else "без серийного номера",
+                price=booking_price,
+                prepayment=booking_prepayment,
+                platform=booking_platform,
+                full_name=booking_full_name,
+                phone=booking_phone,
+                payment_type=booking_payment_type,
+                is_cancel=False
+            ))
+    await AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/add_category")
+async def add_category(request: Request, name: str = Form(...)):
+    name = name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название не может быть пустым")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM categories WHERE LOWER(name) = LOWER($1)", name)
+        if exists:
+            raise HTTPException(status_code=400, detail="Категория с таким именем уже существует")
+        max_order = await conn.fetchval('SELECT COALESCE(MAX(sort_order), -1) FROM categories')
+        await conn.execute(
+            'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
+            name, max_order + 1
+        )
+    await AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
