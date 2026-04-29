@@ -12,18 +12,31 @@ from bot.services.payment_parser import (
 logger = logging.getLogger(__name__)
 
 PHONE_PATTERN = re.compile(r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}')
-BIRTH_DATE_PATTERN = re.compile(r'\b(\d{2})\.(\d{2})\.(\d{4})\b')
+# Дата: сначала ищем полную дд.мм.гггг, потом дд.мм
+BIRTH_DATE_FULL_PATTERN = re.compile(r'\b(\d{2})\.(\d{2})\.(\d{4})\b')
+BIRTH_DATE_SHORT_PATTERN = re.compile(r'(?<!\d)(\d{2})\.(\d{2})(?!\d)')  # не захватываем цифры телефона
 
 
 def parse_birth_date(text: str) -> str | None:
-    m = BIRTH_DATE_PATTERN.search(text)
+    # Ищем полную дату
+    m = BIRTH_DATE_FULL_PATTERN.search(text)
     if m:
         day, month, year = m.group(1), m.group(2), m.group(3)
         try:
             dt = datetime(int(year), int(month), int(day))
-            return dt.strftime("%Y-%m-%d")
+            return dt.strftime("%d.%m.%Y")
         except ValueError:
-            return None
+            pass
+    # Ищем короткую дату (день.месяц)
+    m = BIRTH_DATE_SHORT_PATTERN.search(text)
+    if m:
+        day, month = m.group(1), m.group(2)
+        try:
+            # проверяем, что это корректная дата
+            _ = datetime(2000, int(month), int(day))  # год не важен
+            return f"{day}.{month}"
+        except ValueError:
+            pass
     return None
 
 
@@ -54,15 +67,14 @@ def parse_client_data(text: str) -> dict:
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)
 
-        # Дата рождения
+        # Дата рождения (если ещё не нашли)
         if not result['birth_date']:
             birth = parse_birth_date(line)
             if birth:
                 result['birth_date'] = birth
 
-        # ФИО – теперь ищем в любой строке, если ещё не нашли
+        # ФИО
         if not result['full_name']:
-            # Сначала проверяем явные метки "ФИО:"
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
                 if len(parts) > 1:
@@ -72,7 +84,6 @@ def parse_client_data(text: str) -> dict:
                     if match:
                         result['full_name'] = match.group(1).strip()
             else:
-                # Ищем строку из 2–4 слов, каждое начинается с заглавной русской буквы
                 words = line.split()
                 if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
                     result['full_name'] = line
@@ -85,7 +96,7 @@ def parse_client_data(text: str) -> dict:
 
         # Соцсети / площадка
         if re.search(r'соц\s*сети|social|площадка', line, re.IGNORECASE):
-            parts = line.split('–', 1)  # длинное тире
+            parts = line.split('–', 1)
             if len(parts) > 1:
                 result['social_network'] = parts[1].strip()
             else:
