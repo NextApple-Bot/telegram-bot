@@ -16,11 +16,10 @@ from .routes.assortment import views as assortment_views
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Telegram Bot Admin Panel")
-
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
+# ---------- ЕДИНЫЙ ШАБЛОНИЗАТОР ----------
 templates = Jinja2Templates(directory="web_admin/templates")
-
 
 def safe_fromjson(value):
     if not value:
@@ -31,12 +30,8 @@ def safe_fromjson(value):
         logger.warning(f"Ошибка парсинга JSON: {value[:100] if isinstance(value, str) else value}")
         return []
 
-
-templates.env.filters["fromjson"] = safe_fromjson
-
-
 def format_date_filter(value, fmt="%d.%m.%Y"):
-    """Форматирует дату/время в строку указанного формата. По умолчанию ДД.ММ.ГГГГ."""
+    """Форматирует дату/время в строку ДД.ММ.ГГГГ."""
     if value is None:
         return ""
     if isinstance(value, datetime):
@@ -52,9 +47,9 @@ def format_date_filter(value, fmt="%d.%m.%Y"):
                 continue
     return str(value)
 
-
+templates.env.filters["fromjson"] = safe_fromjson
 templates.env.filters["format_date"] = format_date_filter
-
+# -----------------------------------------
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
