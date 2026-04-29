@@ -6,10 +6,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
-from web_admin.main import templates          # <-- единый шаблонизатор
+from web_admin.templates import templates
 
 router = APIRouter()
-# templates больше не создаём локально!
 
 ALLOWED_SORT_FIELDS = {
     "id": "i.id",
