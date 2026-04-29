@@ -18,26 +18,10 @@ class ClientRepository:
         telegram_username: str | None = None,
         social_network: str | None = None,
         referral_source: str | None = None,
-        birth_date: str | date_type | None = None,
+        birth_date: str | None = None,   # строка "ДД.ММ" или "ДД.ММ.ГГГГ"
         conn=None
     ) -> int:
         logger.info(f"🔍 get_or_create_client: phone={phone}, full_name={full_name}, birth_date={birth_date}")
-
-        parsed_birth = None
-        if birth_date:
-            if isinstance(birth_date, date_type):
-                parsed_birth = birth_date
-            elif isinstance(birth_date, str):
-                try:
-                    # Преобразуем строку ISO (ГГГГ-ММ-ДД) в объект date
-                    parsed_birth = datetime.strptime(birth_date, "%Y-%m-%d").date()
-                except ValueError:
-                    # На всякий случай попробуем дд.мм.гггг
-                    try:
-                        parsed_birth = datetime.strptime(birth_date, "%d.%m.%Y").date()
-                    except ValueError:
-                        logger.warning(f"Некорректный формат birth_date: {birth_date}")
-                        parsed_birth = None
 
         async def _impl(connection):
             if phone:
@@ -69,10 +53,9 @@ class ClientRepository:
                         if new_phones_str != existing_phones:
                             updates.append("phones = $" + str(len(params)+1))
                             params.append(new_phones_str)
-                    # Обновляем дату, если она задана и отличается
-                    if parsed_birth is not None and parsed_birth != row['birth_date']:
+                    if birth_date is not None and birth_date != row['birth_date']:
                         updates.append("birth_date = $" + str(len(params)+1))
-                        params.append(parsed_birth)
+                        params.append(birth_date)
                     if updates:
                         set_clause = ", ".join(updates)
                         params.append(client_id)
@@ -85,14 +68,14 @@ class ClientRepository:
                     row = await connection.fetchrow('''
                         INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source, birth_date)
                         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
-                    ''', full_name, phone, phones_str, telegram_username, social_network, referral_source, parsed_birth)
+                    ''', full_name, phone, phones_str, telegram_username, social_network, referral_source, birth_date)
                     return row['id']
             else:
                 phones_str = ",".join(sorted(set(phones))) if phones else None
                 row = await connection.fetchrow('''
                     INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source, birth_date)
                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
-                ''', full_name, phones_str, telegram_username, social_network, referral_source, parsed_birth)
+                ''', full_name, phones_str, telegram_username, social_network, referral_source, birth_date)
                 return row['id']
 
         if conn is not None:
