@@ -1,5 +1,4 @@
 # tests/conftest.py
-import asyncio
 import os
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
@@ -8,16 +7,16 @@ import asyncpg
 import pytest
 from dotenv import load_dotenv
 
-# Загружаем .env, если есть (не обязательно в CI)
+# Загружаем .env на всякий случай (в CI не обязателен)
 load_dotenv()
 
-# Явно задаём параметры подключения, отключающие SSL
+# Принудительно задаём тестовую БД с отключением SSL
 TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/bot_test?sslmode=disable"
 os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ.setdefault("REDIS_URL", "")
 os.environ["SCALING_ENABLED"] = "false"
 
-# Перезагружаем конфиг после подмены
+# Перезагружаем конфиг после подмены переменных
 from importlib import reload
 import bot.config as bot_config
 reload(bot_config)
@@ -28,35 +27,35 @@ from bot.services.cache import cache
 
 @pytest.fixture(scope="session")
 def anyio_backend():
-    """Указываем, что используем asyncio (для совместимости с pytest-asyncio)"""
+    """Указываем бэкенд asyncio для pytest-asyncio"""
     return "asyncio"
 
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
-    """Создаёт чистую тестовую БД перед всеми тестами, отключая SSL."""
+    """Создаёт чистую тестовую БД перед всеми тестами (без SSL)."""
     pool = await asyncpg.create_pool(
         TEST_DB_URL,
-        ssl=False,   # гарантированно отключаем SSL
+        ssl=False,               # гарантированно без SSL
         min_size=1,
         max_size=5
     )
     async with pool.acquire() as conn:
-        # Полный сброс схемы
         await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
         await conn.execute("CREATE SCHEMA public")
 
-    # Инициализируем таблицы через нашу функцию (она использует get_pool, который тоже будет без SSL)
-    # Передаём SSL=False на уровне get_pool (см. правку в bot/db.py)
+    # Инициализируем таблицы (внутри используется get_pool, который тоже без SSL)
     await init_db()
     await pool.close()
+
     yield
+
     await close_pool()
 
 
 @pytest.fixture
 async def db_conn() -> AsyncGenerator:
-    """Возвращает соединение из пула для теста (с отключённым SSL)."""
+    """Предоставляет соединение из пула для теста."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         yield conn
