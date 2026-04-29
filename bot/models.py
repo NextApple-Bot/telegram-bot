@@ -30,6 +30,7 @@ class Client(Base):
     telegram_username = Column(String)
     social_network = Column(String)
     referral_source = Column(String)
+    birth_date = Column(Date, nullable=True)       # <-- добавлено
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
 
