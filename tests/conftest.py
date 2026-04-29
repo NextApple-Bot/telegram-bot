@@ -1,3 +1,4 @@
+# tests/conftest.py
 import asyncio
 import os
 from collections.abc import AsyncGenerator
@@ -5,41 +6,49 @@ from unittest.mock import AsyncMock
 
 import asyncpg
 import pytest
+from dotenv import load_dotenv
+
+# Загружаем .env, если есть (не обязательно в CI)
+load_dotenv()
+
+# Явно задаём параметры подключения, отключающие SSL
+TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/bot_test?sslmode=disable"
+os.environ["DATABASE_URL"] = TEST_DB_URL
+os.environ.setdefault("REDIS_URL", "")
+os.environ["SCALING_ENABLED"] = "false"
+
+# Перезагружаем конфиг после подмены
+from importlib import reload
+import bot.config as bot_config
+reload(bot_config)
 
 from bot.db import close_pool, get_pool, init_db
 from bot.services.cache import cache
 
-# Переопределяем переменные окружения для тестов
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/bot_test")
-os.environ.setdefault("REDIS_URL", "")
-os.environ.setdefault("SCALING_ENABLED", "false")
-
-# Перезагружаем конфиг после изменения переменных
-from importlib import reload
-
-from bot import config as bot_config
-
-reload(bot_config)
-
 
 @pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+def anyio_backend():
+    """Указываем, что используем asyncio (для совместимости с pytest-asyncio)"""
+    return "asyncio"
 
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
-    """Создаёт чистую тестовую БД перед запуском всех тестов."""
-    test_db_url = os.environ["DATABASE_URL"]
-    pool = await asyncpg.create_pool(test_db_url)
+    """Создаёт чистую тестовую БД перед всеми тестами, отключая SSL."""
+    pool = await asyncpg.create_pool(
+        TEST_DB_URL,
+        ssl=False,   # гарантированно отключаем SSL
+        min_size=1,
+        max_size=5
+    )
     async with pool.acquire() as conn:
-        # Сбрасываем схему
+        # Полный сброс схемы
         await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
         await conn.execute("CREATE SCHEMA public")
-        # Инициализируем таблицы через init_db
-        await init_db()
+
+    # Инициализируем таблицы через нашу функцию (она использует get_pool, который тоже будет без SSL)
+    # Передаём SSL=False на уровне get_pool (см. правку в bot/db.py)
+    await init_db()
     await pool.close()
     yield
     await close_pool()
@@ -47,7 +56,7 @@ async def setup_test_db():
 
 @pytest.fixture
 async def db_conn() -> AsyncGenerator:
-    """Возвращает соединение с БД для теста."""
+    """Возвращает соединение из пула для теста (с отключённым SSL)."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         yield conn
@@ -78,7 +87,7 @@ def mock_state():
 
 @pytest.fixture(autouse=True)
 def disable_redis_cache():
-    """Отключает Redis в тестах (используем пустую реализацию)."""
+    """Отключает Redis в тестах."""
     cache._enabled = False
     yield
     cache._enabled = bool(os.getenv("REDIS_URL"))
