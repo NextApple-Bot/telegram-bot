@@ -65,7 +65,8 @@ async def handle_sales_message(message: Message):
                 full_name=data['full_name'],
                 telegram_username=data['telegram_username'],
                 social_network=data['social_network'],
-                referral_source=data['referral_source']
+                referral_source=data['referral_source'],
+                birth_date=data.get('birth_date')
             )
     except Exception as e:
         logger.exception(f"Ошибка при сохранении клиента: {e}")
