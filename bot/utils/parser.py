@@ -1,6 +1,7 @@
 # Файл: bot/utils/parser.py
 import logging
 import re
+from datetime import datetime
 
 from bot.services.payment_parser import (
     PAYMENT_KEYWORDS,
@@ -11,14 +12,22 @@ from bot.services.payment_parser import (
 logger = logging.getLogger(__name__)
 
 PHONE_PATTERN = re.compile(r'(\+?7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}')
+BIRTH_DATE_PATTERN = re.compile(r'\b(\d{2})\.(\d{2})\.(\d{4})\b')
+
+
+def parse_birth_date(text: str) -> str | None:
+    m = BIRTH_DATE_PATTERN.search(text)
+    if m:
+        day, month, year = m.group(1), m.group(2), m.group(3)
+        try:
+            dt = datetime(int(year), int(month), int(day))
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+    return None
 
 
 def parse_client_data(text: str) -> dict:
-    """
-    Извлекает данные клиента из текста сообщения.
-    Возвращает словарь с полями:
-    full_name, phones, telegram_username, social_network, referral_source, items, payments, total, main_phone.
-    """
     result = {
         'full_name': None,
         'phones': [],
@@ -26,7 +35,8 @@ def parse_client_data(text: str) -> dict:
         'social_network': None,
         'referral_source': None,
         'items': [],
-        'payments': dict.fromkeys(PAYMENT_KEYWORDS, 0.0)
+        'payments': dict.fromkeys(PAYMENT_KEYWORDS, 0.0),
+        'birth_date': None
     }
 
     lines = text.split('\n')
@@ -35,7 +45,6 @@ def parse_client_data(text: str) -> dict:
         if not line:
             continue
 
-        # Телефоны
         for match in PHONE_PATTERN.finditer(line):
             full_number = match.group(0)
             clean_phone = re.sub(r'[\s\-\(\)]', '', full_number)
@@ -44,7 +53,11 @@ def parse_client_data(text: str) -> dict:
             if clean_phone not in result['phones']:
                 result['phones'].append(clean_phone)
 
-        # ФИО
+        if not result['birth_date']:
+            birth = parse_birth_date(line)
+            if birth:
+                result['birth_date'] = birth
+
         if not result['full_name']:
             if re.search(r'ФИО|фио|Ф\.И\.О\.', line, re.IGNORECASE):
                 parts = line.split(':', 1)
@@ -60,13 +73,11 @@ def parse_client_data(text: str) -> dict:
                     if 2 <= len(words) <= 4 and all(re.match(r'^[А-ЯЁ][а-яё]*$', w) for w in words):
                         result['full_name'] = line
 
-        # Telegram
         if '@' in line and not result['telegram_username']:
             match = re.search(r'@(\w+)', line)
             if match:
                 result['telegram_username'] = match.group(1)
 
-        # Соцсети / площадка
         if re.search(r'соц\s*сети|social|площадка', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
@@ -76,13 +87,11 @@ def parse_client_data(text: str) -> dict:
                 if match:
                     result['social_network'] = match.group(1).strip()
 
-        # Откуда узнал
         if re.search(r'как\s+о\s+нас\s+узнал|откуда|referral', line, re.IGNORECASE):
             parts = line.split(':', 1)
             if len(parts) > 1:
                 result['referral_source'] = parts[1].strip()
 
-        # Товары (с серийниками в скобках)
         if re.search(r'\([A-Z0-9-]{5,}\)', line):
             item_text = line
             price_match = re.search(r'(\d[\d\s]*[.,]?\d*)\s*(?:₽|руб|рублей|р\.?)', line, re.IGNORECASE)
@@ -96,7 +105,6 @@ def parse_client_data(text: str) -> dict:
                 price = None
             result['items'].append({'item_text': item_text, 'price': price})
 
-        # Суммы – используем общую функцию
         payments = extract_payment_amounts(line, ignore_prepay=False)
         for typ, val in payments.items():
             if typ in result['payments']:
@@ -114,5 +122,4 @@ def parse_client_data(text: str) -> dict:
     return result
 
 
-# Экспортируем функции из общего модуля для обратной совместимости
-__all__ = ['parse_client_data', 'extract_payment_amounts', 'extract_prepayments']
+__all__ = ['parse_client_data', 'extract_payment_amounts', 'extract_prepayments', 'parse_birth_date']
