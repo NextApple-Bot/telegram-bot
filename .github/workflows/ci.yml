@@ -1,14 +1,14 @@
 name: CI with auto-fix
 
 on:
-  workflow_dispatch:          # Ручной запуск
+  workflow_dispatch:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
 permissions:
-  contents: write             # Разрешаем пуш исправлений
+  contents: write
 
 jobs:
   auto-fix-lint:
