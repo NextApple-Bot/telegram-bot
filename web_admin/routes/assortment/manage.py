@@ -1,7 +1,7 @@
 # Файл: web_admin/routes/assortment/manage.py
 import asyncio
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -16,8 +16,12 @@ router = APIRouter()
 templates = Jinja2Templates(directory="web_admin/templates")
 
 
-def _format_date(value, fmt="%d.%m.%y"):
+def _format_date(value, fmt="%d.%m.%Y"):
+    if value is None:
+        return ""
     if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, date):
         return value.strftime(fmt)
     if isinstance(value, str):
         for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
@@ -26,7 +30,8 @@ def _format_date(value, fmt="%d.%m.%y"):
                 return dt.strftime(fmt)
             except ValueError:
                 continue
-    return value
+    return str(value)
+
 
 templates.env.filters["format_date"] = _format_date
 
@@ -80,7 +85,7 @@ async def edit_item_submit(
     booking_full_name: str | None = Form(None),
     booking_phone: str | None = Form(None),
     booking_payment_type: str | None = Form(None),
-    booking_birth_date: str | None = Form(None),          # добавлено
+    booking_birth_date: str | None = Form(None),
     sale_price: float | None = Form(None),
     sale_prepayment: float | None = Form(None),
     sale_payment_amount: float | None = Form(None),
@@ -88,7 +93,7 @@ async def edit_item_submit(
     sale_platform: str | None = Form(None),
     sale_full_name: str | None = Form(None),
     sale_phone: str | None = Form(None),
-    sale_birth_date: str | None = Form(None),             # добавлено
+    sale_birth_date: str | None = Form(None),
     accessory_name: list[str] = Form([]),
     accessory_serial: list[str] = Form([]),
     accessory_price: list[float] = Form([]),
@@ -139,7 +144,7 @@ async def edit_item_submit(
                 sale_price=sale_price, sale_prepayment=sale_prepayment,
                 sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
                 sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
-                sale_birth_date=sale_birth_date,           # передаём
+                sale_birth_date=sale_birth_date,
                 accessories=accessories,
                 conn=conn
             )
@@ -153,7 +158,6 @@ async def edit_item_submit(
             if not booking_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость брони")
 
-            # Создаём/обновляем клиента
             if booking_phone or booking_full_name:
                 await ClientRepository.get_or_create_client(
                     phone=booking_phone,
