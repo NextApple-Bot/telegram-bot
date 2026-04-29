@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Request
 
 from bot.db import get_pool
-from web_admin.main import templates
+from web_admin.templates import templates
 
 router = APIRouter()
 
@@ -15,9 +15,7 @@ async def dashboard(request: Request, target_date: str | None = None):
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # продажи за день
         sales = await conn.fetchval("SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1", today) or 0
-        # выручка
         row = await conn.fetchrow("""
             SELECT COALESCE(SUM(cash),0) as cash, COALESCE(SUM(terminal),0) as terminal,
                    COALESCE(SUM(qr),0) as qr, COALESCE(SUM(transfer),0) as transfer,
@@ -26,9 +24,8 @@ async def dashboard(request: Request, target_date: str | None = None):
         """, today)
         payments = dict(row) if row else {}
         total_revenue = sum(payments.values())
-        plan = 600000  # можно взять из config
+        plan = 600000
 
-        # прочая статистика
         stats = await conn.fetchrow("""
             SELECT (SELECT COUNT(*) FROM preorders WHERE DATE(created_at)=$1) as preorders_count,
                    (SELECT COUNT(*) FROM bookings WHERE DATE(booked_at)=$1) as bookings_count
@@ -36,7 +33,6 @@ async def dashboard(request: Request, target_date: str | None = None):
         preorders_count = stats["preorders_count"] if stats else 0
         bookings_count = stats["bookings_count"] if stats else 0
 
-        # графики
         dates = [(today - timedelta(days=i)).strftime("%d.%m") for i in range(6, -1, -1)]
         sales_chart = []
         revenue_chart = []
@@ -47,10 +43,8 @@ async def dashboard(request: Request, target_date: str | None = None):
             sales_chart.append(cnt)
             revenue_chart.append(float(rev_row[0]) if rev_row else 0)
 
-        # продавцы
         sellers_rows = await conn.fetch("SELECT id, name FROM sellers ORDER BY name")
         sellers = [dict(r) for r in sellers_rows]
-        # топ-модели (заглушка)
         top_labels = []
         top_counts = []
 
