@@ -1,44 +1,15 @@
 # Файл: web_admin/routes/clients.py
-import csv
-import io
-from datetime import datetime, timedelta
-
-from fastapi import APIRouter, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Form, Query, Request
+from fastapi.responses import RedirectResponse
 
 from bot.db import get_pool
+from bot.repositories import ClientRepository
+from web_admin.main import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="web_admin/templates")
-
-# --- ФИЛЬТР ДАТЫ ---
-def _format_date(value, fmt="%d.%m.%y"):
-    if isinstance(value, datetime):
-        return value.strftime(fmt)
-    if isinstance(value, str):
-        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
-            try:
-                dt = datetime.strptime(value, fmt_in)
-                return dt.strftime(fmt)
-            except ValueError:
-                continue
-    return value
-
-templates.env.filters["format_date"] = _format_date
-# -------------------
-
-ALLOWED_SORT_FIELDS = {
-    "id": "id",
-    "full_name": "full_name",
-    "phone": "phone",
-    "telegram_username": "telegram_username",
-    "created_at": "created_at",
-    "updated_at": "updated_at",
-}
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/")
 async def list_clients(
     request: Request,
     page: int = Query(1, ge=1),
@@ -46,14 +17,11 @@ async def list_clients(
     search: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
-    sort_by: str = Query("id", regex="^(id|full_name|phone|telegram_username|created_at|updated_at)$"),
+    sort_by: str = Query("id", regex="^(id|full_name|phone|telegram_username|created_at)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
 ):
     pool = await get_pool()
     offset = (page - 1) * per_page
-
-    sort_column = ALLOWED_SORT_FIELDS.get(sort_by, "id")
-    order_direction = "DESC" if sort_order == "desc" else "ASC"
 
     base_query = "SELECT * FROM clients WHERE 1=1"
     count_query = "SELECT COUNT(*) FROM clients WHERE 1=1"
@@ -61,32 +29,28 @@ async def list_clients(
     count_params = []
 
     if search:
-        base_query += " AND (full_name ILIKE $" + str(len(params)+1) + " OR phone ILIKE $" + str(len(params)+1) + " OR telegram_username ILIKE $" + str(len(params)+1) + ")"
-        count_query += " AND (full_name ILIKE $" + str(len(count_params)+1) + " OR phone ILIKE $" + str(len(count_params)+1) + " OR telegram_username ILIKE $" + str(len(count_params)+1) + ")"
+        clause = " AND (full_name ILIKE $" + str(len(params)+1) + " OR phone ILIKE $" + str(len(params)+1) + " OR telegram_username ILIKE $" + str(len(params)+1) + ")"
+        base_query += clause
+        count_query += clause
         params.append(f"%{search}%")
         count_params.append(f"%{search}%")
 
     if date_from:
-        try:
-            start_date = datetime.strptime(date_from, "%Y-%m-%d")
-            base_query += " AND created_at >= $" + str(len(params)+1)
-            count_query += " AND created_at >= $" + str(len(count_params)+1)
-            params.append(start_date)
-            count_params.append(start_date)
-        except ValueError:
-            pass
+        base_query += " AND created_at >= $" + str(len(params)+1)
+        count_query += " AND created_at >= $" + str(len(count_params)+1)
+        params.append(date_from)
+        count_params.append(date_from)
 
     if date_to:
-        try:
-            end_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
-            base_query += " AND created_at < $" + str(len(params)+1)
-            count_query += " AND created_at < $" + str(len(count_params)+1)
-            params.append(end_date)
-            count_params.append(end_date)
-        except ValueError:
-            pass
+        base_query += " AND created_at <= $" + str(len(params)+1)
+        count_query += " AND created_at <= $" + str(len(count_params)+1)
+        params.append(date_to)
+        count_params.append(date_to)
 
-    base_query += f" ORDER BY {sort_column} {order_direction} LIMIT $" + str(len(params)+1) + " OFFSET $" + str(len(params)+2)
+    allowed_sort = {"id": "id", "full_name": "full_name", "phone": "phone", "telegram_username": "telegram_username", "created_at": "created_at"}
+    sort_column = allowed_sort.get(sort_by, "id")
+    order_dir = "DESC" if sort_order == "desc" else "ASC"
+    base_query += f" ORDER BY {sort_column} {order_dir} LIMIT $" + str(len(params)+1) + " OFFSET $" + str(len(params)+2)
     params.append(per_page)
     params.append(offset)
 
@@ -100,9 +64,9 @@ async def list_clients(
         "request": request,
         "clients": clients,
         "page": page,
-        "total_pages": total_pages,
         "per_page": per_page,
         "total": total,
+        "total_pages": total_pages,
         "search": search,
         "date_from": date_from,
         "date_to": date_to,
@@ -111,137 +75,65 @@ async def list_clients(
     })
 
 
-@router.get("/export/csv")
-async def export_clients_csv(
-    request: Request,
-    search: str | None = Query(None),
-    date_from: str | None = Query(None),
-    date_to: str | None = Query(None),
-):
-    pool = await get_pool()
-    query = "SELECT * FROM clients WHERE 1=1"
-    params = []
-
-    if search:
-        query += " AND (full_name ILIKE $" + str(len(params)+1) + " OR phone ILIKE $" + str(len(params)+1) + " OR telegram_username ILIKE $" + str(len(params)+1) + ")"
-        params.append(f"%{search}%")
-
-    if date_from:
-        try:
-            start_date = datetime.strptime(date_from, "%Y-%m-%d")
-            query += " AND created_at >= $" + str(len(params)+1)
-            params.append(start_date)
-        except ValueError:
-            pass
-
-    if date_to:
-        try:
-            end_date = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
-            query += " AND created_at < $" + str(len(params)+1)
-            params.append(end_date)
-        except ValueError:
-            pass
-
-    query += " ORDER BY id"
-
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(query, *params)
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['ID', 'ФИО', 'Основной телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник', 'Дата регистрации', 'Дата обновления'])
-    for row in rows:
-        writer.writerow([
-            row['id'],
-            row['full_name'] or '',
-            row['phone'] or '',
-            row['phones'] or '',
-            row['telegram_username'] or '',
-            row['social_network'] or '',
-            row['referral_source'] or '',
-            row['created_at'].isoformat() if row['created_at'] else '',
-            row['updated_at'].isoformat() if row['updated_at'] else ''
-        ])
-
-    response = StreamingResponse(iter([output.getvalue().encode('utf-8-sig')]), media_type="text/csv")
-    response.headers["Content-Disposition"] = "attachment; filename=clients_export.csv"
-    return response
-
-
-@router.get("/{client_id}", response_class=HTMLResponse)
+@router.get("/{client_id}")
 async def client_detail(request: Request, client_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        client = await conn.fetchrow('SELECT * FROM clients WHERE id = $1', client_id)
+        client = await conn.fetchrow("SELECT * FROM clients WHERE id = $1", client_id)
         if not client:
-            raise HTTPException(status_code=404, detail="Client not found")
-        purchases = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
+            return RedirectResponse(url="/admin/clients")
+        client = dict(client)
+        purchases = await ClientRepository.get_client_purchases(client_id)
     return templates.TemplateResponse("client_detail.html", {
         "request": request,
-        "client": dict(client),
-        "purchases": [dict(p) for p in purchases]
+        "client": client,
+        "purchases": purchases,
     })
 
 
-@router.get("/{client_id}/edit", response_class=HTMLResponse)
-async def client_edit_form(request: Request, client_id: int):
+@router.get("/{client_id}/edit")
+async def edit_client_form(request: Request, client_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        client = await conn.fetchrow('SELECT * FROM clients WHERE id = $1', client_id)
+        client = await conn.fetchrow("SELECT * FROM clients WHERE id = $1", client_id)
         if not client:
-            raise HTTPException(status_code=404, detail="Client not found")
+            return RedirectResponse(url="/admin/clients")
     return templates.TemplateResponse("client_edit.html", {
         "request": request,
-        "client": dict(client)
+        "client": dict(client),
     })
 
 
 @router.post("/{client_id}/edit")
-async def client_edit_submit(
+async def edit_client_submit(
     request: Request,
     client_id: int,
-    full_name: str | None = Form(None),
-    phone: str | None = Form(None),
-    phones: str | None = Form(None),
-    telegram_username: str | None = Form(None),
-    social_network: str | None = Form(None),
-    referral_source: str | None = Form(None),
+    full_name: str = Form(""),
+    phone: str = Form(""),
+    phones: str = Form(""),
+    telegram_username: str = Form(""),
+    social_network: str = Form(""),
+    referral_source: str = Form(""),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        updates = []
-        params = []
-        if full_name is not None:
-            updates.append("full_name = $" + str(len(params)+1))
-            params.append(full_name)
-        if phone is not None:
-            updates.append("phone = $" + str(len(params)+1))
-            params.append(phone)
-        if phones is not None:
-            updates.append("phones = $" + str(len(params)+1))
-            params.append(phones)
-        if telegram_username is not None:
-            updates.append("telegram_username = $" + str(len(params)+1))
-            params.append(telegram_username)
-        if social_network is not None:
-            updates.append("social_network = $" + str(len(params)+1))
-            params.append(social_network)
-        if referral_source is not None:
-            updates.append("referral_source = $" + str(len(params)+1))
-            params.append(referral_source)
-        if not updates:
-            return RedirectResponse(url=f"/admin/clients/{client_id}", status_code=303)
-        updates.append("updated_at = CURRENT_TIMESTAMP")
-        params.append(client_id)
-        query = f"UPDATE clients SET {', '.join(updates)} WHERE id = ${len(params)}"
-        await conn.execute(query, *params)
+        await conn.execute("""
+            UPDATE clients SET full_name=$1, phone=$2, phones=$3, telegram_username=$4,
+            social_network=$5, referral_source=$6, updated_at=CURRENT_TIMESTAMP
+            WHERE id=$7
+        """, full_name, phone, phones, telegram_username, social_network, referral_source, client_id)
     return RedirectResponse(url=f"/admin/clients/{client_id}", status_code=303)
 
 
 @router.post("/delete/{client_id}")
-async def delete_client(request: Request, client_id: int):
+async def delete_client(client_id: int):
     pool = await get_pool()
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute('DELETE FROM purchases WHERE client_id = $1', client_id)
-        await conn.execute('DELETE FROM clients WHERE id = $1', client_id)
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM clients WHERE id = $1", client_id)
     return RedirectResponse(url="/admin/clients", status_code=303)
+
+
+@router.get("/export/csv")
+async def export_clients_csv(request: Request):
+    # простая выгрузка – можно реализовать позже
+    return RedirectResponse(url="/admin/clients")
