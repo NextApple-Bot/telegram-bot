@@ -21,18 +21,21 @@ os.environ["SCALING_ENABLED"] = "false"
 reload(bot_config)
 
 # ------------------------------------------------------------
-# 2. Отключаем uvloop (чтобы гарантировать совместимость в CI)
+# 2. Запрещаем uvloop (чтобы pytest‑asyncio использовал стандартный asyncio)
 # ------------------------------------------------------------
-try:
-    import uvloop
-    uvloop.install = lambda: None  # запрещаем установку uvloop
-except ImportError:
-    pass
+os.environ["UVLOOP_NO_EXTENSIONS"] = "1"
 
-# ------------------------------------------------------------
-# 3. Фикстуры — event loop НЕ переопределяем,
-#    pytest-asyncio сам даст сессионный цикл
-# ------------------------------------------------------------
+@pytest.fixture(scope="session")
+def event_loop():
+    """Создаёт один event loop на всю сессию – обязательно для asyncpg."""
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        yield loop
+    finally:
+        loop.close()
+
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_test_db():
@@ -46,14 +49,14 @@ async def setup_test_db():
         TEST_DB_URL,
         min_size=1,
         max_size=5,
-        ssl=False,                     # <-- БЕЗ SSL
+        ssl=False,
         command_timeout=30
     )
     async with pool.acquire() as conn:
         await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
         await conn.execute("CREATE SCHEMA public")
 
-    await init_db()                   # использует глобальный get_pool (ssl=False внутри)
+    await init_db()          # создаёт глобальный пул в том же event loop
     await pool.close()
     yield
     await close_pool()
@@ -63,11 +66,11 @@ async def setup_test_db():
 async def db_conn() -> AsyncGenerator:
     """
     Выдаёт выделенное соединение из общего пула.
-    Транзакция автоматически откатывается после теста.
+    Транзакция откатывается после теста для изоляции.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await conn.execute("BEGIN")          # изоляция
+        await conn.execute("BEGIN")
         try:
             yield conn
         finally:
