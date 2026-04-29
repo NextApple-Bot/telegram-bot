@@ -1,36 +1,15 @@
 # Файл: web_admin/routes/assortment/views.py
 import re
-from datetime import date, datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 
 from bot.db import get_pool
 from bot.services.assortment import AssortmentService
+from web_admin.main import templates          # <-- единый шаблонизатор
 
 router = APIRouter()
-templates = Jinja2Templates(directory="web_admin/templates")
-
-
-def _format_date(value, fmt="%d.%m.%Y"):
-    if value is None:
-        return ""
-    if isinstance(value, datetime):
-        return value.strftime(fmt)
-    if isinstance(value, date):
-        return value.strftime(fmt)
-    if isinstance(value, str):
-        for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
-            try:
-                dt = datetime.strptime(value, fmt_in)
-                return dt.strftime(fmt)
-            except ValueError:
-                continue
-    return str(value)
-
-
-templates.env.filters["format_date"] = _format_date
+# templates больше не создаём локально!
 
 ALLOWED_SORT_FIELDS = {
     "id": "i.id",
