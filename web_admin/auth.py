@@ -1,26 +1,26 @@
-# Файл: web_admin/routes/auth.py
-from fastapi import APIRouter, Form, Request
-from fastapi.responses import RedirectResponse
+# Файл: web_admin/auth.py
+from passlib.context import CryptContext
+from starlette.requests import Request
 
-from web_admin.auth import login, logout
-from web_admin.main import templates
+from bot import config
 
-router = APIRouter()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+def verify_password(plain_password: str) -> bool:
+    if config.ADMIN_PASSWORD and plain_password == config.ADMIN_PASSWORD:
+        return True
+    if config.ADMIN_PASSWORD_HASH:
+        return pwd_context.verify(plain_password, config.ADMIN_PASSWORD_HASH)
+    return False
 
-@router.get("/login")
-async def login_form(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+def is_authenticated(request: Request) -> bool:
+    return request.session.get("authenticated", False)
 
+def login(request: Request, password: str) -> bool:
+    if verify_password(password):
+        request.session["authenticated"] = True
+        return True
+    return False
 
-@router.post("/login")
-async def login_submit(request: Request, password: str = Form(...)):
-    if login(request, password):
-        return RedirectResponse(url="/admin/dashboard", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Неверный пароль"})
-
-
-@router.get("/logout")
-async def logout_user(request: Request):
-    logout(request)
-    return RedirectResponse(url="/admin/auth/login")
+def logout(request: Request) -> None:
+    request.session.clear()
