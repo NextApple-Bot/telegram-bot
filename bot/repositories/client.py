@@ -1,5 +1,7 @@
+# Файл: bot/repositories/client.py
 import json
 import logging
+from datetime import date as date_type, datetime
 
 from bot.db import get_pool, retry_on_db_error
 
@@ -16,14 +18,28 @@ class ClientRepository:
         telegram_username: str | None = None,
         social_network: str | None = None,
         referral_source: str | None = None,
+        birth_date: str | None = None,
         conn=None
     ) -> int:
-        logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}")
+        logger.info(f"🔍 get_or_create_client: phone={phone}, phones={phones}, full_name={full_name}, birth_date={birth_date}")
+
+        parsed_birth = None
+        if birth_date:
+            if isinstance(birth_date, date_type):
+                parsed_birth = birth_date.isoformat()
+            elif isinstance(birth_date, str):
+                try:
+                    parsed_birth = datetime.strptime(birth_date, "%Y-%m-%d").date().isoformat()
+                except ValueError:
+                    try:
+                        parsed_birth = datetime.strptime(birth_date, "%d.%m.%Y").date().isoformat()
+                    except ValueError:
+                        parsed_birth = None
 
         async def _impl(connection):
             if phone:
                 row = await connection.fetchrow(
-                    'SELECT id, full_name, telegram_username, social_network, referral_source, phones FROM clients WHERE phone = $1',
+                    'SELECT id, full_name, telegram_username, social_network, referral_source, phones, birth_date FROM clients WHERE phone = $1',
                     phone
                 )
                 if row:
@@ -50,6 +66,9 @@ class ClientRepository:
                         if new_phones_str != existing_phones:
                             updates.append("phones = $" + str(len(params)+1))
                             params.append(new_phones_str)
+                    if parsed_birth and parsed_birth != (row['birth_date'].isoformat() if row['birth_date'] else None):
+                        updates.append("birth_date = $" + str(len(params)+1))
+                        params.append(parsed_birth)
                     if updates:
                         set_clause = ", ".join(updates)
                         params.append(client_id)
@@ -60,16 +79,16 @@ class ClientRepository:
                 else:
                     phones_str = ",".join(sorted(set(phones))) if phones else None
                     row = await connection.fetchrow('''
-                        INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source)
-                        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
-                    ''', full_name, phone, phones_str, telegram_username, social_network, referral_source)
+                        INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source, birth_date)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+                    ''', full_name, phone, phones_str, telegram_username, social_network, referral_source, parsed_birth)
                     return row['id']
             else:
                 phones_str = ",".join(sorted(set(phones))) if phones else None
                 row = await connection.fetchrow('''
-                    INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source)
-                    VALUES ($1, $2, $3, $4, $5) RETURNING id
-                ''', full_name, phones_str, telegram_username, social_network, referral_source)
+                    INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source, birth_date)
+                    VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
+                ''', full_name, phones_str, telegram_username, social_network, referral_source, parsed_birth)
                 return row['id']
 
         if conn is not None:
@@ -145,7 +164,6 @@ class ClientRepository:
     @staticmethod
     @retry_on_db_error()
     async def get_clients_data_for_month(month_str: str) -> list[dict]:
-        from datetime import datetime
         month, year = map(int, month_str.split('.'))
         start_date = datetime(year, month, 1).date()
         if month == 12:
@@ -164,6 +182,7 @@ class ClientRepository:
                     c.telegram_username,
                     c.social_network,
                     c.referral_source,
+                    c.birth_date,
                     c.created_at as client_created_at,
                     p.id as purchase_id,
                     p.items_json,
