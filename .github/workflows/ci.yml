@@ -1,14 +1,17 @@
 name: CI with auto-fix
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:          # ручной запуск
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
 permissions:
-  contents: write
+  contents: write             # разрешаем пуш исправлений
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # переводим actions на Node.js 24
 
 jobs:
   auto-fix-lint:
