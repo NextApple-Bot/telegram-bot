@@ -4,7 +4,7 @@ from fastapi.responses import RedirectResponse
 
 from bot.db import get_pool
 from bot.repositories import ClientRepository
-from web_admin.main import templates
+from web_admin.templates import templates
 
 router = APIRouter()
 
@@ -135,5 +135,5 @@ async def delete_client(client_id: int):
 
 @router.get("/export/csv")
 async def export_clients_csv(request: Request):
-    # простая выгрузка – можно реализовать позже
+    # заглушка
     return RedirectResponse(url="/admin/clients")
