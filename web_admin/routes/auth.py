@@ -1,24 +1,24 @@
+# Файл: web_admin/routes/auth.py
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from starlette import status
+from fastapi.responses import RedirectResponse
 
-from ..auth import is_authenticated, login, logout
+from web_admin.auth import login, logout
+from web_admin.templates import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="web_admin/templates")
 
-@router.get("/login", response_class=HTMLResponse)
+
+@router.get("/login")
 async def login_form(request: Request):
-    if is_authenticated(request):
-        return RedirectResponse(url="/admin/dashboard")
     return templates.TemplateResponse("login.html", {"request": request})
+
 
 @router.post("/login")
 async def login_submit(request: Request, password: str = Form(...)):
     if login(request, password):
-        return RedirectResponse(url="/admin/dashboard", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid password"})
+        return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request, "error": "Неверный пароль"})
+
 
 @router.get("/logout")
 async def logout_user(request: Request):
