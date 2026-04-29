@@ -10,6 +10,7 @@
                 <dl class="row mb-0">
                     <dt class="col-sm-4">ФИО</dt><dd class="col-sm-8">{{ client.full_name or '—' }}</dd>
                     <dt class="col-sm-4">Телефон</dt><dd class="col-sm-8">{{ client.phone or '—' }}</dd>
+                    <dt class="col-sm-4">Дата рождения</dt><dd class="col-sm-8">{{ client.birth_date|format_date if client.birth_date else '—' }}</dd>
                     <dt class="col-sm-4">Доп. телефоны</dt><dd class="col-sm-8">{{ client.phones or '—' }}</dd>
                     <dt class="col-sm-4">Telegram</dt><dd class="col-sm-8">{{ client.telegram_username or '—' }}</dd>
                     <dt class="col-sm-4">Соцсети</dt><dd class="col-sm-8">{{ client.social_network or '—' }}</dd>
