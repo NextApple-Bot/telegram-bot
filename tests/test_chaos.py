@@ -8,9 +8,11 @@ from bot.services.cache import cache
 @pytest.mark.asyncio
 async def test_redis_failure_get():
     # При отключённом Redis и моке, который бросает исключение
-    with patch.object(cache, 'get', side_effect=ConnectionError):
-        with pytest.raises(ConnectionError):
-            await cache.get("any_key")
+    with (
+        patch.object(cache, 'get', side_effect=ConnectionError),
+        pytest.raises(ConnectionError)
+    ):
+        await cache.get("any_key")
 
 
 @pytest.mark.asyncio
