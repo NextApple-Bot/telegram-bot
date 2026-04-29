@@ -1,10 +1,10 @@
 # Файл: web_admin/routes/stats.py
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Query, Request
 
 from bot.db import get_pool
-from web_admin.main import templates
+from web_admin.templates import templates
 
 router = APIRouter()
 
@@ -19,7 +19,6 @@ async def stats_page(
     date_from: str | None = None,
     date_to: str | None = None,
 ):
-    # простая заглушка
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "mode": mode,
