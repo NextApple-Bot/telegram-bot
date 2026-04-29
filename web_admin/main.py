@@ -1,7 +1,7 @@
 # Файл: web_admin/main.py
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
@@ -35,8 +35,13 @@ def safe_fromjson(value):
 templates.env.filters["fromjson"] = safe_fromjson
 
 
-def format_date_filter(value, fmt="%d.%m.%y"):
+def format_date_filter(value, fmt="%d.%m.%Y"):
+    """Форматирует дату/время в строку указанного формата. По умолчанию ДД.ММ.ГГГГ."""
+    if value is None:
+        return ""
     if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, date):
         return value.strftime(fmt)
     if isinstance(value, str):
         for fmt_in in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]:
@@ -45,7 +50,7 @@ def format_date_filter(value, fmt="%d.%m.%y"):
                 return dt.strftime(fmt)
             except ValueError:
                 continue
-    return value
+    return str(value)
 
 
 templates.env.filters["format_date"] = format_date_filter
