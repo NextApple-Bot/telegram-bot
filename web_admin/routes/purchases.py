@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
 
 from bot.db import get_pool
-from web_admin.main import templates
+from web_admin.templates import templates
 
 router = APIRouter()
 
