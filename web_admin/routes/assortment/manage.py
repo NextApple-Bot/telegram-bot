@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from bot.db import get_pool
+from bot.repositories import ClientRepository
 from bot.services.assortment import AssortmentService
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ async def edit_item_submit(
     booking_full_name: str | None = Form(None),
     booking_phone: str | None = Form(None),
     booking_payment_type: str | None = Form(None),
+    booking_birth_date: str | None = Form(None),          # добавлено
     sale_price: float | None = Form(None),
     sale_prepayment: float | None = Form(None),
     sale_payment_amount: float | None = Form(None),
@@ -86,6 +88,7 @@ async def edit_item_submit(
     sale_platform: str | None = Form(None),
     sale_full_name: str | None = Form(None),
     sale_phone: str | None = Form(None),
+    sale_birth_date: str | None = Form(None),             # добавлено
     accessory_name: list[str] = Form([]),
     accessory_serial: list[str] = Form([]),
     accessory_price: list[float] = Form([]),
@@ -136,6 +139,7 @@ async def edit_item_submit(
                 sale_price=sale_price, sale_prepayment=sale_prepayment,
                 sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
                 sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
+                sale_birth_date=sale_birth_date,           # передаём
                 accessories=accessories,
                 conn=conn
             )
@@ -148,6 +152,17 @@ async def edit_item_submit(
         if is_booked:
             if not booking_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость брони")
+
+            # Создаём/обновляем клиента
+            if booking_phone or booking_full_name:
+                await ClientRepository.get_or_create_client(
+                    phone=booking_phone,
+                    full_name=booking_full_name,
+                    social_network=booking_platform,
+                    birth_date=booking_birth_date,
+                    conn=conn
+                )
+
             await conn.execute("""
                 UPDATE items
                 SET text = $1, serial = $2, category_id = $3, is_booked = $4,
