@@ -45,6 +45,7 @@
                     <th><a href="?sort_by=full_name&sort_order={% if sort_by == 'full_name' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">ФИО</a></th>
                     <th><a href="?sort_by=phone&sort_order={% if sort_by == 'phone' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Телефон</a></th>
                     <th><a href="?sort_by=telegram_username&sort_order={% if sort_by == 'telegram_username' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Telegram</a></th>
+                    <th>Дата рождения</th>
                     <th><a href="?sort_by=created_at&sort_order={% if sort_by == 'created_at' and sort_order == 'asc' %}desc{% else %}asc{% endif %}&{{ request.query_params }}">Дата регистрации</a></th>
                     <th style="width: 100px;">Действия</th>
                 </tr>
@@ -56,6 +57,7 @@
                     <td><a href="/admin/clients/{{ client.id }}" class="text-decoration-none fw-medium">{{ client.full_name or '—' }}</a></td>
                     <td>{{ client.phone or '—' }}</td>
                     <td>{{ client.telegram_username or '—' }}</td>
+                    <td>{{ client.birth_date|format_date if client.birth_date else '—' }}</td>
                     <td>{{ client.created_at|format_date if client.created_at else '—' }}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
