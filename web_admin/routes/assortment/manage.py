@@ -1,7 +1,7 @@
 # Файл: web_admin/routes/assortment/manage.py
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -9,11 +9,11 @@ from fastapi.responses import RedirectResponse
 from bot.db import get_pool
 from bot.repositories import ClientRepository
 from bot.services.assortment import AssortmentService
-from web_admin.main import templates          # <-- единый шаблонизатор
+from web_admin.templates import templates
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-# templates больше не создаём локально!
+
 
 def validate_phone(phone: str) -> bool:
     if not phone:
@@ -102,7 +102,6 @@ async def edit_item_submit(
         if is_sold and is_booked:
             raise HTTPException(status_code=400, detail="Снимите бронь перед продажей")
 
-        # Обработка ПРОДАЖИ
         if is_sold:
             accessories = []
             for name, acc_serial, price, pay_type in zip(
@@ -132,7 +131,6 @@ async def edit_item_submit(
             await AssortmentService.invalidate_cache()
             return RedirectResponse(url="/admin/assortment", status_code=303)
 
-        # Обработка БРОНИ
         if is_booked:
             if not booking_price:
                 raise HTTPException(status_code=400, detail="Укажите стоимость брони")
