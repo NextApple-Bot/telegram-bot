@@ -250,6 +250,9 @@ async def init_db():
         await conn.execute('ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
         await conn.execute('ALTER TABLE deleted_items ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
 
+        # ДОБАВЛЕНО: birth_date в clients
+        await conn.execute('ALTER TABLE clients ADD COLUMN IF NOT EXISTS birth_date DATE')
+
         # Создаём служебную категорию и товар для статистики броней (id=0)
         await conn.execute('''
             INSERT INTO categories (name) VALUES ('__SYSTEM__')
