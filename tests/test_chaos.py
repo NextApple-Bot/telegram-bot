@@ -7,19 +7,24 @@ from bot.services.cache import cache
 
 @pytest.mark.asyncio
 async def test_redis_failure_get():
-    # При отключённом Redis и моке, который бросает исключение
-    with (
-        patch.object(cache, 'get', side_effect=ConnectionError),
-        pytest.raises(ConnectionError)
-    ):
-        await cache.get("any_key")
+    # Мокаем метод get, который в реальности может вызвать ошибку,
+    # и проверяем, что ошибка пробрасывается (в отличие от set)
+    with patch.object(cache, 'get', side_effect=ConnectionError):
+        with pytest.raises(ConnectionError):
+            await cache.get("any_key")
 
 
 @pytest.mark.asyncio
 async def test_redis_failure_set():
-    with patch.object(cache, 'set', side_effect=ConnectionError):
-        # не должно упасть, исключение подавляется внутри
-        await cache.set("key", "value")
+    # set должен подавлять исключения (как в реальном коде),
+    # поэтому при ошибке он не должен ронять тест.
+    # Здесь мы просто проверяем, что вызов не вызывает исключений.
+    cache._enabled = True        # включаем, чтобы set попытался записать
+    with patch.object(cache, '_redis') as mock_redis:
+        mock_redis.set.side_effect = ConnectionError
+        await cache.set("key", "value")   # не должно упасть
+    # После теста восстанавливаем состояние
+    cache._enabled = False
 
 
 @pytest.mark.asyncio
