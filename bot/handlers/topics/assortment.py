@@ -39,10 +39,10 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
         try:
             async with aiofiles.open(file_path, encoding='utf-8') as f:
                 content = await f.read()
-            if not content.strip():
-                await message.reply("❌ Файл пуст.")
-                return
-            categories = sort_assortment_to_categories(content)
+                if not content.strip():
+                    await message.reply("❌ Файл пуст.")
+                    return
+                categories = sort_assortment_to_categories(content)
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
