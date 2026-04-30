@@ -55,7 +55,7 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     if 'iphone' in item_text.lower():
         base = extract_base_name(item_text)
         return f"{base}:"
-    
+
     if ',' in item_text:
         new_header = item_text.split(',')[0].strip() + ':'
     else:
@@ -110,7 +110,7 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
         try:
             async with aiofiles.open(file_path, encoding='utf-8') as f:
                 content = await f.read()
-            lines = [line.strip() for line in content.splitlines() if line.strip()]
+                lines = [line.strip() for line in content.splitlines() if line.strip()]
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -302,7 +302,7 @@ async def unexpected_message_in_arrival_confirm(message: Message, state: FSMCont
     await send_and_clean(
         bot=message.bot,
         chat_id=message.chat.id,
-        text="⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите 'отмена').",
+        text="⚠️ Сначала подтвердите или отмените предыдущую загрузку (используйте кнопки или напишите 'отмена')",
         reply_to_message_id=message.message_id,
         message_thread_id=config.THREAD_ARRIVAL,
         delete_after=60
