@@ -45,10 +45,9 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
             if (remainder == '' or remainder[0] == ' ') and len(cat_name) > best_len:
                 best_len = len(cat_name)
                 best_match = cat['header']
-        elif cat_name in base:
-            if len(cat_name) > best_len:
-                best_len = len(cat_name)
-                best_match = cat['header']
+        elif cat_name in base and len(cat_name) > best_len:
+            best_len = len(cat_name)
+            best_match = cat['header']
 
     if best_match:
         return best_match
@@ -56,13 +55,13 @@ async def determine_category_for_item(item_text: str, categories: list) -> str:
     if 'iphone' in item_text.lower():
         base = extract_base_name(item_text)
         return f"{base}:"
+    
+    if ',' in item_text:
+        new_header = item_text.split(',')[0].strip() + ':'
     else:
-        if ',' in item_text:
-            new_header = item_text.split(',')[0].strip() + ':'
-        else:
-            words = item_text.split()
-            new_header = ' '.join(words[:2]).strip() + ':'
-        return normalize_name(new_header)
+        words = item_text.split()
+        new_header = ' '.join(words[:2]).strip() + ':'
+    return normalize_name(new_header)
 
 
 @router.message(
