@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, Request
+from fastapi.responses import JSONResponse
 
 from bot.db import get_pool
 from web_admin.templates import templates
@@ -20,7 +21,7 @@ async def dashboard(request: Request, target_date: str | None = None):
 
         # Суммы платежей по типам из daily_payments
         row = await conn.fetchrow("""
-            SELECT 
+            SELECT
                 COALESCE(SUM(amount) FILTER (WHERE payment_type = 'cash'), 0) as cash,
                 COALESCE(SUM(amount) FILTER (WHERE payment_type = 'terminal'), 0) as terminal,
                 COALESCE(SUM(amount) FILTER (WHERE payment_type = 'qr'), 0) as qr,
@@ -36,7 +37,7 @@ async def dashboard(request: Request, target_date: str | None = None):
 
         # Количество предзаказов и броней за дату
         stats = await conn.fetchrow("""
-            SELECT 
+            SELECT
                 (SELECT COUNT(*) FROM preorders WHERE DATE(created_at)=$1) as preorders_count,
                 (SELECT COUNT(*) FROM bookings WHERE DATE(booked_at)=$1) as bookings_count
         """, today)
@@ -56,9 +57,9 @@ async def dashboard(request: Request, target_date: str | None = None):
             sales_chart.append(cnt)
             revenue_chart.append(float(rev_row[0]) if rev_row else 0)
 
-        # Список продавцов и отметки присутствия на выбранную дату
+        # Продавцы и отметки присутствия
         sellers_rows = await conn.fetch("""
-            SELECT s.id, s.name, 
+            SELECT s.id, s.name,
                    (sd.seller_id IS NOT NULL) as present
             FROM sellers s
             LEFT JOIN seller_days sd ON s.id = sd.seller_id AND sd.date = $1
@@ -66,7 +67,6 @@ async def dashboard(request: Request, target_date: str | None = None):
         """, today)
         sellers = [dict(r) for r in sellers_rows]
 
-        # Топ-5 моделей (заглушка)
         top_labels = []
         top_counts = []
 
@@ -98,7 +98,7 @@ async def dashboard(request: Request, target_date: str | None = None):
 async def toggle_seller_day(
     request: Request,
     seller_id: int = Form(...),
-    target_date: str = Form(...),  # в формате YYYY-MM-DD
+    target_date: str = Form(...),
 ):
     """Добавляет или удаляет отметку о присутствии продавца в указанный день."""
     try:
@@ -108,17 +108,14 @@ async def toggle_seller_day(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Проверяем, существует ли запись
         existing = await conn.fetchrow(
             "SELECT id FROM seller_days WHERE seller_id = $1 AND date = $2",
             seller_id, date_obj
         )
         if existing:
-            # Удаляем – это переключение в состояние "отсутствует"
             await conn.execute("DELETE FROM seller_days WHERE id = $1", existing["id"])
             status = "removed"
         else:
-            # Добавляем
             try:
                 await conn.execute(
                     "INSERT INTO seller_days (seller_id, date) VALUES ($1, $2)",
@@ -126,7 +123,94 @@ async def toggle_seller_day(
                 )
                 status = "added"
             except Exception:
-                # Возможно, уже существует (гонка), тогда считаем успехом
                 status = "exists"
-
     return {"success": True, "status": status}
+
+
+@router.post("/update_stats")
+async def update_stats(request: Request):
+    """Сохраняет отредактированные данные статистики за день."""
+    data = await request.json()
+    target_date_str = data.get("target_date")
+    if not target_date_str:
+        return JSONResponse({"success": False, "error": "target_date is required"}, status_code=400)
+
+    try:
+        target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return JSONResponse({"success": False, "error": "Неверный формат даты"}, status_code=400)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        # --- Обновление платежей ---
+        # Удаляем все записи daily_payments за эту дату
+        await conn.execute("DELETE FROM daily_payments WHERE DATE(created_at) = $1", target_date)
+        # Вставляем новые суммы
+        payment_types = ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']
+        for pt in payment_types:
+            amount = float(data.get(pt, 0))
+            if amount > 0:
+                # Вставляем запись для каждого типа с положительной суммой
+                await conn.execute(
+                    "INSERT INTO daily_payments (type, payment_type, amount, created_at) VALUES ('sale', $1, $2, $3)",
+                    pt, amount, target_date
+                )
+
+        # --- Обновление количества продаж ---
+        sales_count = int(data.get("sales_count", 0))
+        current_sales = await conn.fetchval("SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1", target_date)
+        diff_sales = sales_count - current_sales
+        if diff_sales > 0:
+            # Добавляем фиктивные продажи
+            for _ in range(diff_sales):
+                await conn.execute(
+                    "INSERT INTO sales (sold_at) VALUES ($1)",
+                    target_date
+                )
+        elif diff_sales < 0:
+            # Удаляем старые фиктивные продажи (по возможности удаляем самые последние или все)
+            # Удалим все продажи за дату и вставим снова нужное количество
+            await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = $1", target_date)
+            for _ in range(sales_count):
+                await conn.execute(
+                    "INSERT INTO sales (sold_at) VALUES ($1)",
+                    target_date
+                )
+
+        # --- Обновление количества предзаказов ---
+        preorders_count = int(data.get("preorders_count", 0))
+        current_pre = await conn.fetchval("SELECT COUNT(*) FROM preorders WHERE DATE(created_at) = $1", target_date)
+        diff_pre = preorders_count - current_pre
+        if diff_pre > 0:
+            for _ in range(diff_pre):
+                await conn.execute(
+                    "INSERT INTO preorders (created_at) VALUES ($1)",
+                    target_date
+                )
+        elif diff_pre < 0:
+            await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = $1", target_date)
+            for _ in range(preorders_count):
+                await conn.execute(
+                    "INSERT INTO preorders (created_at) VALUES ($1)",
+                    target_date
+                )
+
+        # --- Обновление количества броней ---
+        bookings_count = int(data.get("bookings_count", 0))
+        current_book = await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE DATE(booked_at) = $1", target_date)
+        diff_book = bookings_count - current_book
+        if diff_book > 0:
+            for _ in range(diff_book):
+                await conn.execute(
+                    "INSERT INTO bookings (booked_at) VALUES ($1)",
+                    target_date
+                )
+        elif diff_book < 0:
+            await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", target_date)
+            for _ in range(bookings_count):
+                await conn.execute(
+                    "INSERT INTO bookings (booked_at) VALUES ($1)",
+                    target_date
+                )
+
+    return JSONResponse({"success": True})
