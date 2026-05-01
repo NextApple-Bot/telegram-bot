@@ -15,36 +15,52 @@ async def dashboard(request: Request, target_date: str | None = None):
 
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Количество продаж за выбранную дату
         sales = await conn.fetchval("SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1", today) or 0
+
+        # Суммы платежей по типам из daily_payments
         row = await conn.fetchrow("""
-            SELECT COALESCE(SUM(cash),0) as cash, COALESCE(SUM(terminal),0) as terminal,
-                   COALESCE(SUM(qr),0) as qr, COALESCE(SUM(transfer),0) as transfer,
-                   COALESCE(SUM(invoice),0) as invoice, COALESCE(SUM(installment),0) as installment
+            SELECT 
+                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'cash'), 0) as cash,
+                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'terminal'), 0) as terminal,
+                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'qr'), 0) as qr,
+                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'transfer'), 0) as transfer,
+                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'invoice'), 0) as invoice,
+                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'installment'), 0) as installment
             FROM daily_payments WHERE DATE(created_at) = $1
         """, today)
+
         payments = dict(row) if row else {}
         total_revenue = sum(payments.values())
         plan = 600000
 
+        # Количество предзаказов и броней за дату
         stats = await conn.fetchrow("""
-            SELECT (SELECT COUNT(*) FROM preorders WHERE DATE(created_at)=$1) as preorders_count,
-                   (SELECT COUNT(*) FROM bookings WHERE DATE(booked_at)=$1) as bookings_count
+            SELECT 
+                (SELECT COUNT(*) FROM preorders WHERE DATE(created_at)=$1) as preorders_count,
+                (SELECT COUNT(*) FROM bookings WHERE DATE(booked_at)=$1) as bookings_count
         """, today)
         preorders_count = stats["preorders_count"] if stats else 0
         bookings_count = stats["bookings_count"] if stats else 0
 
+        # Графики за последние 7 дней
         dates = [(today - timedelta(days=i)).strftime("%d.%m") for i in range(6, -1, -1)]
         sales_chart = []
         revenue_chart = []
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
             cnt = await conn.fetchval("SELECT COUNT(*) FROM sales WHERE DATE(sold_at)=$1", d) or 0
-            rev_row = await conn.fetchrow("SELECT COALESCE(SUM(amount),0) FROM daily_payments WHERE DATE(created_at)=$1", d)
+            rev_row = await conn.fetchrow("""
+                SELECT COALESCE(SUM(amount), 0) FROM daily_payments WHERE DATE(created_at)=$1
+            """, d)
             sales_chart.append(cnt)
             revenue_chart.append(float(rev_row[0]) if rev_row else 0)
 
+        # Список продавцов
         sellers_rows = await conn.fetch("SELECT id, name FROM sellers ORDER BY name")
         sellers = [dict(r) for r in sellers_rows]
+
+        # Топ-5 моделей (заглушка)
         top_labels = []
         top_counts = []
 
