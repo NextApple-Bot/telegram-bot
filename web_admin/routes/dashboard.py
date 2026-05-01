@@ -1,7 +1,7 @@
 # Файл: web_admin/routes/dashboard.py
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, Request
 
 from bot.db import get_pool
 from web_admin.templates import templates
@@ -56,8 +56,14 @@ async def dashboard(request: Request, target_date: str | None = None):
             sales_chart.append(cnt)
             revenue_chart.append(float(rev_row[0]) if rev_row else 0)
 
-        # Список продавцов
-        sellers_rows = await conn.fetch("SELECT id, name FROM sellers ORDER BY name")
+        # Список продавцов и отметки присутствия на выбранную дату
+        sellers_rows = await conn.fetch("""
+            SELECT s.id, s.name, 
+                   (sd.seller_id IS NOT NULL) as present
+            FROM sellers s
+            LEFT JOIN seller_days sd ON s.id = sd.seller_id AND sd.date = $1
+            ORDER BY s.name
+        """, today)
         sellers = [dict(r) for r in sellers_rows]
 
         # Топ-5 моделей (заглушка)
@@ -86,3 +92,41 @@ async def dashboard(request: Request, target_date: str | None = None):
         "top_counts": top_counts,
         "days": 7,
     })
+
+
+@router.post("/toggle_seller_day")
+async def toggle_seller_day(
+    request: Request,
+    seller_id: int = Form(...),
+    target_date: str = Form(...),  # в формате YYYY-MM-DD
+):
+    """Добавляет или удаляет отметку о присутствии продавца в указанный день."""
+    try:
+        date_obj = datetime.strptime(target_date, "%Y-%m-%d").date()
+    except ValueError:
+        return {"success": False, "error": "Неверный формат даты"}
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Проверяем, существует ли запись
+        existing = await conn.fetchrow(
+            "SELECT id FROM seller_days WHERE seller_id = $1 AND date = $2",
+            seller_id, date_obj
+        )
+        if existing:
+            # Удаляем – это переключение в состояние "отсутствует"
+            await conn.execute("DELETE FROM seller_days WHERE id = $1", existing["id"])
+            status = "removed"
+        else:
+            # Добавляем
+            try:
+                await conn.execute(
+                    "INSERT INTO seller_days (seller_id, date) VALUES ($1, $2)",
+                    seller_id, date_obj
+                )
+                status = "added"
+            except Exception:
+                # Возможно, уже существует (гонка), тогда считаем успехом
+                status = "exists"
+
+    return {"success": True, "status": status}
