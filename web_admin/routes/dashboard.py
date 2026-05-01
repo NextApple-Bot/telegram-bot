@@ -142,75 +142,41 @@ async def update_stats(request: Request):
 
     pool = await get_pool()
     async with pool.acquire() as conn, conn.transaction():
-        # --- Обновление платежей ---
-        # Удаляем все записи daily_payments за эту дату
+        # Обновление платежей
         await conn.execute("DELETE FROM daily_payments WHERE DATE(created_at) = $1", target_date)
-        # Вставляем новые суммы
         payment_types = ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']
         for pt in payment_types:
             amount = float(data.get(pt, 0))
             if amount > 0:
-                # Вставляем запись для каждого типа с положительной суммой
                 await conn.execute(
                     "INSERT INTO daily_payments (type, payment_type, amount, created_at) VALUES ('sale', $1, $2, $3)",
                     pt, amount, target_date
                 )
 
-        # --- Обновление количества продаж ---
+        # Обновление количества продаж
         sales_count = int(data.get("sales_count", 0))
-        current_sales = await conn.fetchval("SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1", target_date)
-        diff_sales = sales_count - current_sales
-        if diff_sales > 0:
-            # Добавляем фиктивные продажи
-            for _ in range(diff_sales):
-                await conn.execute(
-                    "INSERT INTO sales (sold_at) VALUES ($1)",
-                    target_date
-                )
-        elif diff_sales < 0:
-            # Удаляем старые фиктивные продажи (по возможности удаляем самые последние или все)
-            # Удалим все продажи за дату и вставим снова нужное количество
-            await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = $1", target_date)
-            for _ in range(sales_count):
-                await conn.execute(
-                    "INSERT INTO sales (sold_at) VALUES ($1)",
-                    target_date
-                )
+        await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = $1", target_date)
+        for _ in range(sales_count):
+            await conn.execute("INSERT INTO sales (sold_at) VALUES ($1)", target_date)
 
-        # --- Обновление количества предзаказов ---
+        # Обновление количества предзаказов
         preorders_count = int(data.get("preorders_count", 0))
-        current_pre = await conn.fetchval("SELECT COUNT(*) FROM preorders WHERE DATE(created_at) = $1", target_date)
-        diff_pre = preorders_count - current_pre
-        if diff_pre > 0:
-            for _ in range(diff_pre):
-                await conn.execute(
-                    "INSERT INTO preorders (created_at) VALUES ($1)",
-                    target_date
-                )
-        elif diff_pre < 0:
-            await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = $1", target_date)
-            for _ in range(preorders_count):
-                await conn.execute(
-                    "INSERT INTO preorders (created_at) VALUES ($1)",
-                    target_date
-                )
+        await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = $1", target_date)
+        for _ in range(preorders_count):
+            await conn.execute("INSERT INTO preorders (created_at) VALUES ($1)", target_date)
 
-        # --- Обновление количества броней ---
+        # Обновление количества броней
         bookings_count = int(data.get("bookings_count", 0))
-        current_book = await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE DATE(booked_at) = $1", target_date)
-        diff_book = bookings_count - current_book
-        if diff_book > 0:
-            for _ in range(diff_book):
-                await conn.execute(
-                    "INSERT INTO bookings (booked_at) VALUES ($1)",
-                    target_date
-                )
-        elif diff_book < 0:
-            await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", target_date)
-            for _ in range(bookings_count):
-                await conn.execute(
-                    "INSERT INTO bookings (booked_at) VALUES ($1)",
-                    target_date
-                )
+        await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", target_date)
+        for _ in range(bookings_count):
+            await conn.execute("INSERT INTO bookings (booked_at) VALUES ($1)", target_date)
 
     return JSONResponse({"success": True})
+
+
+@router.get("/top_models_data")
+async def top_models_data(request: Request, days: int = 7, target_date: str | None = None):
+    """Возвращает данные для графика топ-5 моделей (заглушка)."""
+    # В реальной реализации нужно считать проданные товары за период,
+    # здесь возвращаем пустые списки, чтобы график не ломался.
+    return JSONResponse({"labels": [], "counts": []})
