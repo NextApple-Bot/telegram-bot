@@ -1,7 +1,3 @@
-
-```text
-=== ФАЙЛ: web_admin/routes/assortment/sales.py ===
-```python
 # Файл: web_admin/routes/assortment/sales.py
 import asyncio
 import logging
