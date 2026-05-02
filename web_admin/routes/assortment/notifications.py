@@ -1,3 +1,5 @@
+=== ФАЙЛ: web_admin/routes/assortment/notifications.py ===
+```python
 # Файл: web_admin/routes/assortment/notifications.py
 import logging
 from datetime import datetime
@@ -24,6 +26,7 @@ async def send_booking_notification(
     full_name: str = None,
     phone: str = None,
     payment_type: str = None,
+    birth_date: str = None,
     is_cancel: bool = False
 ):
     try:
@@ -62,6 +65,8 @@ async def send_booking_notification(
                 lines.append("")
             if full_name:
                 lines.append(full_name)
+            if birth_date:
+                lines.append(birth_date)
             if phone:
                 lines.append(phone)
             lines.append("")
@@ -90,6 +95,7 @@ async def send_sale_notification(
     platform: str = None,
     full_name: str = None,
     phone: str = None,
+    birth_date: str = None,
     accessories: list = None
 ):
     try:
@@ -151,6 +157,8 @@ async def send_sale_notification(
 
         if full_name:
             lines.append(full_name)
+        if birth_date:
+            lines.append(birth_date)
         if phone:
             lines.append(phone)
         lines.append("")
