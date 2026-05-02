@@ -53,7 +53,7 @@ services:
     runtime: docker
     repo: https://github.com/yourusername/telegram-bot
     schedule: "0 3 * * *"
-    dockerCommand: python manage.py cleanup
+    dockerCommand: python cli.py cleanup
     envVars:
       - key: DATABASE_URL
         sync: false
