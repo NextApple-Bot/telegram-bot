@@ -1,3 +1,7 @@
+
+```text
+=== ФАЙЛ: web_admin/routes/assortment/sales.py ===
+```python
 # Файл: web_admin/routes/assortment/sales.py
 import asyncio
 import logging
@@ -190,6 +194,7 @@ async def handle_sale_from_form(
                 platform=sale_platform,
                 full_name=sale_full_name,
                 phone=sale_phone,
+                birth_date=sale_birth_date,
                 accessories=processed_accessories
             ))
 
