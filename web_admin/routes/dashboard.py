@@ -169,7 +169,8 @@ async def update_stats(request: Request):
         bookings_count = int(data.get("bookings_count", 0))
         await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", target_date)
         for _ in range(bookings_count):
-            await conn.execute("INSERT INTO bookings (booked_at) VALUES ($1)", target_date)
+            # ИСПРАВЛЕНО: используем item_id=0 (служебный товар)
+            await conn.execute("INSERT INTO bookings (item_id, booked_at) VALUES (0, $1)", target_date)
 
     return JSONResponse({"success": True})
 
