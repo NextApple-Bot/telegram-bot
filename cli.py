@@ -1,5 +1,7 @@
+=== ФАЙЛ: cli.py ===
+```python
 #!/usr/bin/env python
-# Файл: manage.py
+# Файл: cli.py (переименован из manage.py для избежания конфликта с web_admin/routes/assortment/manage.py)
 import asyncio
 import os
 import subprocess
@@ -48,7 +50,7 @@ def run_cleanup():
 
 
 def show_help():
-    print("Usage: python manage.py [command]")
+    print("Usage: python cli.py [command]")
     print("Commands:")
     print("  migrate   - Run database migrations")
     print("  cleanup   - Run cleanup of old records (processed_messages, daily_payments, sold items)")
