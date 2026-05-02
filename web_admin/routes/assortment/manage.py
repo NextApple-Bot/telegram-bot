@@ -1,3 +1,7 @@
+
+```text
+=== ФАЙЛ: web_admin/routes/assortment/manage.py ===
+```python
 # Файл: web_admin/routes/assortment/manage.py
 import asyncio
 import logging
@@ -172,6 +176,7 @@ async def edit_item_submit(
                 full_name=booking_full_name,
                 phone=booking_phone,
                 payment_type=booking_payment_type,
+                birth_date=booking_birth_date,
                 is_cancel=False
             ))
             logger.info(f"Бронь товара {item_id} успешно сохранена")
