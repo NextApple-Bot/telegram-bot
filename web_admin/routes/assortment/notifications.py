@@ -1,5 +1,3 @@
-=== ФАЙЛ: web_admin/routes/assortment/notifications.py ===
-```python
 # Файл: web_admin/routes/assortment/notifications.py
 import logging
 from datetime import datetime
@@ -130,11 +128,10 @@ async def send_sale_notification(
                 if pay_type and pay_type != "paid" and acc['price'] > 0:
                     payments[pay_type] = payments.get(pay_type, 0) + acc['price']
 
-        # ---- НОВОЕ: выводим предоплату отдельной строкой, если она есть ----
+        # ---- Выводим предоплату отдельной строкой, если она есть ----
         if prepayment and prepayment > 0:
             lines.append(f"П/О – {format_number(prepayment)}")
             lines.append("")
-        # -----------------------------------------------------------------
 
         # Строки оплаты
         if payment_type == "paid":
