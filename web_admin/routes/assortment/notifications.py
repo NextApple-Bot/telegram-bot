@@ -128,7 +128,7 @@ async def send_sale_notification(
                 if pay_type and pay_type != "paid" and acc['price'] > 0:
                     payments[pay_type] = payments.get(pay_type, 0) + acc['price']
 
-        # ---- Выводим предоплату отдельной строкой, если она есть ----
+        # ---- НОВОЕ: выводим предоплату отдельной строкой, если она есть ----
         if prepayment and prepayment > 0:
             lines.append(f"П/О – {format_number(prepayment)}")
             lines.append("")
