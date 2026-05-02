@@ -1,5 +1,3 @@
-=== ФАЙЛ: cli.py ===
-```python
 #!/usr/bin/env python
 # Файл: cli.py (переименован из manage.py для избежания конфликта с web_admin/routes/assortment/manage.py)
 import asyncio
