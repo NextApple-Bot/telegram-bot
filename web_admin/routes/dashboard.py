@@ -178,6 +178,4 @@ async def update_stats(request: Request):
 @router.get("/top_models_data")
 async def top_models_data(request: Request, days: int = 7, target_date: str | None = None):
     """Возвращает данные для графика топ-5 моделей (заглушка)."""
-    # В реальной реализации нужно считать проданные товары за период,
-    # здесь возвращаем пустые списки, чтобы график не ломался.
     return JSONResponse({"labels": [], "counts": []})
