@@ -30,21 +30,55 @@
         background-color: var(--primary);
         border-color: var(--primary);
     }
+    .date-nav-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        padding: 0;
+        border: 1px solid var(--border-light);
+        background: var(--card-bg);
+        color: var(--text-dark);
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .date-nav-btn:hover {
+        background: var(--primary-soft);
+        color: var(--primary);
+        border-color: var(--primary);
+    }
+    .date-display {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        min-width: 120px;
+        text-align: center;
+    }
     @media (max-width: 480px) {
         .kpi-value { font-size: 1.8rem; }
         .seller-toggle-btn { width: 100%; margin-bottom: 0.5rem; }
         .trend-badge { display: block; margin-bottom: 0.25rem; }
+        .date-nav-btn { width: 38px; height: 38px; font-size: 1.2rem; }
+        .date-display { font-size: 0.95rem; min-width: 100px; }
     }
 </style>
 {% endblock %}
 {% block content %}
 <div class="row align-items-end mb-4">
     <div class="col-auto">
-        <label class="form-label fw-semibold">Дата</label>
-        <input type="date" class="form-control" id="targetDateInput" value="{{ target_date_iso }}">
-    </div>
-    <div class="col-auto">
-        <button class="btn btn-primary" id="changeDateBtn">Показать</button>
+        <div class="d-flex align-items-center gap-2">
+            <button class="date-nav-btn" id="prevDayBtn" title="Предыдущий день">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <span class="date-display" id="dateDisplay">{{ target_date }}</span>
+            <button class="date-nav-btn" id="nextDayBtn" title="Следующий день">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+            <input type="date" class="form-control d-none" id="targetDateInput" value="{{ target_date_iso }}">
+        </div>
     </div>
     <div class="col-auto ms-auto">
         <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
@@ -166,7 +200,7 @@
     </div>
 </div>
 <script>
-    // Твой оригинальный скрипт продавцов
+    // Скрипт продавцов
     document.querySelectorAll('.seller-toggle-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const sellerId = this.dataset.sellerId;
@@ -198,6 +232,29 @@
             }
         });
     });
+
+    // Навигация по датам
+    const targetDateInput = document.getElementById('targetDateInput');
+
+    function navigateDate(direction) {
+        const currentDate = new Date(targetDateInput.value + 'T00:00:00');
+        currentDate.setDate(currentDate.getDate() + direction);
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const newDate = `${year}-${month}-${day}`;
+        window.location.href = '?target_date=' + newDate;
+    }
+
+    document.getElementById('prevDayBtn').addEventListener('click', () => navigateDate(-1));
+    document.getElementById('nextDayBtn').addEventListener('click', () => navigateDate(1));
+
+    // Горячие клавиши: стрелки влево/вправо
+    document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        if (e.key === 'ArrowLeft') navigateDate(-1);
+        if (e.key === 'ArrowRight') navigateDate(1);
+    });
 </script>
 
 <div class="row g-4 mb-4">
@@ -225,7 +282,7 @@
     </div>
 </div>
 
-<!-- Модальное окно редактирования статистики (оригинал) -->
+<!-- Модальное окно редактирования статистики -->
 <div class="modal fade" id="editStatsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -259,14 +316,6 @@
 </div>
 
 <script>
-    // Кнопка выбора даты
-    document.getElementById('changeDateBtn').addEventListener('click', function() {
-        const dateVal = document.getElementById('targetDateInput').value;
-        if (dateVal) {
-            window.location.href = '?target_date=' + dateVal;
-        }
-    });
-
     // Графики
     new Chart(document.getElementById('salesChart'), {
         type: 'line',
@@ -430,7 +479,6 @@
         if (window.scrollY === 0 && touchStartY > 0) {
             const touchEndY = e.changedTouches[0].clientY;
             if (touchEndY - touchStartY > threshold) {
-                // Показать стеклянный индикатор
                 const indicator = document.createElement('div');
                 indicator.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;';
                 indicator.innerHTML = '<div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(0,0,0,0.1);border-top-color:#007aff;animation:apple-spin 0.7s linear infinite;backdrop-filter:blur(4px);box-shadow:0 0 15px rgba(0,122,255,0.5);"></div>';
