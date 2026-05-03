@@ -1,6 +1,31 @@
-# ... существующий код остаётся без изменений, добавляем в конец файла:
+# Файл: tests/test_utils/test_parser.py
+from bot.services.payment_parser import extract_payment_amounts, extract_prepayments
+from bot.utils.parser import parse_client_data, parse_birth_date
 
-from bot.utils.parser import parse_birth_date, parse_client_data
+
+def test_extract_payment_amounts_basic():
+    text = "Наличные - 1000\nтерминал 500"
+    payments = extract_payment_amounts(text)
+    assert payments['cash'] == 1000.0
+    assert payments['terminal'] == 500.0
+
+
+def test_extract_payment_amounts_multiple_numbers_same_type():
+    text = "Наличные - 1000 и еще 200"
+    payments = extract_payment_amounts(text)
+    assert payments['cash'] == 1000.0
+
+
+def test_extract_prepayments():
+    text = "П/О 2000 (нал)"
+    payments = extract_prepayments(text)
+    assert payments['cash'] == 2000.0
+
+
+def test_ignore_prepay_flag():
+    text = "П/О 2000\nНаличные 1000"
+    payments = extract_payment_amounts(text, ignore_prepay=True)
+    assert payments['cash'] == 1000.0
 
 
 class TestParseBirthDate:
@@ -15,6 +40,7 @@ class TestParseBirthDate:
 
     def test_no_date(self):
         assert parse_birth_date("Привет мир") is None
+
 
 class TestParseClientData:
     def test_phone_and_name(self):
