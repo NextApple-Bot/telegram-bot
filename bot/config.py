@@ -1,5 +1,4 @@
 import os
-from typing import List
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,7 +14,7 @@ class Settings(BaseSettings):
     # --- Основные токены и идентификаторы ---
     BOT_TOKEN: str
     ADMIN_IDS_STR: str = Field(default="", alias="ADMIN_ID")
-    ADMIN_IDS: List[int] = []
+    ADMIN_IDS: list[int] = []
 
     @field_validator("ADMIN_IDS", mode="before")
     @classmethod

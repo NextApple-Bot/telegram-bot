@@ -5,22 +5,21 @@ import signal
 import sys
 import traceback
 
+# Sentry SDK
+import sentry_sdk
 import uvicorn
 from dotenv import load_dotenv
+
+# Prometheus
+from prometheus_fastapi_instrumentator import Instrumentator
+from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
-
-# Sentry SDK
-import sentry_sdk
-from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-from sentry_sdk.integrations.starlette import StarletteIntegration
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-
-# Prometheus
-from prometheus_fastapi_instrumentator import Instrumentator
 
 # Инициализация Sentry (если задан SENTRY_DSN)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
