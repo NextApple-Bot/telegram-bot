@@ -25,51 +25,51 @@ class SaleService:
             }
 
         pool = await get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                sold_items = []
-                for serial in serials:
-                    item_id = await ItemRepository.get_item_id_by_serial(serial, conn=conn)
-                    if item_id:
-                        sold_items.append((item_id, serial))
+        # SIM117: объединяем контекстные менеджеры
+        async with pool.acquire() as conn, conn.transaction():
+            sold_items = []
+            for serial in serials:
+                item_id = await ItemRepository.get_item_id_by_serial(serial, conn=conn)
+                if item_id:
+                    sold_items.append((item_id, serial))
 
-                if not sold_items:
-                    logger.info(f"Серийные номера не найдены: {serials}. Статистика и платежи не сохранены.")
-                    return {
-                        "sold_items": [],
-                        "not_found": serials,
-                        "payments": payments,
-                        "is_accessory": False,
-                        "skip_sale_stats": True,
-                        "skip_payments": True
-                    }
-
-                # Удаляем найденные товары
-                from .assortment import AssortmentService
-                for _item_id, serial in sold_items:
-                    await AssortmentService.remove_by_serial(serial, reason='sale', conn=conn)
-
-                # Сохраняем статистику продажи
-                await StatsRepository.add_sale(
-                    count=len(sold_items),
-                    cash=payments['cash'],
-                    terminal=payments['terminal'],
-                    qr=payments['qr'],
-                    transfer=payments['transfer'],
-                    invoice=payments['invoice'],
-                    installment=payments['installment'],
-                    is_accessory=False,
-                    message_id=message_id,
-                    conn=conn
-                )
-
-                not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
-
+            if not sold_items:
+                logger.info(f"Серийные номера не найдены: {serials}. Статистика и платежи не сохранены.")
                 return {
-                    "sold_items": sold_items,
-                    "not_found": not_found,
+                    "sold_items": [],
+                    "not_found": serials,
                     "payments": payments,
                     "is_accessory": False,
-                    "skip_sale_stats": False,
-                    "skip_payments": False
+                    "skip_sale_stats": True,
+                    "skip_payments": True
                 }
+
+            # Удаляем найденные товары
+            from .assortment import AssortmentService
+            for _item_id, serial in sold_items:
+                await AssortmentService.remove_by_serial(serial, reason='sale', conn=conn)
+
+            # Сохраняем статистику продажи
+            await StatsRepository.add_sale(
+                count=len(sold_items),
+                cash=payments['cash'],
+                terminal=payments['terminal'],
+                qr=payments['qr'],
+                transfer=payments['transfer'],
+                invoice=payments['invoice'],
+                installment=payments['installment'],
+                is_accessory=False,
+                message_id=message_id,
+                conn=conn
+            )
+
+            not_found = [s for s in serials if s not in [x[1] for x in sold_items]]
+
+            return {
+                "sold_items": sold_items,
+                "not_found": not_found,
+                "payments": payments,
+                "is_accessory": False,
+                "skip_sale_stats": False,
+                "skip_payments": False
+            }
