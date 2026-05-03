@@ -1,35 +1,72 @@
-# Файл: bot/config.py
 import os
+from typing import List
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+    # --- Основные токены и идентификаторы ---
+    BOT_TOKEN: str
+    ADMIN_IDS_STR: str = ""
+    ADMIN_IDS: List[int] = []
+
+    @field_validator("ADMIN_IDS", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, v, info):
+        # Берём строку из ADMIN_IDS_STR или используем переданное значение
+        raw = info.data.get("ADMIN_IDS_STR", "")
+        if not raw:
+            return []
+        return [int(uid.strip()) for uid in raw.split(",") if uid.strip()]
+
+    MAIN_GROUP_ID: int
+    THREAD_SALES: int
+    THREAD_ASSORTMENT: int
+    THREAD_ARRIVAL: int
+    THREAD_PREORDER: int
+    THREAD_SERVICE: int = 0  # необязательный
+
+    DATABASE_URL: str
+    RENDER_URL: str = ""  # RENDER_EXTERNAL_URL в окружении
+    PORT: int = 8000
+    PLAN_AMOUNT: int = 600000
+
+    ADMIN_PASSWORD: str = ""
+    ADMIN_PASSWORD_HASH: str = ""
+    SECRET_KEY: str = ""
+
+    REDIS_URL: str = ""
+
+
+# Загружаем переменные из .env (на случай, если pydantic-settings ещё не подгрузил)
 from dotenv import load_dotenv
-
 load_dotenv()
 
-def get_env_var(name: str, required: bool = True) -> str:
-    value = os.getenv(name)
-    if required and not value:
-        raise ValueError(f"❌ Переменная {name} не задана!")
-    return value
+# Создаём экземпляр конфигурации
+config = Settings()
 
-TOKEN = get_env_var("BOT_TOKEN")
-ADMIN_IDS_STR = get_env_var("ADMIN_ID")
-ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(",") if id.strip()]
-MAIN_GROUP_ID = int(get_env_var("MAIN_GROUP_ID"))
-THREAD_SALES = int(get_env_var("THREAD_SALES"))
-THREAD_ASSORTMENT = int(get_env_var("THREAD_ASSORTMENT"))
-THREAD_ARRIVAL = int(get_env_var("THREAD_ARRIVAL"))
-THREAD_PREORDER = int(get_env_var("THREAD_PREORDER"))
-
-# Служебный топик (может быть 0, если не используется)
-THREAD_SERVICE = int(os.getenv("THREAD_SERVICE", "0"))
-
-DATABASE_URL = get_env_var("DATABASE_URL")
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
-PORT = int(os.getenv("PORT", 8000))
-PLAN_AMOUNT = int(os.getenv("PLAN_AMOUNT", "600000"))
-
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")
-SECRET_KEY = os.getenv("SECRET_KEY")
-
-REDIS_URL = os.getenv("REDIS_URL")
+# Для обратной совместимости экспортируем атрибуты уровня модуля
+TOKEN = config.BOT_TOKEN
+ADMIN_IDS_STR = os.getenv("ADMIN_ID", "")
+ADMIN_IDS = config.ADMIN_IDS
+MAIN_GROUP_ID = config.MAIN_GROUP_ID
+THREAD_SALES = config.THREAD_SALES
+THREAD_ASSORTMENT = config.THREAD_ASSORTMENT
+THREAD_ARRIVAL = config.THREAD_ARRIVAL
+THREAD_PREORDER = config.THREAD_PREORDER
+THREAD_SERVICE = config.THREAD_SERVICE
+DATABASE_URL = config.DATABASE_URL
+RENDER_URL = config.RENDER_URL
+PORT = config.PORT
+PLAN_AMOUNT = config.PLAN_AMOUNT
+ADMIN_PASSWORD = config.ADMIN_PASSWORD
+ADMIN_PASSWORD_HASH = config.ADMIN_PASSWORD_HASH
+SECRET_KEY = config.SECRET_KEY
+REDIS_URL = config.REDIS_URL
