@@ -1,11 +1,7 @@
-from datetime import datetime
-from unittest.mock import AsyncMock, patch
-
 import pytest
-from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from bot import config
-
 
 @pytest.mark.asyncio
 async def test_booking_flow_success(mock_bot):
@@ -16,14 +12,13 @@ iPad Pro 11 (IPAD789) - 80000₽
 Телефон: +79123456789
 Площадка: Авито"""
 
-    message = Message(
-        message_id=456,
-        date=datetime.now(),
-        chat=Chat(id=config.MAIN_GROUP_ID, type="supergroup"),
-        text=content,
-        message_thread_id=config.THREAD_PREORDER,
-        from_user=User(id=12345, is_bot=False, first_name="Admin")
-    )
+    # Создаём MagicMock‑сообщение
+    message = MagicMock()
+    message.message_id = 456
+    message.chat = MagicMock(id=config.MAIN_GROUP_ID)
+    message.message_thread_id = config.THREAD_PREORDER
+    message.text = content
+    message.bot = mock_bot
 
     with patch('bot.handlers.topics.preorder.mark_message_processed', new=AsyncMock(return_value=True)), \
          patch('bot.handlers.topics.preorder.extract_prepayments', return_value={'cash': 20000.0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}), \
@@ -42,9 +37,6 @@ iPad Pro 11 (IPAD789) - 80000₽
          patch('bot.handlers.topics.preorder.send_and_clean', new=AsyncMock()) as mock_send_and_clean:
 
         from bot.handlers.topics.preorder import handle_preorder
-        # Передаём mock_bot через message.bot явно
-        message.bot = mock_bot
         await handle_preorder(message)
 
-    # после обработки должно быть отправлено уведомление о брони
-    assert mock_send_and_clean.call_count >= 1
+    assert mock_send_and_clean.called
