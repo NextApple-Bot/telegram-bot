@@ -14,10 +14,21 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Подключаем структурированный JSON-логгер, если указан формат json
+log_format = os.getenv("LOG_FORMAT", "text").lower()
+if log_format == "json":
+    from pythonjsonlogger import jsonlogger
+    handler = logging.StreamHandler()
+    formatter = jsonlogger.JsonFormatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+    handler.setFormatter(formatter)
+    logging.getLogger().handlers = [handler]
+    logging.getLogger().setLevel(logging.INFO)
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
 logger = logging.getLogger(__name__)
 
 class HealthCheckFilter(logging.Filter):
@@ -87,7 +98,6 @@ async def setup_webhook_with_retries(max_retries=5, base_delay=3):
     webhook_url = f"{config.RENDER_URL}/webhook"
     for attempt in range(1, max_retries + 1):
         try:
-            # Сначала удаляем старый вебхук
             await bot.delete_webhook(drop_pending_updates=True)
             allowed_updates = dp.resolve_used_update_types()
             await bot.set_webhook(
@@ -190,10 +200,51 @@ async def health(_: Request) -> Response:
         return JSONResponse(status, status_code=503)
 
 
+async def health_detailed(_: Request) -> Response:
+    import time
+    start = time.monotonic()
+    db_ok = await check_db_health()
+    db_time = time.monotonic() - start
+
+    start = time.monotonic()
+    redis_ok = await check_redis_health()
+    redis_time = time.monotonic() - start
+
+    telegram_ok = True
+    telegram_time = None
+    if bot:
+        start = time.monotonic()
+        try:
+            await bot.get_me()
+            telegram_time = time.monotonic() - start
+        except Exception as e:
+            logger.warning(f"Telegram detailed health check failed: {e}")
+            telegram_ok = False
+            telegram_time = time.monotonic() - start
+
+    overall = db_ok and redis_ok and telegram_ok
+    return JSONResponse({
+        "status": "healthy" if overall else "unhealthy",
+        "database": {
+            "status": "up" if db_ok else "down",
+            "response_time_ms": round(db_time * 1000, 2) if db_ok else None
+        },
+        "redis": {
+            "status": "up" if redis_ok else "down",
+            "response_time_ms": round(redis_time * 1000, 2) if redis_ok else None
+        },
+        "telegram_api": {
+            "status": "up" if telegram_ok else "down",
+            "response_time_ms": round(telegram_time * 1000, 2) if telegram_ok and telegram_time else None
+        }
+    }, status_code=200 if overall else 503)
+
+
 app = Starlette(
     routes=[
         Route("/webhook", webhook, methods=["POST"]),
         Route("/health", health, methods=["GET"]),
+        Route("/health/detailed", health_detailed, methods=["GET"]),
     ],
     on_startup=[on_startup],
     on_shutdown=[on_shutdown],
