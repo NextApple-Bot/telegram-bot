@@ -1,14 +1,14 @@
-import pytest
 from bot.utils.sort import (
-    normalize_name,
-    normalize_model,
+    detect_sim_type,
+    extract_base_name,
     extract_memory,
     extract_watch_size,
-    detect_sim_type,
     get_full_model_name,
-    extract_base_name,
+    normalize_model,
+    normalize_name,
     sort_assortment_to_categories,
 )
+
 
 class TestNormalizeName:
     def test_extra_spaces(self):
