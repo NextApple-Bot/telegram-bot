@@ -9,9 +9,11 @@ from bot.services.cache import cache
 async def test_redis_failure_get():
     # Мокаем метод get, который в реальности может вызвать ошибку,
     # и проверяем, что ошибка пробрасывается (в отличие от set)
-    with patch.object(cache, 'get', side_effect=ConnectionError):
-        with pytest.raises(ConnectionError):
-            await cache.get("any_key")
+    with (
+        patch.object(cache, 'get', side_effect=ConnectionError),
+        pytest.raises(ConnectionError)
+    ):
+        await cache.get("any_key")
 
 
 @pytest.mark.asyncio
