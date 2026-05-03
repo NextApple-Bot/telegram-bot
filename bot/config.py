@@ -1,8 +1,8 @@
 import os
 from typing import List
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -14,13 +14,12 @@ class Settings(BaseSettings):
 
     # --- Основные токены и идентификаторы ---
     BOT_TOKEN: str
-    ADMIN_IDS_STR: str = ""
+    ADMIN_IDS_STR: str = Field(default="", alias="ADMIN_ID")
     ADMIN_IDS: List[int] = []
 
     @field_validator("ADMIN_IDS", mode="before")
     @classmethod
     def parse_admin_ids(cls, v, info):
-        # Берём строку из ADMIN_IDS_STR или используем переданное значение
         raw = info.data.get("ADMIN_IDS_STR", "")
         if not raw:
             return []
@@ -31,10 +30,10 @@ class Settings(BaseSettings):
     THREAD_ASSORTMENT: int
     THREAD_ARRIVAL: int
     THREAD_PREORDER: int
-    THREAD_SERVICE: int = 0  # необязательный
+    THREAD_SERVICE: int = 0
 
     DATABASE_URL: str
-    RENDER_URL: str = ""  # RENDER_EXTERNAL_URL в окружении
+    RENDER_URL: str = Field(default="", alias="RENDER_EXTERNAL_URL")
     PORT: int = 8000
     PLAN_AMOUNT: int = 600000
 
@@ -45,14 +44,14 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""
 
 
-# Загружаем переменные из .env (на случай, если pydantic-settings ещё не подгрузил)
+# Загружаем .env для локальной разработки
 from dotenv import load_dotenv
 load_dotenv()
 
 # Создаём экземпляр конфигурации
 config = Settings()
 
-# Для обратной совместимости экспортируем атрибуты уровня модуля
+# Экспортируем атрибуты для обратной совместимости
 TOKEN = config.BOT_TOKEN
 ADMIN_IDS_STR = os.getenv("ADMIN_ID", "")
 ADMIN_IDS = config.ADMIN_IDS
