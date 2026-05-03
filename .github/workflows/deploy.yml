@@ -67,7 +67,7 @@ jobs:
           ADMIN_PASSWORD: testpass
           SCALING_ENABLED: "false"
         run: |
-          pytest tests/ --cov=bot --cov=web_admin --cov-report=term-missing
+          pytest tests/ -v --cov=bot --cov=web_admin --cov-report=term-missing
 
   deploy:
     needs: test
