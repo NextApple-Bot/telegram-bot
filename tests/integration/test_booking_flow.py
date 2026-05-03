@@ -1,7 +1,6 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, patch
 
 from bot import config
 
@@ -23,7 +22,6 @@ iPad Pro 11 (IPAD789) - 80000₽
         from_user=User(id=12345, is_bot=False, first_name="Admin")
     )
 
-    # Мокаем все зависимости, работающие с БД, Redis и сетью
     with patch('bot.handlers.topics.preorder.mark_message_processed', new=AsyncMock(return_value=True)), \
          patch('bot.handlers.topics.preorder.extract_prepayments', return_value={'cash': 20000.0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}), \
          patch('bot.handlers.topics.preorder.parse_client_data', return_value={
@@ -42,5 +40,4 @@ iPad Pro 11 (IPAD789) - 80000₽
         from bot.handlers.topics.preorder import handle_preorder
         await handle_preorder(message)
 
-    # Проверяем, что после обработки бот отправил сообщение
     mock_bot.send_message.assert_called()
