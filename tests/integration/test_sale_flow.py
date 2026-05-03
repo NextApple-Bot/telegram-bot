@@ -1,7 +1,7 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
+from datetime import datetime
 from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, patch
 
 from bot import config
 
@@ -15,6 +15,7 @@ async def test_sale_flow_success(mock_bot):
 
     message = Message(
         message_id=123,
+        date=datetime.now(),
         chat=Chat(id=config.MAIN_GROUP_ID, type="supergroup"),
         text=content,
         message_thread_id=config.THREAD_SALES,
