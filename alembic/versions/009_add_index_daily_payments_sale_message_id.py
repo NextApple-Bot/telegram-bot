@@ -16,12 +16,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Добавляем колонку sale_message_id, если её ещё нет
-    conn = op.get_bind()
-    inspector = sa.inspect(conn)
-    columns = [c['name'] for c in inspector.get_columns('daily_payments')]
-    if 'sale_message_id' not in columns:
-        op.add_column('daily_payments', sa.Column('sale_message_id', sa.BigInteger(), nullable=True))
+    # Гарантированно добавляем колонку, если её ещё нет (IF NOT EXISTS — стандарт SQL с PG 9.6)
+    op.execute('ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
 
     # Создаём индекс
     op.create_index(
