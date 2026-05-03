@@ -1,8 +1,7 @@
-from datetime import datetime
-from unittest.mock import AsyncMock, patch
-
 import pytest
+from datetime import datetime
 from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, patch
 
 from bot import config
 
@@ -38,9 +37,13 @@ iPad Pro 11 (IPAD789) - 80000₽
          patch('bot.handlers.topics.preorder.BookingService.process_booking', new=AsyncMock(return_value={
              "success": True, "results": [{"status": "booked"}]
          })), \
-         patch('bot.handlers.topics.preorder.extract_payment_amounts', return_value={'cash': 0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}):
+         patch('bot.handlers.topics.preorder.extract_payment_amounts', return_value={'cash': 0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}), \
+         patch('bot.handlers.topics.preorder.send_and_clean', new=AsyncMock()) as mock_send_and_clean:
 
         from bot.handlers.topics.preorder import handle_preorder
+        # Передаём mock_bot через message.bot явно
+        message.bot = mock_bot
         await handle_preorder(message)
 
-    mock_bot.send_message.assert_called()
+    # после обработки должно быть отправлено уведомление о брони
+    assert mock_send_and_clean.call_count >= 1
