@@ -1,5 +1,4 @@
 import os
-import sys
 from collections.abc import AsyncGenerator
 from importlib import reload
 from unittest.mock import AsyncMock, patch
@@ -22,10 +21,11 @@ os.environ["SCALING_ENABLED"] = "false"
 
 # импортируем bot.config после установки переменных окружения
 import bot.config as bot_config  # noqa: E402
+
 reload(bot_config)
 
 from bot.db import close_pool, init_db  # noqa: E402
-from bot.services.cache import cache   # noqa: E402
+from bot.services.cache import cache  # noqa: E402
 
 
 @pytest.fixture(scope="session")
