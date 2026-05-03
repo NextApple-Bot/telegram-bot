@@ -1,5 +1,5 @@
+import pytest
 from bot.utils.validators import extract_serials, normalize_serial
-
 
 class TestExtractSerials:
     def test_single_serial_in_parentheses(self):
@@ -20,7 +20,7 @@ class TestExtractSerials:
         assert extract_serials("Check (1234567890)") == ["1234567890"]
 
     def test_all_numeric_serial_less_than_10_digits(self):
-        assert extract_serials("Check (123456789)") == []  # меньше 10 цифр
+        assert extract_serials("Check (123456789)") == []
 
     def test_empty_parentheses(self):
         assert extract_serials("Some () text") == []
@@ -39,7 +39,7 @@ class TestExtractSerials:
     def test_multiple_same_serial(self):
         text = "iPhone (ABC123) and backup (ABC123)"
         result = extract_serials(text)
-        assert result == ["ABC123"]  # уникальные значения
+        assert result == ["ABC123"]
 
 class TestNormalizeSerial:
     def test_removes_spaces(self):
