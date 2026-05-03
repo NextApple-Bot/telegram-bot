@@ -18,8 +18,7 @@ def upgrade() -> None:
     op.create_index(
         'idx_daily_payments_sale_message_id',
         'daily_payments',
-        ['sale_message_id'],
-        postgresql_concurrently=True
+        ['sale_message_id']
     )
 
 
