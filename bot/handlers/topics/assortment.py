@@ -5,10 +5,11 @@ import tempfile
 import aiofiles
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import config
 from bot.handlers.states import AssortmentConfirmState
+from bot.repositories.item import ItemRepository
 from bot.utils.sort import sort_assortment_to_categories
 
 logger = logging.getLogger(__name__)
