@@ -1,5 +1,6 @@
 from bot.utils.markdown import escape_markdown, escape_markdown_v1
 
+
 class TestEscapeMarkdown:
     def test_escapes_special_chars(self):
         text = "Hello _world_ *test*"
