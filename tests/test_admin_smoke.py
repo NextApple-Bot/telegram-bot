@@ -19,8 +19,8 @@ os.environ["DATABASE_URL"] = "postgresql://none/none"
 import bot.db
 bot.db.get_pool = AsyncMock()
 
-from web_admin.main import app
-from web_admin.auth import login, logout
+from web_admin.main import app  # noqa: E402
+from web_admin.auth import login, logout  # noqa: E402
 
 client = TestClient(app)
 
@@ -44,13 +44,11 @@ def test_login_success():
 
 
 def test_dashboard_redirect_when_not_authenticated():
-    # не передаём куки, должен быть редирект на логин
     response = client.get("/admin/dashboard", follow_redirects=False)
     assert response.status_code == 307 or response.status_code == 303
 
 
 def test_dashboard_authenticated():
-    # выполняем логин через сессию
     with client:
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/dashboard")
@@ -95,6 +93,5 @@ def test_logout():
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/auth/logout", follow_redirects=False)
         assert response.status_code == 303
-        # после выхода dashboard должен редиректить на логин
         response = client.get("/admin/dashboard", follow_redirects=False)
         assert response.status_code == 307 or response.status_code == 303
