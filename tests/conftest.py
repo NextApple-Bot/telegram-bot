@@ -1,29 +1,31 @@
 import os
+import sys
 from collections.abc import AsyncGenerator
 from importlib import reload
 from unittest.mock import AsyncMock, patch
 
-import asyncpg
-import pytest
-
-# Блокировка uvloop (как и раньше)
+# --- Отключаем uvloop до любых импортов библиотек, которые его используют ---
 try:
     import uvloop
+    # Заменяем настоящий uvloop на стандартный asyncio event loop политику
     uvloop.install = lambda: None
 except ImportError:
     pass
+
+import asyncpg
+import pytest
 
 TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/bot_test?sslmode=disable"
 os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ.setdefault("REDIS_URL", "")
 os.environ["SCALING_ENABLED"] = "false"
 
+# импортируем bot.config после установки переменных окружения
 import bot.config as bot_config  # noqa: E402
-
 reload(bot_config)
 
 from bot.db import close_pool, init_db  # noqa: E402
-from bot.services.cache import cache  # noqa: E402
+from bot.services.cache import cache   # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -35,7 +37,7 @@ async def test_db_pool():
         max_size=5,
         ssl=False,
         command_timeout=30,
-        timeout=10   # <-- добавляем таймаут на получение соединения
+        timeout=10
     )
     yield pool
     await pool.close()
@@ -69,7 +71,6 @@ async def db_conn(test_db_pool) -> AsyncGenerator:
             await conn.execute("ROLLBACK")
 
 
-# Остальные фикстуры (mock_bot, mock_state, disable_redis_cache) без изменений
 @pytest.fixture
 def mock_bot():
     bot = AsyncMock()
