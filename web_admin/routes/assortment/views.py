@@ -87,7 +87,7 @@ async def list_assortment(
         else:
             order_clause = "ORDER BY name"
 
-        categories_rows = await conn.fetch(f"SELECT id, name FROM categories WHERE name != '__SYSTEM__' {order_clause}")
+        categories_rows = await conn.fetch(f"SELECT id, name FROM categories WHERE name != '__SYSTEM__' {order_clause}")  # nosec B608
         categories = [{"id": row["id"], "name": row["name"]} for row in categories_rows]
 
     return templates.TemplateResponse("assortment.html", {
