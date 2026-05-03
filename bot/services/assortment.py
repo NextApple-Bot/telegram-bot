@@ -1,7 +1,6 @@
 # Файл: bot/services/assortment.py
 import logging
 
-from bot.repositories import ItemRepository
 from bot.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -25,6 +24,8 @@ class AssortmentService:
         except Exception as e:
             logger.error(f"Ошибка при чтении кэша ассортимента: {e}, извлекаем из БД")
 
+        # Локальный импорт для избежания циклической зависимости
+        from bot.repositories import ItemRepository
         categories = await ItemRepository.get_all_categories_with_items()
         try:
             await cache.set(cls.CACHE_KEY, categories, ttl=cls.CACHE_TTL)
@@ -35,6 +36,7 @@ class AssortmentService:
 
     @classmethod
     async def save_inventory(cls, categories: list[dict[str, list[str]]]):
+        from bot.repositories import ItemRepository
         await ItemRepository.bulk_replace_assortment(categories)
         await cls.invalidate_cache()
         logger.info(f"Ассортимент сохранён: {len(categories)} категорий")
@@ -46,7 +48,6 @@ class AssortmentService:
         normalized_serial = serial.strip().upper()
         if conn is None:
             pool = await get_pool()
-            # Исправлено: объединены with
             async with pool.acquire() as conn, conn.transaction():
                 deleted_row = await conn.fetchrow(
                     """
