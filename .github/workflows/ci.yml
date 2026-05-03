@@ -89,7 +89,8 @@ jobs:
           SECRET_KEY: dummy_secret_key_for_testing_only_min_32_chars
           ADMIN_PASSWORD: testpass
           SCALING_ENABLED: "false"
-        run: pytest tests/ -v --cov=bot --cov=web_admin --cov-report=xml
+        run: |
+          pytest tests/ -v --cov=bot --cov=web_admin --cov-report=xml
 
       - name: Upload coverage to Codecov (optional)
         uses: codecov/codecov-action@v4
