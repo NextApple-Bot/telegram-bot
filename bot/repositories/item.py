@@ -28,7 +28,6 @@ class ItemRepository:
         row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
         if row:
             return row['id']
-        # При создании категории устанавливаем sort_order = max(sort_order) + 1
         max_order = await conn.fetchval('SELECT COALESCE(MAX(sort_order), -1) FROM categories')
         try:
             row = await conn.fetchrow(
@@ -223,7 +222,6 @@ class ItemRepository:
     async def bulk_replace_assortment(categories: list[dict[str, list[str]]]) -> None:
         from bot.services.assortment import AssortmentService
         pool = await get_pool()
-        # Исправлено: объединены with
         async with pool.acquire() as conn, conn.transaction():
             await conn.execute('TRUNCATE TABLE categories CASCADE')
             category_names = [cat['header'] for cat in categories]
@@ -254,7 +252,7 @@ class ItemRepository:
                     values_placeholder.append(f"(${idx}, ${idx+1}, ${idx+2}, ${idx+3})")
                     params.extend([text, serial, cat_id, is_booked])
                     idx += 4
-                query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'
+                query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'  # nosec B608
                 await conn.execute(query, *params)
 
         await AssortmentService.invalidate_cache()
