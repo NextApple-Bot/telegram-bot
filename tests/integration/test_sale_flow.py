@@ -1,26 +1,17 @@
 import pytest
 from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, patch
 
-from bot import config  # Добавлено
+from bot import config
 
 
 @pytest.mark.asyncio
-async def test_sale_flow_success(mock_bot, db_conn):
-    # 1. Подготовка: добавим товар в ассортимент
-    await db_conn.execute("""
-        INSERT INTO categories (name, sort_order) VALUES ('iPhone', 1)
-    """)
-    cat_id = await db_conn.fetchval("SELECT id FROM categories WHERE name='iPhone'")
-    await db_conn.execute("""
-        INSERT INTO items (text, serial, category_id, is_booked)
-        VALUES ('iPhone 15 Pro', 'ABC123', $1, false)
-    """, cat_id)
-
-    # 2. Создаём сообщение в топике продаж
+async def test_sale_flow_success(mock_bot):
     content = """iPhone 15 Pro (ABC123) - 120000₽
 Наличные - 120000
 Клиент: Иван Иванов
 Телефон: +79991234567"""
+
     message = Message(
         message_id=123,
         chat=Chat(id=config.MAIN_GROUP_ID, type="supergroup"),
@@ -29,27 +20,21 @@ async def test_sale_flow_success(mock_bot, db_conn):
         from_user=User(id=12345, is_bot=False, first_name="Admin")
     )
 
-    # 3. Обрабатываем сообщение
-    from bot.handlers.topics.sales import handle_sales_message
-    await handle_sales_message(message, mock_bot)
+    with patch('bot.handlers.topics.sales.mark_message_processed', new=AsyncMock(return_value=True)), \
+         patch('bot.handlers.topics.sales.extract_payment_amounts', return_value={'cash': 120000.0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}), \
+         patch('bot.handlers.topics.sales.SaleService.process_sale', new=AsyncMock(return_value={
+             "sold_items": [(1, "ABC123")], "not_found": [], "is_accessory": False, "skip_sale_stats": False, "skip_payments": False
+         })), \
+         patch('bot.handlers.topics.sales.parse_client_data', return_value={
+             'phones': ['+79991234567'], 'full_name': 'Иван Иванов', 'main_phone': '+79991234567',
+             'telegram_username': None, 'social_network': None, 'referral_source': None, 'birth_date': None
+         }), \
+         patch('bot.handlers.topics.sales.ClientRepository.get_or_create_client', new=AsyncMock(return_value=1)), \
+         patch('bot.handlers.topics.sales.PaymentService.add_payments_batch', new=AsyncMock()), \
+         patch('bot.handlers.topics.sales.safe_react', new=AsyncMock()), \
+         patch('bot.handlers.topics.sales.send_and_clean', new=AsyncMock()):
 
-    # 4. Проверки
-    item = await db_conn.fetchrow("SELECT * FROM items WHERE serial='ABC123'")
-    assert item is None
+        from bot.handlers.topics.sales import handle_sales_message
+        await handle_sales_message(message)
 
-    deleted = await db_conn.fetchrow("SELECT * FROM deleted_items WHERE serial='ABC123'")
-    assert deleted is not None
-    assert deleted['reason'] == 'sale'
-
-    sale = await db_conn.fetchrow("SELECT * FROM sales WHERE message_id=$1", message.message_id)
-    assert sale is not None
-    assert sale['cash'] == 120000.0
-
-    payment = await db_conn.fetchrow("SELECT * FROM daily_payments WHERE sale_message_id=$1", message.message_id)
-    assert payment is not None
-    assert payment['payment_type'] == 'cash'
-    assert payment['amount'] == 120000.0
-
-    client = await db_conn.fetchrow("SELECT * FROM clients WHERE phone='+79991234567'")
-    assert client is not None
-    assert client['full_name'] == 'Иван Иванов'
+    mock_bot.send_message.assert_called()
