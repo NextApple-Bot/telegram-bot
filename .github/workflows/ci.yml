@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: write  # для пуша автофиксов (только для push событий)
+  contents: write
 
 jobs:
   lint-and-test:
@@ -54,6 +54,9 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
+      - name: Remove uvloop (conflicts with pytest-asyncio in CI)
+        run: pip uninstall -y uvloop || true
+
       - name: Run Ruff auto-fix (only on push)
         if: github.event_name == 'push'
         run: ruff check . --fix
@@ -95,4 +98,4 @@ jobs:
           flags: unittests
           fail_ci_if_error: false
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}  # если нужно
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
