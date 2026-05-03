@@ -1,8 +1,8 @@
-import pytest
-from unittest.mock import AsyncMock, patch
+import os
+from unittest.mock import AsyncMock
+
 from fastapi.testclient import TestClient
 
-import os
 os.environ["SECRET_KEY"] = "test_secret_key_for_admin_at_least_32_chars"
 os.environ["ADMIN_PASSWORD"] = "testpass"
 os.environ["BOT_TOKEN"] = "dummy"
@@ -16,10 +16,10 @@ os.environ["DATABASE_URL"] = "postgresql://none/none"
 
 # Мокаем пул БД до импорта приложения
 import bot.db
+
 bot.db.get_pool = AsyncMock()
 
 from web_admin.main import app  # noqa: E402
-from web_admin.auth import login, logout  # noqa: E402
 
 client = TestClient(app)
 
