@@ -1,7 +1,7 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
+from datetime import datetime
 from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, patch
 
 from bot import config
 
@@ -17,6 +17,7 @@ iPad Pro 11 (IPAD789) - 80000₽
 
     message = Message(
         message_id=456,
+        date=datetime.now(),
         chat=Chat(id=config.MAIN_GROUP_ID, type="supergroup"),
         text=content,
         message_thread_id=config.THREAD_PREORDER,
