@@ -1,6 +1,5 @@
 from bot.utils.markdown import escape_markdown, escape_markdown_v1
 
-
 class TestEscapeMarkdown:
     def test_escapes_special_chars(self):
         text = "Hello _world_ *test*"
@@ -13,7 +12,6 @@ class TestEscapeMarkdown:
     def test_all_special(self):
         text = "_*[]()~`>#+-=|{}.!"
         escaped = escape_markdown(text)
-        # каждый символ должен быть экранирован
         for char in text:
             assert "\\" + char in escaped
 
