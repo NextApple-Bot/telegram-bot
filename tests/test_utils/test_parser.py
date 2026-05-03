@@ -1,6 +1,7 @@
 # ... существующий код остаётся без изменений, добавляем в конец файла:
 
-from bot.utils.parser import parse_client_data, parse_birth_date
+from bot.utils.parser import parse_birth_date, parse_client_data
+
 
 class TestParseBirthDate:
     def test_full_date(self):
