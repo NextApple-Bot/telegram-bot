@@ -1,6 +1,5 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
+from unittest.mock import AsyncMock, patch
 
 from bot.repositories.item import ItemRepository
 from bot.services.assortment import AssortmentService
@@ -8,7 +7,7 @@ from bot.services.assortment import AssortmentService
 
 @pytest.mark.asyncio
 async def test_restore_via_undo_command():
-    # Мокаем БД-зависимые методы
+    # Глубоко мокаем модуль до его импорта внутри функции
     with patch('bot.repositories.item.ItemRepository.get_or_create_category', new=AsyncMock(return_value=1)), \
          patch('bot.repositories.item.ItemRepository.get_last_deleted_item', new=AsyncMock(return_value={
              'id': 1, 'text': 'Galaxy S24', 'serial': 'S24XYZ', 'category_id': 2
@@ -18,8 +17,7 @@ async def test_restore_via_undo_command():
          patch('bot.services.assortment.AssortmentService.remove_by_serial', new=AsyncMock(return_value=1)), \
          patch('bot.repositories.item.ItemRepository.get_item_by_serial', new=AsyncMock(return_value={'id': 1})), \
          patch('bot.repositories.item.ItemRepository.get_all_items_serials', new=AsyncMock(return_value=[])):
-
-        # Проверяем логику восстановления (без БД)
+        
         deleted = await AssortmentService.remove_by_serial('S24XYZ', reason='test')
         assert deleted == 1
 
