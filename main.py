@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 class HealthCheckFilter(logging.Filter):
     def filter(self, record):
-        # Исправлено SIM103: возврат условия напрямую
         return not (hasattr(record, 'message') and '/health' in record.getMessage())
 
 logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
@@ -79,6 +78,34 @@ except Exception as e:
     logger.error(traceback.format_exc())
 
 
+async def setup_webhook_with_retries(max_retries=5, base_delay=3):
+    """Устанавливает вебхук с повторными попытками при ошибках Telegram."""
+    if not config or not hasattr(config, 'RENDER_URL') or not config.RENDER_URL:
+        logger.error("❌ RENDER_URL не задан — вебхук не будет установлен.")
+        return
+
+    webhook_url = f"{config.RENDER_URL}/webhook"
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Сначала удаляем старый вебхук
+            await bot.delete_webhook(drop_pending_updates=True)
+            allowed_updates = dp.resolve_used_update_types()
+            await bot.set_webhook(
+                url=webhook_url,
+                allowed_updates=allowed_updates
+            )
+            logger.info(f"✅ Вебхук установлен на {webhook_url} (попытка {attempt})")
+            return
+        except Exception as e:
+            logger.warning(f"⚠️ Попытка {attempt}/{max_retries} установить вебхук не удалась: {e}")
+            if attempt < max_retries:
+                delay = base_delay * attempt
+                logger.info(f"⏳ Повторная попытка через {delay} сек...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"❌ Не удалось установить вебхук после {max_retries} попыток")
+
+
 async def on_startup():
     logger.info("🚀 on_startup: запуск...")
     if config and not getattr(config, 'RENDER_URL', None):
@@ -98,20 +125,7 @@ async def on_startup():
 
     if bot and dp:
         logger.info("✅ Бот и диспетчер готовы")
-        if config and hasattr(config, 'RENDER_URL') and config.RENDER_URL:
-            webhook_url = f"{config.RENDER_URL}/webhook"
-            try:
-                await bot.delete_webhook(drop_pending_updates=True)
-                allowed_updates = dp.resolve_used_update_types()
-                await bot.set_webhook(
-                    url=webhook_url,
-                    allowed_updates=allowed_updates
-                )
-                logger.info(f"✅ Вебхук установлен на {webhook_url}")
-            except Exception as e:
-                logger.error(f"❌ Не удалось установить вебхук: {e}")
-        else:
-            logger.warning("⚠️ RENDER_URL не задан, вебхук не будет установлен")
+        await setup_webhook_with_retries()
     else:
         logger.warning("⚠️ Бот не инициализирован, пропускаем установку вебхука")
 
