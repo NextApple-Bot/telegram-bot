@@ -1,5 +1,6 @@
 import logging
 import os
+import tempfile
 
 import aiofiles
 from aiogram import F, Router
@@ -21,7 +22,6 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
     (F.text | F.caption | F.document)
 )
 async def handle_assortment_upload(message: Message, bot, state: FSMContext):
-    # Диагностика: пишем в лог, что сообщение получено
     logger.info(f"🔔 ПОЛУЧЕНО СООБЩЕНИЕ В АССОРТИМЕНТ: chat_id={message.chat.id}, thread_id={message.message_thread_id}, "
                 f"has_text={bool(message.text)}, has_caption={bool(message.caption)}, has_doc={bool(message.document)}")
 
@@ -34,7 +34,9 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
         if not (document.mime_type == 'text/plain' or document.file_name.endswith('.txt')):
             await message.reply("⚠️ Отправьте текстовый файл .txt")
             return
-        file_path = f"/tmp/{document.file_name}"
+        # Использование временной директории системы
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='_' + document.file_name, delete=False) as tmp:
+            file_path = tmp.name
         await bot.download(document, destination=file_path)
         try:
             async with aiofiles.open(file_path, encoding='utf-8') as f:
@@ -71,28 +73,4 @@ async def handle_assortment_upload(message: Message, bot, state: FSMContext):
         reply_markup=keyboard
     )
 
-@router.callback_query(AssortmentConfirmState.waiting_for_confirm, F.data.startswith("assort_confirm:"))
-async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext):
-    logger.info(f"🔔 ПОЛУЧЕН CALLBACK: {callback.data}")
-    try:
-        await callback.answer()
-    except Exception:
-        pass
-    data = await state.get_data()
-    categories = data.get("temp_categories")
-    action = callback.data.split(":")[1]
-    if action == "yes":
-        if categories:
-            try:
-                logger.info(f"Начинаем массовую замену ассортимента: {len(categories)} категорий")
-                await ItemRepository.bulk_replace_assortment(categories)
-                logger.info("Массовая замена успешно выполнена")
-                await callback.message.edit_text("✅ Ассортимент успешно загружен и сохранён.")
-            except Exception as e:
-                logger.exception("Ошибка при замене ассортимента")
-                await callback.message.edit_text(f"❌ Ошибка: {e}")
-        else:
-            await callback.message.edit_text("❌ Ошибка: данные не найдены.")
-    else:
-        await callback.message.edit_text("❌ Загрузка отменена.")
-    await state.clear()
+# ... остальные функции
