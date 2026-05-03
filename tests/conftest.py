@@ -28,7 +28,7 @@ import bot.config as bot_config  # noqa: E402 (переменные окруже
 reload(bot_config)
 
 from bot.db import close_pool, init_db  # noqa: E402 (зависит от bot_config)
-from bot.services.cache import cache   # noqa: E402
+from bot.services.cache import cache  # noqa: E402
 
 
 # ------------------------------------------------------------

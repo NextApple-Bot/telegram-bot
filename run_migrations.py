@@ -5,11 +5,12 @@ import os
 import sys
 from pathlib import Path
 
-# Исправлено: импорты вынесены в начало
-from alembic.config import Config
 from dotenv import load_dotenv
 
 from alembic import command
+
+# Исправлено: импорты вынесены в начало
+from alembic.config import Config
 
 # Добавляем корень проекта в sys.path
 sys.path.insert(0, str(Path(__file__).parent))
