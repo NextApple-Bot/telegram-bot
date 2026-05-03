@@ -1,6 +1,7 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from aiogram.types import Chat, Message, User
-from unittest.mock import AsyncMock, patch
 
 from bot import config
 

@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from bot.repositories.item import ItemRepository
 from bot.services.assortment import AssortmentService
