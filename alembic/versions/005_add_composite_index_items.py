@@ -15,12 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Составной индекс для ускорения фильтрации по категории, брони и сортировки по дате
     op.create_index(
         'idx_items_category_booked_created',
         'items',
-        ['category_id', 'is_booked', 'created_at'],
-        postgresql_concurrently=True
+        ['category_id', 'is_booked', 'created_at']
     )
 
 
