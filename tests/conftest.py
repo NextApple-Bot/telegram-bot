@@ -4,17 +4,14 @@ from collections.abc import AsyncGenerator
 from importlib import reload
 from unittest.mock import AsyncMock, patch
 
-# Блокируем uvloop на уровне политики событийного цикла
-import asyncio
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-
-# Убираем uvloop, если он был установлен ранее
+# Блокируем uvloop до того, как он используется
 try:
     import uvloop
     uvloop.install = lambda: None
 except ImportError:
     pass
 
+import asyncio
 import asyncpg
 import pytest
 
@@ -32,7 +29,8 @@ from bot.services.cache import cache   # noqa: E402
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Создаём событийный цикл на всю сессию."""
+    """Устанавливаем политику событийного цикла по умолчанию и создаём цикл."""
+    asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
@@ -40,7 +38,7 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 async def test_db_pool():
-    """Создаёт сессионный пул с тем же циклом."""
+    """Создаёт сессионный пул с увеличенным таймаутом."""
     pool = await asyncpg.create_pool(
         TEST_DB_URL,
         min_size=1,
@@ -72,7 +70,7 @@ async def setup_test_db(test_db_pool):
 
 @pytest.fixture
 async def db_conn(test_db_pool) -> AsyncGenerator:
-    """Выдаёт соединение с транзакцией (работает в том же цикле)."""
+    """Выдаёт соединение с транзакцией."""
     async with test_db_pool.acquire() as conn:
         await conn.execute("BEGIN")
         try:
