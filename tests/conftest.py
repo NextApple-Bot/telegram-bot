@@ -1,12 +1,16 @@
 import os
+import sys
 from collections.abc import AsyncGenerator
 from importlib import reload
 from unittest.mock import AsyncMock, patch
 
-# --- Отключаем uvloop до любых импортов библиотек, которые его используют ---
+# Блокируем uvloop на уровне политики событийного цикла
+import asyncio
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+
+# Убираем uvloop, если он был установлен ранее
 try:
     import uvloop
-    # Заменяем настоящий uvloop на стандартный asyncio event loop политику
     uvloop.install = lambda: None
 except ImportError:
     pass
@@ -19,18 +23,24 @@ os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ.setdefault("REDIS_URL", "")
 os.environ["SCALING_ENABLED"] = "false"
 
-# импортируем bot.config после установки переменных окружения
 import bot.config as bot_config  # noqa: E402
-
 reload(bot_config)
 
 from bot.db import close_pool, init_db  # noqa: E402
-from bot.services.cache import cache  # noqa: E402
+from bot.services.cache import cache   # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Создаём событийный цикл на всю сессию."""
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 @pytest.fixture(scope="session")
 async def test_db_pool():
-    """Создаёт сессионный пул с увеличенным таймаутом."""
+    """Создаёт сессионный пул с тем же циклом."""
     pool = await asyncpg.create_pool(
         TEST_DB_URL,
         min_size=1,
@@ -62,7 +72,7 @@ async def setup_test_db(test_db_pool):
 
 @pytest.fixture
 async def db_conn(test_db_pool) -> AsyncGenerator:
-    """Выдаёт соединение с транзакцией."""
+    """Выдаёт соединение с транзакцией (работает в том же цикле)."""
     async with test_db_pool.acquire() as conn:
         await conn.execute("BEGIN")
         try:
