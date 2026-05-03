@@ -1,6 +1,6 @@
 # Файл: tests/test_utils/test_parser.py
 from bot.services.payment_parser import extract_payment_amounts, extract_prepayments
-from bot.utils.parser import parse_client_data, parse_birth_date
+from bot.utils.parser import parse_birth_date, parse_client_data
 
 
 def test_extract_payment_amounts_basic():
