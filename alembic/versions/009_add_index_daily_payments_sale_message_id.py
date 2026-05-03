@@ -16,17 +16,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Гарантированно добавляем колонку, если её ещё нет (IF NOT EXISTS — стандарт SQL с PG 9.6)
-    op.execute('ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT')
-
-    # Создаём индекс
-    op.create_index(
-        'idx_daily_payments_sale_message_id',
-        'daily_payments',
-        ['sale_message_id']
-    )
+    # Добавляем колонку, если её нет
+    op.execute("ALTER TABLE daily_payments ADD COLUMN IF NOT EXISTS sale_message_id BIGINT")
+    # Создаём индекс (заворачиваем в IF EXISTS для идемпотентности)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_daily_payments_sale_message_id ON daily_payments (sale_message_id)")
 
 
 def downgrade() -> None:
-    op.drop_index('idx_daily_payments_sale_message_id', table_name='daily_payments')
-    # Колонку sale_message_id не удаляем, так как она могла существовать ранее
+    op.execute("DROP INDEX IF EXISTS idx_daily_payments_sale_message_id")
+    # Колонку не удаляем
