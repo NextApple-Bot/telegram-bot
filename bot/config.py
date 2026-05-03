@@ -44,11 +44,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""
 
 
-# Загружаем .env для локальной разработки
-from dotenv import load_dotenv
-load_dotenv()
-
-# Создаём экземпляр конфигурации
+# Создаём экземпляр конфигурации (pydantic-settings автоматически загрузит .env)
 config = Settings()
 
 # Экспортируем атрибуты для обратной совместимости
