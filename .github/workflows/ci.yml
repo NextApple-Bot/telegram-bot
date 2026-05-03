@@ -71,13 +71,17 @@ jobs:
             echo "No changes to commit."
           else
             git commit -m "🤖 Автоисправление Ruff"
-            # Подтягиваем актуальное состояние ветки, перебазируемся
             git pull --rebase origin ${{ github.ref_name }}
             git push origin HEAD:${{ github.ref_name }}
           fi
 
       - name: Lint with Ruff (check only)
         run: ruff check . --output-format=github
+
+      - name: Security analysis with Bandit
+        run: |
+          pip install bandit
+          bandit -r bot/ web_admin/ -ll --exclude tests/
 
       - name: Run tests
         env:
