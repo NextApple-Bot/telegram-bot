@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from bot.repositories.item import ItemRepository
 from bot.services.assortment import AssortmentService
@@ -17,7 +18,7 @@ async def test_restore_via_undo_command():
          patch('bot.services.assortment.AssortmentService.remove_by_serial', new=AsyncMock(return_value=1)), \
          patch('bot.repositories.item.ItemRepository.get_item_by_serial', new=AsyncMock(return_value={'id': 1})), \
          patch('bot.repositories.item.ItemRepository.get_all_items_serials', new=AsyncMock(return_value=[])):
-        
+
         deleted = await AssortmentService.remove_by_serial('S24XYZ', reason='test')
         assert deleted == 1
 
