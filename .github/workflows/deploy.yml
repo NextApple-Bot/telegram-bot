@@ -46,6 +46,9 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
+      - name: Remove uvloop (conflicts with pytest-asyncio in CI)
+        run: pip uninstall -y uvloop || true
+
       - name: Lint with Ruff
         run: ruff check .
 
