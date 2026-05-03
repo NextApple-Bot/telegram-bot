@@ -1,4 +1,3 @@
-# Файл: main.py
 import asyncio
 import logging
 import os
@@ -14,10 +13,32 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
+# Sentry SDK
+import sentry_sdk
+from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+
 # Prometheus
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Настройка логирования
+# Инициализация Sentry (если задан SENTRY_DSN)
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        traces_sample_rate=1.0,
+        environment=os.getenv("ENVIRONMENT", "production"),
+        integrations=[
+            StarletteIntegration(),
+            FastApiIntegration(),
+        ],
+    )
+    logging.info("✅ Sentry инициализирован")
+else:
+    logging.info("ℹ️ SENTRY_DSN не задан, мониторинг ошибок отключён")
+
+# Настройка логирования (JSON на проде)
 log_format = os.getenv("LOG_FORMAT", "text").lower()
 if log_format == "json":
     from pythonjsonlogger import jsonlogger
@@ -253,8 +274,12 @@ app = Starlette(
     on_shutdown=[on_shutdown],
 )
 
-# Интеграция Prometheus
+# Prometheus
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+# Sentry ASGI middleware (оборачивает всё приложение, перехватывает необработанные исключения)
+if SENTRY_DSN:
+    app = SentryAsgiMiddleware(app)
 
 if config and config.SECRET_KEY:
     app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
