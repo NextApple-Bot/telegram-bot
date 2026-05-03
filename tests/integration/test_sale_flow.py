@@ -1,11 +1,7 @@
-from datetime import datetime
-from unittest.mock import AsyncMock, patch
-
 import pytest
-from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from bot import config
-
 
 @pytest.mark.asyncio
 async def test_sale_flow_success(mock_bot):
@@ -14,14 +10,12 @@ async def test_sale_flow_success(mock_bot):
 Клиент: Иван Иванов
 Телефон: +79991234567"""
 
-    message = Message(
-        message_id=123,
-        date=datetime.now(),
-        chat=Chat(id=config.MAIN_GROUP_ID, type="supergroup"),
-        text=content,
-        message_thread_id=config.THREAD_SALES,
-        from_user=User(id=12345, is_bot=False, first_name="Admin")
-    )
+    message = MagicMock()
+    message.message_id = 123
+    message.chat = MagicMock(id=config.MAIN_GROUP_ID)
+    message.message_thread_id = config.THREAD_SALES
+    message.text = content
+    message.bot = mock_bot
 
     with patch('bot.handlers.topics.sales.mark_message_processed', new=AsyncMock(return_value=True)), \
          patch('bot.handlers.topics.sales.extract_payment_amounts', return_value={'cash': 120000.0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}), \
@@ -38,8 +32,6 @@ async def test_sale_flow_success(mock_bot):
          patch('bot.handlers.topics.sales.send_and_clean', new=AsyncMock()):
 
         from bot.handlers.topics.sales import handle_sales_message
-        message.bot = mock_bot
         await handle_sales_message(message)
 
-    # Проверяем, что была поставлена реакция 🔥
     mock_react.assert_called_once_with(message, '🔥')
