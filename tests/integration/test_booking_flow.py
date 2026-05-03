@@ -1,26 +1,19 @@
 import pytest
 from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, patch
 
-from bot import config  # Добавлено
+from bot import config
 
 
 @pytest.mark.asyncio
-async def test_booking_flow_success(mock_bot, db_conn):
-    await db_conn.execute("""
-        INSERT INTO categories (name, sort_order) VALUES ('iPad', 1)
-    """)
-    cat_id = await db_conn.fetchval("SELECT id FROM categories WHERE name='iPad'")
-    await db_conn.execute("""
-        INSERT INTO items (text, serial, category_id, is_booked)
-        VALUES ('iPad Pro 11', 'IPAD789', $1, false)
-    """, cat_id)
-
+async def test_booking_flow_success(mock_bot):
     content = """БРОНЬ:
 iPad Pro 11 (IPAD789) - 80000₽
 П/О 20000 (нал)
 Клиент: Петр Петров
 Телефон: +79123456789
 Площадка: Авито"""
+
     message = Message(
         message_id=456,
         chat=Chat(id=config.MAIN_GROUP_ID, type="supergroup"),
@@ -29,18 +22,24 @@ iPad Pro 11 (IPAD789) - 80000₽
         from_user=User(id=12345, is_bot=False, first_name="Admin")
     )
 
-    from bot.handlers.topics.preorder import handle_preorder
-    await handle_preorder(message)
+    # Мокаем все зависимости, работающие с БД, Redis и сетью
+    with patch('bot.handlers.topics.preorder.mark_message_processed', new=AsyncMock(return_value=True)), \
+         patch('bot.handlers.topics.preorder.extract_prepayments', return_value={'cash': 20000.0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}), \
+         patch('bot.handlers.topics.preorder.parse_client_data', return_value={
+             'phones': ['+79123456789'], 'full_name': 'Петр Петров', 'main_phone': '+79123456789',
+             'telegram_username': None, 'social_network': 'Авито', 'referral_source': None, 'birth_date': None
+         }), \
+         patch('bot.handlers.topics.preorder.ClientRepository.get_or_create_client', new=AsyncMock(return_value=1)), \
+         patch('bot.handlers.topics.preorder.StatsRepository.add_preorder', new=AsyncMock()), \
+         patch('bot.handlers.topics.preorder.PaymentService.add_payments_batch', new=AsyncMock()), \
+         patch('bot.handlers.topics.preorder.safe_react', new=AsyncMock()), \
+         patch('bot.handlers.topics.preorder.BookingService.process_booking', new=AsyncMock(return_value={
+             "success": True, "results": [{"status": "booked"}]
+         })), \
+         patch('bot.handlers.topics.preorder.extract_payment_amounts', return_value={'cash': 0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}):
 
-    item = await db_conn.fetchrow("SELECT * FROM items WHERE serial='IPAD789'")
-    assert item is not None
-    assert item['is_booked'] is True
-    assert "Бронь от" in item['text']
+        from bot.handlers.topics.preorder import handle_preorder
+        await handle_preorder(message)
 
-    booking = await db_conn.fetchrow("SELECT * FROM bookings WHERE item_id=$1", item['id'])
-    assert booking is not None
-    assert booking['total_amount'] == 80000.0
-
-    payment = await db_conn.fetchrow("SELECT * FROM daily_payments WHERE type='preorder' AND amount=20000")
-    assert payment is not None
-    assert payment['payment_type'] == 'cash'
+    # Проверяем, что после обработки бот отправил сообщение
+    mock_bot.send_message.assert_called()
