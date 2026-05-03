@@ -1,5 +1,5 @@
-import pytest
 from bot.utils.validators import extract_serials, normalize_serial
+
 
 class TestExtractSerials:
     def test_single_serial_in_parentheses(self):
