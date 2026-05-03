@@ -16,7 +16,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_items_serial_normalized
+        CREATE INDEX IF NOT EXISTS idx_items_serial_normalized
         ON items (regexp_replace(serial, '[№\\s]', '', 'g'))
     """)
 
