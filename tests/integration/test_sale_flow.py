@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from bot import config
+
 
 @pytest.mark.asyncio
 async def test_sale_flow_success(mock_bot):
