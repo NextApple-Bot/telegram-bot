@@ -14,7 +14,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
-# Подключаем структурированный JSON-логгер, если указан формат json
+# Prometheus
+from prometheus_fastapi_instrumentator import Instrumentator
+
+# Настройка логирования
 log_format = os.getenv("LOG_FORMAT", "text").lower()
 if log_format == "json":
     from pythonjsonlogger import jsonlogger
@@ -249,6 +252,9 @@ app = Starlette(
     on_startup=[on_startup],
     on_shutdown=[on_shutdown],
 )
+
+# Интеграция Prometheus
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 if config and config.SECRET_KEY:
     app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
