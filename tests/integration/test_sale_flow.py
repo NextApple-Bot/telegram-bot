@@ -1,8 +1,7 @@
-from datetime import datetime
-from unittest.mock import AsyncMock, patch
-
 import pytest
+from datetime import datetime
 from aiogram.types import Chat, Message, User
+from unittest.mock import AsyncMock, patch
 
 from bot import config
 
@@ -34,10 +33,12 @@ async def test_sale_flow_success(mock_bot):
          }), \
          patch('bot.handlers.topics.sales.ClientRepository.get_or_create_client', new=AsyncMock(return_value=1)), \
          patch('bot.handlers.topics.sales.PaymentService.add_payments_batch', new=AsyncMock()), \
-         patch('bot.handlers.topics.sales.safe_react', new=AsyncMock()), \
+         patch('bot.handlers.topics.sales.safe_react', new=AsyncMock()) as mock_react, \
          patch('bot.handlers.topics.sales.send_and_clean', new=AsyncMock()):
 
         from bot.handlers.topics.sales import handle_sales_message
+        message.bot = mock_bot
         await handle_sales_message(message)
 
-    mock_bot.send_message.assert_called()
+    # Проверяем, что была поставлена реакция 🔥
+    mock_react.assert_called_once_with(message, '🔥')
