@@ -16,7 +16,7 @@ def test_cash_only():
 
 
 def test_mixed_payments():
-    text = "Наличные 1000, Терминал 2000"
+    text = "Наличные 1000\nТерминал 2000"
     payments = extract_payment_amounts(text)
     assert payments['cash'] == 1000.0
     assert payments['terminal'] == 2000.0
