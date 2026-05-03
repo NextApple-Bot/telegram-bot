@@ -6,43 +6,35 @@ from unittest.mock import AsyncMock, patch
 import asyncpg
 import pytest
 
-# ------------------------------------------------------------
-# 1. Запрещаем uvloop до его использования
-# ------------------------------------------------------------
+# Блокировка uvloop (как и раньше)
 try:
     import uvloop
     uvloop.install = lambda: None
 except ImportError:
     pass
 
-# ------------------------------------------------------------
-# 2. Окружение и конфиг
-# ------------------------------------------------------------
 TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/bot_test?sslmode=disable"
 os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ.setdefault("REDIS_URL", "")
 os.environ["SCALING_ENABLED"] = "false"
 
-import bot.config as bot_config  # noqa: E402 (переменные окружения заданы до импорта)
-
+import bot.config as bot_config  # noqa: E402
 reload(bot_config)
 
-from bot.db import close_pool, init_db  # noqa: E402 (зависит от bot_config)
-from bot.services.cache import cache  # noqa: E402
+from bot.db import close_pool, init_db  # noqa: E402
+from bot.services.cache import cache   # noqa: E402
 
 
-# ------------------------------------------------------------
-# 3. Единый тестовый пул (сессионный)
-# ------------------------------------------------------------
 @pytest.fixture(scope="session")
 async def test_db_pool():
-    """Создаёт сессионный пул, который будет использоваться во всех тестах."""
+    """Создаёт сессионный пул с увеличенным таймаутом."""
     pool = await asyncpg.create_pool(
         TEST_DB_URL,
         min_size=1,
         max_size=5,
         ssl=False,
-        command_timeout=30
+        command_timeout=30,
+        timeout=10   # <-- добавляем таймаут на получение соединения
     )
     yield pool
     await pool.close()
@@ -56,38 +48,27 @@ async def setup_test_db(test_db_pool):
         await conn.execute("CREATE SCHEMA public")
     await init_db()
 
-    # --- Подменяем глобальный get_pool на наш тестовый пул ---
-    # Теперь любые вызовы get_pool() внутри тестов будут возвращать этот пул
     async def _mock_get_pool():
         return test_db_pool
 
     with patch('bot.db.get_pool', new=_mock_get_pool):
         yield
 
-    # После тестов закрываем глобальный пул (он же test_db_pool)
     await close_pool()
 
 
-# ------------------------------------------------------------
-# 4. Фикстура соединения с транзакцией
-# ------------------------------------------------------------
 @pytest.fixture
 async def db_conn(test_db_pool) -> AsyncGenerator:
-    """Выдаёт соединение с изоляцией транзакцией."""
+    """Выдаёт соединение с транзакцией."""
     async with test_db_pool.acquire() as conn:
         await conn.execute("BEGIN")
         try:
             yield conn
         finally:
-            try:
-                await conn.execute("ROLLBACK")
-            except Exception:
-                pass
+            await conn.execute("ROLLBACK")
 
 
-# ------------------------------------------------------------
-# 5. Моки
-# ------------------------------------------------------------
+# Остальные фикстуры (mock_bot, mock_state, disable_redis_cache) без изменений
 @pytest.fixture
 def mock_bot():
     bot = AsyncMock()
@@ -109,9 +90,6 @@ def mock_state():
     return state
 
 
-# ------------------------------------------------------------
-# 6. Отключение Redis в тестах
-# ------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def disable_redis_cache():
     cache._enabled = False
