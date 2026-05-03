@@ -7,6 +7,30 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,8 +52,27 @@ jobs:
       - name: Lint with Ruff
         run: ruff check .
 
+      - name: Security analysis with Bandit
+        run: |
+          pip install bandit
+          bandit -r bot/ web_admin/ -ll --exclude tests/
+
       - name: Run tests
-        run: pytest tests/ -v --cov=bot --cov=web_admin --cov-report=term-missing
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379/0
+          BOT_TOKEN: dummy_token
+          ADMIN_ID: "123"
+          MAIN_GROUP_ID: "-100123"
+          THREAD_SALES: "1"
+          THREAD_ASSORTMENT: "2"
+          THREAD_ARRIVAL: "3"
+          THREAD_PREORDER: "4"
+          SECRET_KEY: dummy_secret_key_for_testing_only_min_32_chars
+          ADMIN_PASSWORD: testpass
+          SCALING_ENABLED: "false"
+        run: |
+          pytest tests/ -v --cov=bot --cov=web_admin --cov-report=term-missing
 
   deploy:
     needs: test
