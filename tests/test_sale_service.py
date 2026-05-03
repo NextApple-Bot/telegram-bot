@@ -11,21 +11,23 @@ async def test_process_sale_with_serial():
     content = "iPhone 15 Pro (ABC123) - 1000₽\nНаличные - 1000"
     payments = {'cash': 1000.0, 'terminal': 0.0, 'qr': 0.0, 'transfer': 0.0, 'invoice': 0.0, 'installment': 0.0}
 
+    mock_conn = AsyncMock()
+    # Настраиваем транзакцию как асинхронный контекстный менеджер
+    mock_transaction = AsyncMock()
+    mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
+    mock_transaction.__aexit__ = AsyncMock(return_value=None)
+    mock_conn.transaction = MagicMock(return_value=mock_transaction)
+
     with patch('bot.services.sale.extract_serials', return_value=["ABC123"]), \
          patch('bot.services.sale.ItemRepository.get_item_id_by_serial', new=AsyncMock(return_value=789)), \
          patch('bot.services.assortment.AssortmentService.remove_by_serial', new=AsyncMock()) as mock_remove, \
          patch('bot.services.sale.StatsRepository.add_sale', new=AsyncMock()), \
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
-        # Мок соединения
-        mock_conn = AsyncMock()
-
-        # Объект контекстного менеджера, возвращаемый pool.acquire()
+        # Настраиваем пул: pool.acquire() возвращает контекст с mock_conn
         mock_conn_ctx = MagicMock()
         mock_conn_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn_ctx.__aexit__ = AsyncMock(return_value=None)
-
-        # pool.acquire — синхронный метод, возвращающий контекстный менеджер
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(return_value=mock_conn_ctx)
         mock_get_pool.return_value = mock_pool
@@ -59,15 +61,19 @@ async def test_process_sale_not_found():
     content = "iPhone (XYZ999) - 1000₽\nНаличные - 1000"
     payments = {'cash': 1000.0, 'terminal': 0.0, 'qr': 0.0, 'transfer': 0.0, 'invoice': 0.0, 'installment': 0.0}
 
+    mock_conn = AsyncMock()
+    mock_transaction = AsyncMock()
+    mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
+    mock_transaction.__aexit__ = AsyncMock(return_value=None)
+    mock_conn.transaction = MagicMock(return_value=mock_transaction)
+
     with patch('bot.services.sale.extract_serials', return_value=["XYZ999"]), \
          patch('bot.services.sale.ItemRepository.get_item_id_by_serial', new=AsyncMock(return_value=None)), \
          patch('bot.services.sale.get_pool') as mock_get_pool:
 
-        mock_conn = AsyncMock()
         mock_conn_ctx = MagicMock()
         mock_conn_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn_ctx.__aexit__ = AsyncMock(return_value=None)
-
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(return_value=mock_conn_ctx)
         mock_get_pool.return_value = mock_pool
