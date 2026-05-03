@@ -83,6 +83,17 @@ jobs:
           pip install bandit
           bandit -r bot/ web_admin/ -ll --exclude tests/
 
+      - name: Test database migrations
+        run: |
+          cp alembic.ini.example alembic.ini 2>/dev/null || true
+          DB_URL="postgresql://postgres:postgres@localhost:5432/bot_test"
+          # Откатываем и накатываем миграции для проверки
+          alembic upgrade head
+          alembic downgrade -1
+          alembic upgrade head
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bot_test
+
       - name: Run tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bot_test?sslmode=disable
