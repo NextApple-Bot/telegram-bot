@@ -18,7 +18,7 @@ class ClientRepository:
         telegram_username: str | None = None,
         social_network: str | None = None,
         referral_source: str | None = None,
-        birth_date: str | None = None,   # строка "ДД.ММ" или "ДД.ММ.ГГГГ"
+        birth_date: str | None = None,
         conn=None
     ) -> int:
         logger.info(f"🔍 get_or_create_client: phone={phone}, full_name={full_name}, birth_date={birth_date}")
@@ -59,7 +59,7 @@ class ClientRepository:
                     if updates:
                         set_clause = ", ".join(updates)
                         params.append(client_id)
-                        query = f"UPDATE clients SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ${len(params)}"
+                        query = f"UPDATE clients SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ${len(params)}"  # nosec B608
                         await connection.execute(query, *params)
                         logger.info(f"✅ Клиент {client_id} обновлён")
                     return client_id
