@@ -19,10 +19,11 @@ os.environ.setdefault("REDIS_URL", "")
 os.environ["SCALING_ENABLED"] = "false"
 
 import bot.config as bot_config  # noqa: E402
+
 reload(bot_config)
 
 from bot.db import close_pool, init_db  # noqa: E402
-from bot.services.cache import cache   # noqa: E402
+from bot.services.cache import cache  # noqa: E402
 
 
 @pytest.fixture(scope="session")
