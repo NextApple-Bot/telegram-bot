@@ -1,14 +1,18 @@
-# Файл: bot/repositories/stats.py
+import logging
 from datetime import date
 
-from bot.db import get_pool, retry_on_db_error
+from sqlalchemy import select, func
+
+from bot.db import get_async_session_factory
+from bot.models import Sale, Preorder, Booking, DailyPayment
+
+logger = logging.getLogger(__name__)
 
 
 class StatsRepository:
-    """Репозиторий для работы со статистикой (продажи, предзаказы, брони)."""
+    """Репозиторий для работы со статистикой (SQLAlchemy 2.0)."""
 
     @staticmethod
-    @retry_on_db_error()
     async def add_sale(
         item_id: int = None,
         count: int = 1,
@@ -22,114 +26,157 @@ class StatsRepository:
         message_id: int = None,
         conn=None
     ):
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                await conn.execute('''
-                    INSERT INTO sales (item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                    ON CONFLICT (message_id) DO NOTHING
-                ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
+        async def _impl(session):
+            sale = Sale(
+                item_id=item_id,
+                count=count,
+                cash=cash,
+                terminal=terminal,
+                qr=qr,
+                transfer=transfer,
+                invoice=invoice,
+                installment=installment,
+                is_accessory=is_accessory,
+                message_id=message_id
+            )
+            session.add(sale)
+            try:
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.warning(f"Продажа с message_id={message_id} уже существует, пропущено")
+
+        if conn is not None:
+            await _impl(conn)
         else:
-            await conn.execute('''
-                INSERT INTO sales (item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                ON CONFLICT (message_id) DO NOTHING
-            ''', item_id, count, cash, terminal, qr, transfer, invoice, installment, is_accessory, message_id)
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
     async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            await conn.execute('''
-                INSERT INTO preorders (cash, terminal, qr, transfer, invoice, installment)
-                VALUES ($1, $2, $3, $4, $5, $6)
-            ''', cash, terminal, qr, transfer, invoice, installment)
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            preorder = Preorder(
+                cash=cash,
+                terminal=terminal,
+                qr=qr,
+                transfer=transfer,
+                invoice=invoice,
+                installment=installment
+            )
+            session.add(preorder)
+            await session.commit()
 
     @staticmethod
-    @retry_on_db_error()
     async def add_booking(item_id: int, total_amount: float):
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            await conn.execute('''
-                INSERT INTO bookings (item_id, total_amount) VALUES ($1, $2)
-            ''', item_id, total_amount)
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            booking = Booking(
+                item_id=item_id,
+                total_amount=total_amount
+            )
+            session.add(booking)
+            await session.commit()
 
     @staticmethod
-    @retry_on_db_error()
     async def get_today_stats() -> dict:
         today = date.today()
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        async_session = get_async_session_factory()
+        async with async_session() as session:
             # Продажи
-            sale_sums = await conn.fetchrow('''
-                SELECT
-                    COALESCE(SUM(cash),0) as cash,
-                    COALESCE(SUM(terminal),0) as terminal,
-                    COALESCE(SUM(qr),0) as qr,
-                    COALESCE(SUM(transfer),0) as transfer,
-                    COALESCE(SUM(invoice),0) as invoice,
-                    COALESCE(SUM(installment),0) as installment,
-                    COUNT(*) as sales_count
-                FROM sales
-                WHERE DATE(sold_at) = $1
-            ''', today)
+            sale_sums = await session.execute(
+                select(
+                    func.coalesce(func.sum(Sale.cash), 0).label("cash"),
+                    func.coalesce(func.sum(Sale.terminal), 0).label("terminal"),
+                    func.coalesce(func.sum(Sale.qr), 0).label("qr"),
+                    func.coalesce(func.sum(Sale.transfer), 0).label("transfer"),
+                    func.coalesce(func.sum(Sale.invoice), 0).label("invoice"),
+                    func.coalesce(func.sum(Sale.installment), 0).label("installment"),
+                    func.count(Sale.id).label("sales_count")
+                ).where(func.date(Sale.sold_at) == today)
+            )
+            sale_row = sale_sums.mappings().one()
 
             # Предзаказы
-            pre_sums = await conn.fetchrow('''
-                SELECT
-                    COALESCE(SUM(cash),0) as cash,
-                    COALESCE(SUM(terminal),0) as terminal,
-                    COALESCE(SUM(qr),0) as qr,
-                    COALESCE(SUM(transfer),0) as transfer,
-                    COALESCE(SUM(invoice),0) as invoice,
-                    COALESCE(SUM(installment),0) as installment,
-                    COUNT(*) as preorders_count
-                FROM preorders
-                WHERE DATE(created_at) = $1
-            ''', today)
+            pre_sums = await session.execute(
+                select(
+                    func.coalesce(func.sum(Preorder.cash), 0).label("cash"),
+                    func.coalesce(func.sum(Preorder.terminal), 0).label("terminal"),
+                    func.coalesce(func.sum(Preorder.qr), 0).label("qr"),
+                    func.coalesce(func.sum(Preorder.transfer), 0).label("transfer"),
+                    func.coalesce(func.sum(Preorder.invoice), 0).label("invoice"),
+                    func.coalesce(func.sum(Preorder.installment), 0).label("installment"),
+                    func.count(Preorder.id).label("preorders_count")
+                ).where(func.date(Preorder.created_at) == today)
+            )
+            pre_row = pre_sums.mappings().one()
 
             # Брони
-            book_sums = await conn.fetchrow('''
-                SELECT
-                    COALESCE(SUM(total_amount),0) as total,
-                    COUNT(*) as bookings_count
-                FROM bookings
-                WHERE DATE(booked_at) = $1
-            ''', today)
+            book_sums = await session.execute(
+                select(
+                    func.coalesce(func.sum(Booking.total_amount), 0).label("total"),
+                    func.count(Booking.id).label("bookings_count")
+                ).where(func.date(Booking.booked_at) == today)
+            )
+            book_row = book_sums.mappings().one()
 
             return {
                 'date': today.strftime('%d.%m.%y'),
-                'preorders_count': pre_sums['preorders_count'],
-                'bookings_count': book_sums['bookings_count'],
-                'sales_count': sale_sums['sales_count'],
+                'preorders_count': pre_row['preorders_count'],
+                'bookings_count': book_row['bookings_count'],
+                'sales_count': sale_row['sales_count'],
                 'preorders': {
-                    'cash': pre_sums['cash'],
-                    'terminal': pre_sums['terminal'],
-                    'qr': pre_sums['qr'],
-                    'transfer': pre_sums['transfer'],
-                    'invoice': pre_sums['invoice'],
-                    'installment': pre_sums['installment'],
+                    'cash': pre_row['cash'],
+                    'terminal': pre_row['terminal'],
+                    'qr': pre_row['qr'],
+                    'transfer': pre_row['transfer'],
+                    'invoice': pre_row['invoice'],
+                    'installment': pre_row['installment'],
                 },
                 'sales': {
-                    'cash': sale_sums['cash'],
-                    'terminal': sale_sums['terminal'],
-                    'qr': sale_sums['qr'],
-                    'transfer': sale_sums['transfer'],
-                    'invoice': sale_sums['invoice'],
-                    'installment': sale_sums['installment'],
+                    'cash': sale_row['cash'],
+                    'terminal': sale_row['terminal'],
+                    'qr': sale_row['qr'],
+                    'transfer': sale_row['transfer'],
+                    'invoice': sale_row['invoice'],
+                    'installment': sale_row['installment'],
                 },
-                'bookings_total': book_sums['total'],
+                'bookings_total': book_row['total'],
             }
 
     @staticmethod
-    @retry_on_db_error()
     async def reset_today_stats():
         today = date.today()
-        pool = await get_pool()
-        async with pool.acquire() as conn, conn.transaction():
-            await conn.execute('DELETE FROM preorders WHERE DATE(created_at) = $1', today)
-            await conn.execute('DELETE FROM bookings WHERE DATE(booked_at) = $1', today)
-            await conn.execute('DELETE FROM sales WHERE DATE(sold_at) = $1', today)
-            await conn.execute('DELETE FROM daily_payments WHERE DATE(created_at) = $1', today)
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            async with session.begin():
+                # Продажи
+                sales = await session.execute(
+                    select(Sale).where(func.date(Sale.sold_at) == today)
+                )
+                for s in sales.scalars():
+                    await session.delete(s)
+
+                # Предзаказы
+                preorders = await session.execute(
+                    select(Preorder).where(func.date(Preorder.created_at) == today)
+                )
+                for p in preorders.scalars():
+                    await session.delete(p)
+
+                # Брони
+                bookings = await session.execute(
+                    select(Booking).where(func.date(Booking.booked_at) == today)
+                )
+                for b in bookings.scalars():
+                    await session.delete(b)
+
+                # Платежи
+                payments = await session.execute(
+                    select(DailyPayment).where(func.date(DailyPayment.created_at) == today)
+                )
+                for dp in payments.scalars():
+                    await session.delete(dp)
+
+                await session.commit()
