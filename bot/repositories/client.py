@@ -1,10 +1,10 @@
+# Файл: bot/repositories/client.py
 import json
 import logging
 from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select, func
-from sqlalchemy.dialects.postgresql import insert
 
 from bot.models import Client, Purchase
 from bot.db import get_async_session_factory
@@ -33,7 +33,6 @@ class ClientRepository:
                 )
                 client = result.scalar_one_or_none()
                 if client:
-                    # Обновляем поля, если они изменились
                     if full_name and full_name != client.full_name:
                         client.full_name = full_name
                     if telegram_username and telegram_username != client.telegram_username:
@@ -83,7 +82,6 @@ class ClientRepository:
                 return new_client.id
 
         if conn is not None:
-            # сессия передана извне, не управляем транзакцией
             return await _impl(conn)
         else:
             async_session = get_async_session_factory()
