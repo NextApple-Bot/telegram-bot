@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import traceback
 from typing import Any, Awaitable, Callable, Dict
@@ -20,22 +21,12 @@ class ErrorHandlerMiddleware(BaseMiddleware):
         try:
             return await handler(event, data)
         except Exception as e:
-            # Логируем полную цепочку ошибок
             logger.error(f"❌ Необработанное исключение при обработке {type(event).__name__}: {e}\n{traceback.format_exc()}")
-
-            # Извлекаем пользователя, если есть
             user: User | None = data.get("event_from_user")
-
-            # Отправляем уведомление администраторам
             asyncio.create_task(self._notify_admins(e, user, event))
-
-            # В зависимости от типа события можно ответить пользователю
-            # Но здесь мы просто подавляем ошибку, чтобы бот не упал
-            # При желании можно добавить возврат сообщения "Произошла ошибка"
             return None
 
     async def _notify_admins(self, exception: Exception, user: User | None, event: TelegramObject):
-        """Уведомляет администраторов о критической ошибке."""
         try:
             from telegram_alerter import send_alert
             user_info = f" от {user.full_name} (@{user.username})" if user else ""
