@@ -168,8 +168,23 @@ async def update_stats(request: Request):
         # Обновление количества броней
         bookings_count = int(data.get("bookings_count", 0))
         await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", target_date)
+
+        # Проверяем наличие служебного товара для бронирований
+        sys_item = await conn.fetchval("SELECT id FROM items WHERE id = 0")
+        if not sys_item:
+            # Создаём служебную категорию и товар с id=0, если их нет
+            await conn.execute("""
+                INSERT INTO categories (name, sort_order)
+                VALUES ('__SYSTEM__', -1)
+                ON CONFLICT (name) DO NOTHING
+            """)
+            sys_cat_id = await conn.fetchval("SELECT id FROM categories WHERE name = '__SYSTEM__'")
+            await conn.execute(
+                "INSERT INTO items (id, text, category_id, is_booked) VALUES (0, '__SYSTEM_STATS__', $1, FALSE) ON CONFLICT (id) DO NOTHING",
+                sys_cat_id
+            )
+
         for _ in range(bookings_count):
-            # ИСПРАВЛЕНО: используем item_id=0 (служебный товар)
             await conn.execute("INSERT INTO bookings (item_id, booked_at) VALUES (0, $1)", target_date)
 
     return JSONResponse({"success": True})
