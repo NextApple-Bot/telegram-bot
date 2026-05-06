@@ -4,9 +4,10 @@ import uuid
 from datetime import date
 
 from sqlalchemy import select, func
+
 from bot.db import get_async_session_factory
 from bot.models import Item, DeletedItem, Sale, DailyPayment
-from bot.repositories import ClientRepository
+from bot.repositories.client import ClientRepository
 from bot.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -49,17 +50,16 @@ async def handle_sale_from_form(
         processed_accessories = []
         accessories_payments = {}
 
-        # Если сессия пришла извне, используем её и не управляем транзакцией
-        if conn is not None:
-            session = conn
-            own_transaction = False
+        own_session = False
+        if conn is None:
+            async_session = get_async_session_factory()
+            session = async_session()
+            own_session = True
         else:
-            session_factory = get_async_session_factory()
-            session = session_factory()
-            own_transaction = True
+            session = conn
 
         try:
-            if own_transaction:
+            if own_session:
                 await session.begin()
 
             # Клиент
@@ -138,7 +138,7 @@ async def handle_sale_from_form(
                     conn=session
                 )
 
-            # Удаление товара и запись в deleted_items
+            # Удаление товара
             old_item = await session.get(Item, item_id)
             if old_item:
                 deleted = DeletedItem(
@@ -152,7 +152,7 @@ async def handle_sale_from_form(
                 session.add(deleted)
                 await session.delete(old_item)
 
-            # Статистика продажи
+            # Статистика
             sale = Sale(
                 count=1,
                 cash=0,
@@ -166,7 +166,7 @@ async def handle_sale_from_form(
             )
             session.add(sale)
 
-            if own_transaction:
+            if own_session:
                 await session.commit()
 
             # Уведомление
@@ -185,8 +185,8 @@ async def handle_sale_from_form(
             ))
 
         finally:
-            if own_transaction:
-                await session.close()
+            if own_session:
+                await session.aclose()
 
         await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
         return {"success": True}
