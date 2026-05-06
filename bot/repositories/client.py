@@ -33,6 +33,7 @@ class ClientRepository:
                 )
                 client = result.scalar_one_or_none()
                 if client:
+                    # Обновляем поля, если они изменились
                     if full_name and full_name != client.full_name:
                         client.full_name = full_name
                     if telegram_username and telegram_username != client.telegram_username:
@@ -50,7 +51,6 @@ class ClientRepository:
                     if birth_date is not None and birth_date != client.birth_date:
                         client.birth_date = birth_date
                     client.updated_at = datetime.now()
-                    await session.commit()
                     logger.info(f"✅ Клиент {client.id} обновлён")
                     return client.id
                 else:
@@ -65,8 +65,7 @@ class ClientRepository:
                         birth_date=birth_date
                     )
                     session.add(new_client)
-                    await session.commit()
-                    await session.refresh(new_client)
+                    await session.flush()
                     logger.info(f"✅ Клиент {new_client.id} создан")
                     return new_client.id
             else:
@@ -80,16 +79,17 @@ class ClientRepository:
                     birth_date=birth_date
                 )
                 session.add(new_client)
-                await session.commit()
-                await session.refresh(new_client)
+                await session.flush()
                 return new_client.id
 
         if conn is not None:
+            # сессия передана извне, не управляем транзакцией
             return await _impl(conn)
         else:
             async_session = get_async_session_factory()
             async with async_session() as session:
-                return await _impl(session)
+                async with session.begin():
+                    return await _impl(session)
 
     @staticmethod
     async def add_purchase(
@@ -112,14 +112,14 @@ class ClientRepository:
                 purchase_type=purchase_type
             )
             session.add(new_purchase)
-            await session.commit()
 
         if conn is not None:
             await _impl(conn)
         else:
             async_session = get_async_session_factory()
             async with async_session() as session:
-                await _impl(session)
+                async with session.begin():
+                    await _impl(session)
 
     @staticmethod
     async def get_client_purchases(client_id: int) -> list[dict]:
