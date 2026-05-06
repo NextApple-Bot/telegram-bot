@@ -1,51 +1,66 @@
-# Файл: bot/repositories/item.py
 import logging
+from typing import Optional
 
-import asyncpg
+from sqlalchemy import select, func
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 
-from bot.db import get_pool, retry_on_db_error
+from bot.db import get_async_session_factory
+from bot.models import Category, Item, DeletedItem
 from bot.utils.validators import extract_serials
 
 logger = logging.getLogger(__name__)
 
+
 class ItemRepository:
-    """Репозиторий для работы с товарами и категориями."""
+    """Репозиторий для работы с товарами и категориями (SQLAlchemy 2.0)."""
 
     @staticmethod
-    @retry_on_db_error()
     async def get_or_create_category(name: str, conn=None) -> int:
         """Возвращает ID категории по имени, создаёт при отсутствии."""
         norm_name = name.lower().rstrip(':')
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                return await ItemRepository._get_or_create_category(conn, norm_name, name)
-        else:
-            return await ItemRepository._get_or_create_category(conn, norm_name, name)
-
-    @staticmethod
-    async def _get_or_create_category(conn, norm_name: str, original_name: str) -> int:
-        row = await conn.fetchrow('SELECT id FROM categories WHERE LOWER(name) = $1', norm_name)
-        if row:
-            return row['id']
-        max_order = await conn.fetchval('SELECT COALESCE(MAX(sort_order), -1) FROM categories')
-        try:
-            row = await conn.fetchrow(
-                'INSERT INTO categories (name, sort_order) VALUES ($1, $2) RETURNING id',
-                original_name, max_order + 1
+        async def _impl(session):
+            # Ищем категорию
+            result = await session.execute(
+                select(Category.id).where(func.lower(Category.name) == norm_name)
             )
-            return row['id']
-        except asyncpg.UniqueViolationError:
-            row = await conn.fetchrow('SELECT id FROM categories WHERE name = $1', original_name)
-            if row:
-                return row['id']
-            else:
-                logger.error(f"Не удалось создать или найти категорию {original_name} после UniqueViolation")
-                raise
+            cat_id = result.scalar_one_or_none()
+            if cat_id:
+                return cat_id
+            # Создаём новую
+            max_order = await session.execute(
+                select(func.coalesce(func.max(Category.sort_order), -1))
+            )
+            new_order = max_order.scalar() + 1
+            new_cat = Category(name=name, sort_order=new_order)
+            session.add(new_cat)
+            try:
+                await session.commit()
+                await session.refresh(new_cat)
+                return new_cat.id
+            except IntegrityError:
+                # Категория была создана между select и insert
+                await session.rollback()
+                result = await session.execute(
+                    select(Category.id).where(Category.name == name)
+                )
+                existing = result.scalar_one()
+                return existing.id
+
+        if conn is not None:
+            return await _impl(conn)
+        else:
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
-    async def add_item(text: str, serial: str | None = None, category_id: int | None = None, category_name: str | None = None):
+    async def add_item(
+        text: str,
+        serial: Optional[str] = None,
+        category_id: Optional[int] = None,
+        category_name: Optional[str] = None
+    ):
         """Добавляет товар. Можно указать category_id или category_name."""
         if category_id is None:
             if category_name is None:
@@ -53,206 +68,255 @@ class ItemRepository:
             cat_id = await ItemRepository.get_or_create_category(category_name)
         else:
             cat_id = category_id
+
         normalized_serial = serial.strip().upper() if serial else None
         is_booked = 'Бронь от' in text
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            await conn.execute('''
-                INSERT INTO items (text, serial, category_id, is_booked)
-                VALUES ($1, $2, $3, $4)
-            ''', text, normalized_serial, cat_id, is_booked)
+
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            new_item = Item(
+                text=text,
+                serial=normalized_serial,
+                category_id=cat_id,
+                is_booked=is_booked
+            )
+            session.add(new_item)
+            await session.commit()
+            logger.info(f"✅ Товар добавлен: {text[:50]}")
 
     @staticmethod
-    @retry_on_db_error()
-    async def get_item_id_by_serial(serial: str, conn=None) -> int | None:
+    async def get_item_id_by_serial(serial: str, conn=None) -> Optional[int]:
         if not serial:
             return None
         normalized = serial.strip().upper()
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                row = await conn.fetchrow('SELECT id FROM items WHERE UPPER(serial) = $1', normalized)
-                return row['id'] if row else None
+        async def _impl(session):
+            result = await session.execute(
+                select(Item.id).where(func.upper(Item.serial) == normalized)
+            )
+            return result.scalar_one_or_none()
+        if conn is not None:
+            return await _impl(conn)
         else:
-            row = await conn.fetchrow('SELECT id FROM items WHERE UPPER(serial) = $1', normalized)
-            return row['id'] if row else None
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
-    async def get_item_by_serial(serial: str, conn=None) -> dict | None:
+    async def get_item_by_serial(serial: str, conn=None) -> Optional[dict]:
         normalized = serial.strip().upper()
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                row = await conn.fetchrow('''
-                    SELECT i.id, i.text, c.id as category_id, c.name as category_name
-                    FROM items i
-                    JOIN categories c ON i.category_id = c.id
-                    WHERE UPPER(i.serial) = $1
-                ''', normalized)
-                return dict(row) if row else None
-        else:
-            row = await conn.fetchrow('''
-                SELECT i.id, i.text, c.id as category_id, c.name as category_name
-                FROM items i
-                JOIN categories c ON i.category_id = c.id
-                WHERE UPPER(i.serial) = $1
-            ''', normalized)
+        async def _impl(session):
+            result = await session.execute(
+                select(Item.id, Item.text, Category.id.label('category_id'), Category.name.label('category_name'))
+                .join(Category, Item.category_id == Category.id)
+                .where(func.upper(Item.serial) == normalized)
+            )
+            row = result.mappings().one_or_none()
             return dict(row) if row else None
+        if conn is not None:
+            return await _impl(conn)
+        else:
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
-    async def get_item_by_text(text: str, conn=None) -> dict | None:
-        """Ищет товар по точному тексту, возвращает id, текст и имя категории."""
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                row = await conn.fetchrow('''
-                    SELECT i.id, i.text, c.name as category_name
-                    FROM items i
-                    JOIN categories c ON i.category_id = c.id
-                    WHERE i.text = $1
-                ''', text)
-                return dict(row) if row else None
-        else:
-            row = await conn.fetchrow('''
-                SELECT i.id, i.text, c.name as category_name
-                FROM items i
-                JOIN categories c ON i.category_id = c.id
-                WHERE i.text = $1
-            ''', text)
+    async def get_item_by_text(text: str, conn=None) -> Optional[dict]:
+        async def _impl(session):
+            result = await session.execute(
+                select(Item.id, Item.text, Category.name.label('category_name'))
+                .join(Category, Item.category_id == Category.id)
+                .where(Item.text == text)
+            )
+            row = result.mappings().one_or_none()
             return dict(row) if row else None
+        if conn is not None:
+            return await _impl(conn)
+        else:
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
     async def remove_item_by_serial(serial: str, conn=None) -> int:
         normalized = serial.strip().upper() if serial else None
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                result = await conn.execute('DELETE FROM items WHERE UPPER(serial) = $1', normalized)
-                return int(result.split()[1]) if result.startswith('DELETE') else 0
+        async def _impl(session):
+            result = await session.execute(
+                select(Item.id).where(func.upper(Item.serial) == normalized)
+            )
+            item_id = result.scalar_one_or_none()
+            if item_id:
+                await session.execute(
+                    select(Item).where(Item.id == item_id)
+                )
+                item = await session.get(Item, item_id)
+                if item:
+                    await session.delete(item)
+                    await session.commit()
+                    return 1
+            return 0
+        if conn is not None:
+            return await _impl(conn)
         else:
-            result = await conn.execute('DELETE FROM items WHERE UPPER(serial) = $1', normalized)
-            return int(result.split()[1]) if result.startswith('DELETE') else 0
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
-    async def add_deleted_item(item_id: int, text: str, serial: str, category_id: int, reason: str = 'manual', conn=None):
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                await conn.execute('''
-                    INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
-                    VALUES ($1, $2, $3, $4, $5)
-                ''', item_id, text, serial, category_id, reason)
+    async def add_deleted_item(
+        item_id: int,
+        text: str,
+        serial: str,
+        category_id: int,
+        reason: str = 'manual',
+        conn=None
+    ):
+        async def _impl(session):
+            deleted = DeletedItem(
+                item_id=item_id,
+                text=text,
+                serial=serial,
+                category_id=category_id,
+                reason=reason
+            )
+            session.add(deleted)
+            await session.commit()
+        if conn is not None:
+            return await _impl(conn)
         else:
-            await conn.execute('''
-                INSERT INTO deleted_items (item_id, text, serial, category_id, reason)
-                VALUES ($1, $2, $3, $4, $5)
-            ''', item_id, text, serial, category_id, reason)
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
-    async def get_last_deleted_item() -> dict | None:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow('''
-                SELECT * FROM deleted_items
-                WHERE restored = FALSE
-                ORDER BY deleted_at DESC
-                LIMIT 1
-            ''')
-            return dict(row) if row else None
+    async def get_last_deleted_item() -> Optional[dict]:
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            result = await session.execute(
+                select(DeletedItem)
+                .where(DeletedItem.restored == False)
+                .order_by(DeletedItem.deleted_at.desc())
+                .limit(1)
+            )
+            item = result.scalar_one_or_none()
+            if not item:
+                return None
+            return {
+                "id": item.id,
+                "item_id": item.item_id,
+                "text": item.text,
+                "serial": item.serial,
+                "category_id": item.category_id,
+                "deleted_at": item.deleted_at,
+                "restored": item.restored,
+                "reason": item.reason,
+                "sale_message_id": item.sale_message_id
+            }
 
     @staticmethod
-    @retry_on_db_error()
     async def restore_deleted_item(deleted_id: int) -> bool:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            result = await conn.execute('UPDATE deleted_items SET restored = TRUE WHERE id = $1', deleted_id)
-            return result == "UPDATE 1"
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            item = await session.get(DeletedItem, deleted_id)
+            if item:
+                item.restored = True
+                await session.commit()
+                return True
+            return False
 
     @staticmethod
-    @retry_on_db_error()
     async def mark_item_booked(item_id: int, book_text: str, conn=None):
-        if conn is None:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
-                await conn.execute('''
-                    UPDATE items SET text = $1, is_booked = TRUE WHERE id = $2
-                ''', book_text, item_id)
+        async def _impl(session):
+            item = await session.get(Item, item_id)
+            if item:
+                item.text = book_text
+                item.is_booked = True
+                await session.commit()
+        if conn is not None:
+            return await _impl(conn)
         else:
-            await conn.execute('''
-                UPDATE items SET text = $1, is_booked = TRUE WHERE id = $2
-            ''', book_text, item_id)
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
     async def get_all_categories_with_items():
-        """Возвращает категории с товарами, отсортированные по sort_order, затем по имени, исключая служебную __SYSTEM__."""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch('''
-                SELECT c.name as category_name, i.text as item_text
-                FROM categories c
-                LEFT JOIN items i ON c.id = i.category_id
-                WHERE c.name != '__SYSTEM__'
-                ORDER BY c.sort_order, c.name, i.id
-            ''')
-            categories = {}
+        """Возвращает категории с товарами, отсортированные по sort_order, затем по имени."""
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            result = await session.execute(
+                select(Category.name, Item.text)
+                .outerjoin(Item, Category.id == Item.category_id)
+                .where(Category.name != '__SYSTEM__')
+                .order_by(Category.sort_order, Category.name, Item.id)
+            )
+            rows = result.all()
+            categories_dict = {}
             for row in rows:
-                cat = row['category_name']
-                if cat not in categories:
-                    categories[cat] = []
-                if row['item_text']:
-                    categories[cat].append(row['item_text'])
-            return [{"header": cat, "items": items} for cat, items in categories.items()]
+                cat_name = row.name
+                if cat_name not in categories_dict:
+                    categories_dict[cat_name] = []
+                if row.text:
+                    categories_dict[cat_name].append(row.text)
+            return [{"header": cat, "items": items} for cat, items in categories_dict.items()]
 
     @staticmethod
-    @retry_on_db_error()
     async def get_all_items_serials():
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch('SELECT text, serial FROM items')
-            return [dict(row) for row in rows]
+        """Возвращает список всех серийников и текстов товаров."""
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            result = await session.execute(
+                select(Item.text, Item.serial)
+            )
+            rows = result.all()
+            return [{"text": row.text, "serial": row.serial} for row in rows]
 
     @staticmethod
-    @retry_on_db_error()
     async def bulk_replace_assortment(categories: list[dict[str, list[str]]]) -> None:
-        from bot.services.assortment import AssortmentService
-        pool = await get_pool()
-        async with pool.acquire() as conn, conn.transaction():
-            await conn.execute('TRUNCATE TABLE categories CASCADE')
-            category_names = [cat['header'] for cat in categories]
-            if category_names:
-                for idx, name in enumerate(category_names):
-                    await conn.execute(
-                        'INSERT INTO categories (name, sort_order) VALUES ($1, $2)',
-                        name, idx
-                    )
+        """Полностью заменяет ассортимент новыми категориями и товарами."""
+        from bot.services.cache import cache
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            async with session.begin():
+                # Очистка старых данных
+                await session.execute(
+                    select(Item).where(Item.category_id.notin_(
+                        select(Category.id).where(Category.name == '__SYSTEM__')
+                    ))
+                )
+                items_to_delete = await session.execute(
+                    select(Item).where(Item.category_id.notin_(
+                        select(Category.id).where(Category.name == '__SYSTEM__')
+                    ))
+                )
+                for item in items_to_delete.scalars():
+                    await session.delete(item)
+                await session.flush()
+                await session.execute(
+                    select(Category).where(Category.name != '__SYSTEM__')
+                )
+                cats_to_delete = await session.execute(
+                    select(Category).where(Category.name != '__SYSTEM__')
+                )
+                for cat in cats_to_delete.scalars():
+                    await session.delete(cat)
+                await session.flush()
 
-            rows = await conn.fetch('SELECT id, name FROM categories')
-            cat_id_map = {row['name']: row['id'] for row in rows}
-
-            items_data = []
-            for cat in categories:
-                cat_id = cat_id_map[cat['header']]
-                for item_text in cat['items']:
-                    serials = extract_serials(item_text)
-                    serial = serials[0].strip().upper() if serials else None
-                    is_booked = 'Бронь от' in item_text
-                    items_data.append((item_text, serial, cat_id, is_booked))
-
-            if items_data:
-                values_placeholder = []
-                params = []
-                idx = 1
-                for text, serial, cat_id, is_booked in items_data:
-                    values_placeholder.append(f"(${idx}, ${idx+1}, ${idx+2}, ${idx+3})")
-                    params.extend([text, serial, cat_id, is_booked])
-                    idx += 4
-                query = f'INSERT INTO items (text, serial, category_id, is_booked) VALUES {", ".join(values_placeholder)}'  # nosec B608
-                await conn.execute(query, *params)
-
-        await AssortmentService.invalidate_cache()
+                # Вставка новых категорий и товаров
+                for idx, cat_data in enumerate(categories):
+                    new_cat = Category(name=cat_data['header'], sort_order=idx)
+                    session.add(new_cat)
+                    await session.flush()
+                    for item_text in cat_data['items']:
+                        serials = extract_serials(item_text)
+                        serial = serials[0].strip().upper() if serials else None
+                        is_booked = 'Бронь от' in item_text
+                        new_item = Item(
+                            text=item_text,
+                            serial=serial,
+                            category_id=new_cat.id,
+                            is_booked=is_booked
+                        )
+                        session.add(new_item)
+                await session.commit()
+        await cache.delete("assortment:all")
+        logger.info(f"Ассортимент полностью заменён ({len(categories)} категорий)")
