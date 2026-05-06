@@ -1,9 +1,10 @@
 import logging
+import os
 import secrets
 
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import config
 from bot.handlers.service_commands import (
@@ -76,7 +77,7 @@ async def cmd_export_clients(message: Message):
     try:
         file_path = await export_clients_csv()
         await message.answer_document(FSInputFile(file_path, filename="clients.csv"), caption="📁 Экспорт клиентов")
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка экспорта клиентов")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка экспорта")
 
@@ -88,7 +89,7 @@ async def cmd_export_purchases(message: Message):
     try:
         file_path = await export_purchases_csv()
         await message.answer_document(FSInputFile(file_path, filename="purchases.csv"), caption="📁 Экспорт покупок")
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка экспорта покупок")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка экспорта")
 
@@ -107,7 +108,7 @@ async def cmd_client_info(message: Message):
             await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="Клиент не найден")
             return
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text, parse_mode='Markdown')
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка получения информации о клиенте")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -119,7 +120,7 @@ async def cmd_export_full_report(message: Message):
     try:
         file_path = await export_full_report_csv()
         await message.answer_document(FSInputFile(file_path, filename="full_report.csv"), caption="📁 Полный отчёт")
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка экспорта полного отчёта")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка экспорта")
 
@@ -132,7 +133,7 @@ async def cmd_show_categories(message: Message):
     try:
         text = await list_categories_text()
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text, parse_mode='Markdown')
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка списка категорий")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -157,7 +158,7 @@ async def cmd_clean_empty(message: Message):
             text=f"⚠️ Найдены пустые категории:\n{categories_list}\n\nУдалить их?",
             reply_markup=keyboard,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка поиска пустых категорий")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -190,7 +191,7 @@ async def cmd_delete_category(message: Message):
             text=f"⚠️ Точно удалить категорию {reason}?",
             reply_markup=keyboard,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка подготовки удаления категории")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -227,7 +228,7 @@ async def cmd_merge_categories(message: Message):
             text=msg_text,
             reply_markup=keyboard,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка подготовки слияния категорий")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -278,7 +279,7 @@ async def cmd_delete_client(message: Message):
             text=warning,
             reply_markup=keyboard,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка подготовки удаления клиента")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -311,7 +312,7 @@ async def cmd_delete_purchase(message: Message):
             text=warning,
             reply_markup=keyboard,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка подготовки удаления покупки")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -324,7 +325,7 @@ async def cmd_undo(message: Message):
     try:
         text = await undo_last_deletion()
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text)
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка восстановления")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
@@ -338,7 +339,7 @@ async def cmd_chatid(message: Message):
         response += f"Thread ID: `{thread_id}`"
     await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=response, parse_mode="Markdown")
 
-# ---------- Команда для исправления таблицы sales ----------
+# ---------- Команда /fix_sales_unique ----------
 @router.message(Command("fix_sales_unique"))
 async def cmd_fix_sales_unique(message: Message):
     if not is_admin(message.from_user.id):
@@ -347,11 +348,11 @@ async def cmd_fix_sales_unique(message: Message):
     try:
         result_msg = await fix_sales_unique()
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=result_msg)
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка fix_sales_unique")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
-# ---------- Команда для переустановки вебхука ----------
+# ---------- Команда /set_webhook ----------
 @router.message(Command("set_webhook"))
 async def cmd_set_webhook(message: Message):
     if not is_admin(message.from_user.id):
@@ -360,6 +361,6 @@ async def cmd_set_webhook(message: Message):
     try:
         result_msg = await set_webhook_manually()
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=result_msg, parse_mode='Markdown')
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка ручной установки вебхука")
         await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
