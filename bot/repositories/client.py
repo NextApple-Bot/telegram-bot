@@ -1,10 +1,9 @@
-# Файл: bot/repositories/client.py
 import json
 import logging
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert
 
 from bot.models import Client, Purchase
@@ -27,19 +26,13 @@ class ClientRepository:
         birth_date: Optional[str] = None,
         conn=None
     ) -> int:
-        """
-        conn – опциональная асинхронная сессия SQLAlchemy.
-        Если передана, используется она, иначе создаётся своя сессия.
-        """
         async def _impl(session):
             if phone:
-                # Ищем клиента по основному телефону
                 result = await session.execute(
                     select(Client).where(Client.phone == phone)
                 )
                 client = result.scalar_one_or_none()
                 if client:
-                    # Обновляем поля, если они изменились
                     if full_name and full_name != client.full_name:
                         client.full_name = full_name
                     if telegram_username and telegram_username != client.telegram_username:
@@ -61,7 +54,6 @@ class ClientRepository:
                     logger.info(f"✅ Клиент {client.id} обновлён")
                     return client.id
                 else:
-                    # Создаём нового
                     phones_str = ",".join(sorted(set(phones))) if phones else None
                     new_client = Client(
                         full_name=full_name,
@@ -78,7 +70,6 @@ class ClientRepository:
                     logger.info(f"✅ Клиент {new_client.id} создан")
                     return new_client.id
             else:
-                # Без телефона просто создаём
                 phones_str = ",".join(sorted(set(phones))) if phones else None
                 new_client = Client(
                     full_name=full_name,
@@ -183,16 +174,13 @@ class ClientRepository:
     async def get_available_months() -> list[str]:
         async_session = get_async_session_factory()
         async with async_session() as session:
-            # Клиенты
             q1 = select(func.to_char(Client.created_at, 'MM.YYYY')).where(Client.created_at.isnot(None)).distinct()
             res1 = await session.execute(q1)
             months1 = [row[0] for row in res1.all()]
-            # Покупки
             q2 = select(func.to_char(Purchase.created_at, 'MM.YYYY')).where(Purchase.created_at.isnot(None)).distinct()
             res2 = await session.execute(q2)
             months2 = [row[0] for row in res2.all()]
-            all_months = sorted(set(months1 + months2), reverse=True)
-            return all_months
+            return sorted(set(months1 + months2), reverse=True)
 
     @staticmethod
     async def get_clients_data_for_month(month_str: str) -> list[dict]:
