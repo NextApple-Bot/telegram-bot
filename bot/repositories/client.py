@@ -2,88 +2,103 @@
 import json
 import logging
 from datetime import datetime
+from typing import Optional
 
-from bot.db import get_pool, retry_on_db_error
+from sqlalchemy import select, func, text
+from sqlalchemy.dialects.postgresql import insert
+
+from bot.models import Client, Purchase
+from bot.db import get_async_session_factory
 
 logger = logging.getLogger(__name__)
 
+
 class ClientRepository:
-    """Репозиторий для работы с клиентами и покупками."""
+    """Репозиторий для работы с клиентами и покупками (SQLAlchemy 2.0)."""
 
     @staticmethod
     async def get_or_create_client(
-        phone: str | None = None,
-        phones: list[str] | None = None,
-        full_name: str | None = None,
-        telegram_username: str | None = None,
-        social_network: str | None = None,
-        referral_source: str | None = None,
-        birth_date: str | None = None,
+        phone: Optional[str] = None,
+        phones: Optional[list[str]] = None,
+        full_name: Optional[str] = None,
+        telegram_username: Optional[str] = None,
+        social_network: Optional[str] = None,
+        referral_source: Optional[str] = None,
+        birth_date: Optional[str] = None,
         conn=None
     ) -> int:
-        logger.info(f"🔍 get_or_create_client: phone={phone}, full_name={full_name}, birth_date={birth_date}")
-
-        async def _impl(connection):
+        """
+        conn – опциональная асинхронная сессия SQLAlchemy.
+        Если передана, используется она, иначе создаётся своя сессия.
+        """
+        async def _impl(session):
             if phone:
-                row = await connection.fetchrow(
-                    'SELECT id, full_name, telegram_username, social_network, referral_source, phones, birth_date FROM clients WHERE phone = $1',
-                    phone
+                # Ищем клиента по основному телефону
+                result = await session.execute(
+                    select(Client).where(Client.phone == phone)
                 )
-                if row:
-                    client_id = row['id']
-                    updates = []
-                    params = []
-                    if full_name and full_name != row['full_name']:
-                        updates.append("full_name = $" + str(len(params)+1))
-                        params.append(full_name)
-                    if telegram_username and telegram_username != row['telegram_username']:
-                        updates.append("telegram_username = $" + str(len(params)+1))
-                        params.append(telegram_username)
-                    if social_network and social_network != row['social_network']:
-                        updates.append("social_network = $" + str(len(params)+1))
-                        params.append(social_network)
-                    if referral_source and referral_source != row['referral_source']:
-                        updates.append("referral_source = $" + str(len(params)+1))
-                        params.append(referral_source)
+                client = result.scalar_one_or_none()
+                if client:
+                    # Обновляем поля, если они изменились
+                    if full_name and full_name != client.full_name:
+                        client.full_name = full_name
+                    if telegram_username and telegram_username != client.telegram_username:
+                        client.telegram_username = telegram_username
+                    if social_network and social_network != client.social_network:
+                        client.social_network = social_network
+                    if referral_source and referral_source != client.referral_source:
+                        client.referral_source = referral_source
                     if phones:
-                        existing_phones = row['phones'] if row['phones'] else ""
-                        all_phones = set(existing_phones.split(',')) if existing_phones else set()
-                        all_phones.update(phones)
-                        new_phones_str = ",".join(sorted(all_phones))
-                        if new_phones_str != existing_phones:
-                            updates.append("phones = $" + str(len(params)+1))
-                            params.append(new_phones_str)
-                    if birth_date is not None and birth_date != row['birth_date']:
-                        updates.append("birth_date = $" + str(len(params)+1))
-                        params.append(birth_date)
-                    if updates:
-                        set_clause = ", ".join(updates)
-                        params.append(client_id)
-                        query = f"UPDATE clients SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ${len(params)}"  # nosec B608
-                        await connection.execute(query, *params)
-                        logger.info(f"✅ Клиент {client_id} обновлён")
-                    return client_id
+                        existing_phones = set(client.phones.split(',')) if client.phones else set()
+                        existing_phones.update(phones)
+                        new_phones_str = ",".join(sorted(existing_phones))
+                        if new_phones_str != client.phones:
+                            client.phones = new_phones_str
+                    if birth_date is not None and birth_date != client.birth_date:
+                        client.birth_date = birth_date
+                    client.updated_at = datetime.now()
+                    await session.commit()
+                    logger.info(f"✅ Клиент {client.id} обновлён")
+                    return client.id
                 else:
+                    # Создаём нового
                     phones_str = ",".join(sorted(set(phones))) if phones else None
-                    row = await connection.fetchrow('''
-                        INSERT INTO clients (full_name, phone, phones, telegram_username, social_network, referral_source, birth_date)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
-                    ''', full_name, phone, phones_str, telegram_username, social_network, referral_source, birth_date)
-                    return row['id']
+                    new_client = Client(
+                        full_name=full_name,
+                        phone=phone,
+                        phones=phones_str,
+                        telegram_username=telegram_username,
+                        social_network=social_network,
+                        referral_source=referral_source,
+                        birth_date=birth_date
+                    )
+                    session.add(new_client)
+                    await session.commit()
+                    await session.refresh(new_client)
+                    logger.info(f"✅ Клиент {new_client.id} создан")
+                    return new_client.id
             else:
+                # Без телефона просто создаём
                 phones_str = ",".join(sorted(set(phones))) if phones else None
-                row = await connection.fetchrow('''
-                    INSERT INTO clients (full_name, phones, telegram_username, social_network, referral_source, birth_date)
-                    VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
-                ''', full_name, phones_str, telegram_username, social_network, referral_source, birth_date)
-                return row['id']
+                new_client = Client(
+                    full_name=full_name,
+                    phones=phones_str,
+                    telegram_username=telegram_username,
+                    social_network=social_network,
+                    referral_source=referral_source,
+                    birth_date=birth_date
+                )
+                session.add(new_client)
+                await session.commit()
+                await session.refresh(new_client)
+                return new_client.id
 
         if conn is not None:
             return await _impl(conn)
         else:
-            pool = await get_pool()
-            async with pool.acquire() as new_conn:
-                return await _impl(new_conn)
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                return await _impl(session)
 
     @staticmethod
     async def add_purchase(
@@ -97,59 +112,89 @@ class ClientRepository:
         items_json = json.dumps(items, ensure_ascii=False)
         payment_json = json.dumps(payment_details, ensure_ascii=False)
 
-        async def _impl(connection):
-            await connection.execute('''
-                INSERT INTO purchases (client_id, items_json, total_amount, payment_details, purchase_type)
-                VALUES ($1, $2, $3, $4, $5)
-            ''', client_id, items_json, total_amount, payment_json, purchase_type)
+        async def _impl(session):
+            new_purchase = Purchase(
+                client_id=client_id,
+                items_json=items_json,
+                total_amount=total_amount,
+                payment_details=payment_json,
+                purchase_type=purchase_type
+            )
+            session.add(new_purchase)
+            await session.commit()
 
         if conn is not None:
             await _impl(conn)
         else:
-            pool = await get_pool()
-            async with pool.acquire() as new_conn:
-                await _impl(new_conn)
+            async_session = get_async_session_factory()
+            async with async_session() as session:
+                await _impl(session)
 
     @staticmethod
-    @retry_on_db_error()
     async def get_client_purchases(client_id: int) -> list[dict]:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch('SELECT * FROM purchases WHERE client_id = $1 ORDER BY created_at DESC', client_id)
-            return [dict(row) for row in rows]
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            result = await session.execute(
+                select(Purchase).where(Purchase.client_id == client_id).order_by(Purchase.created_at.desc())
+            )
+            purchases = result.scalars().all()
+            return [
+                {
+                    "id": p.id,
+                    "client_id": p.client_id,
+                    "items_json": p.items_json,
+                    "total_amount": p.total_amount,
+                    "payment_details": p.payment_details,
+                    "purchase_type": p.purchase_type,
+                    "created_at": p.created_at
+                }
+                for p in purchases
+            ]
 
     @staticmethod
-    @retry_on_db_error()
     async def search_clients(query: str) -> list[dict]:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch('''
-                SELECT * FROM clients
-                WHERE full_name ILIKE $1 OR phone ILIKE $1 OR telegram_username ILIKE $1
-                ORDER BY updated_at DESC
-            ''', f'%{query}%')
-            return [dict(row) for row in rows]
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            result = await session.execute(
+                select(Client).where(
+                    Client.full_name.ilike(f"%{query}%") |
+                    Client.phone.ilike(f"%{query}%") |
+                    Client.telegram_username.ilike(f"%{query}%")
+                ).order_by(Client.updated_at.desc())
+            )
+            clients = result.scalars().all()
+            return [
+                {
+                    "id": c.id,
+                    "full_name": c.full_name,
+                    "phone": c.phone,
+                    "phones": c.phones,
+                    "telegram_username": c.telegram_username,
+                    "social_network": c.social_network,
+                    "referral_source": c.referral_source,
+                    "birth_date": c.birth_date,
+                    "created_at": c.created_at,
+                    "updated_at": c.updated_at
+                }
+                for c in clients
+            ]
 
     @staticmethod
-    @retry_on_db_error()
     async def get_available_months() -> list[str]:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            rows1 = await conn.fetch('''
-                SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
-                FROM clients
-                WHERE created_at IS NOT NULL
-            ''')
-            rows2 = await conn.fetch('''
-                SELECT DISTINCT to_char(created_at, 'MM.YYYY') as month
-                FROM purchases
-                WHERE created_at IS NOT NULL
-            ''')
-            months = sorted(set([r['month'] for r in rows1] + [r['month'] for r in rows2]), reverse=True)
-            return months
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            # Клиенты
+            q1 = select(func.to_char(Client.created_at, 'MM.YYYY')).where(Client.created_at.isnot(None)).distinct()
+            res1 = await session.execute(q1)
+            months1 = [row[0] for row in res1.all()]
+            # Покупки
+            q2 = select(func.to_char(Purchase.created_at, 'MM.YYYY')).where(Purchase.created_at.isnot(None)).distinct()
+            res2 = await session.execute(q2)
+            months2 = [row[0] for row in res2.all()]
+            all_months = sorted(set(months1 + months2), reverse=True)
+            return all_months
 
     @staticmethod
-    @retry_on_db_error()
     async def get_clients_data_for_month(month_str: str) -> list[dict]:
         month, year = map(int, month_str.split('.'))
         start_date = datetime(year, month, 1).date()
@@ -158,29 +203,54 @@ class ClientRepository:
         else:
             end_date = datetime(year, month + 1, 1).date()
 
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch('''
-                SELECT
-                    c.id as client_id,
-                    c.full_name,
-                    c.phone,
-                    c.phones,
-                    c.telegram_username,
-                    c.social_network,
-                    c.referral_source,
-                    c.birth_date,
-                    c.created_at as client_created_at,
-                    p.id as purchase_id,
-                    p.items_json,
-                    p.total_amount,
-                    p.payment_details,
-                    p.purchase_type,
-                    p.created_at as purchase_created_at
-                FROM clients c
-                LEFT JOIN purchases p ON c.id = p.client_id
-                    AND p.created_at >= $1 AND p.created_at < $2
-                WHERE (p.id IS NOT NULL) OR (c.created_at >= $1 AND c.created_at < $2)
-                ORDER BY c.id, p.created_at
-            ''', start_date, end_date)
-            return [dict(row) for row in rows]
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            q = (
+                select(
+                    Client.id.label("client_id"),
+                    Client.full_name,
+                    Client.phone,
+                    Client.phones,
+                    Client.telegram_username,
+                    Client.social_network,
+                    Client.referral_source,
+                    Client.birth_date,
+                    Client.created_at.label("client_created_at"),
+                    Purchase.id.label("purchase_id"),
+                    Purchase.items_json,
+                    Purchase.total_amount,
+                    Purchase.payment_details,
+                    Purchase.purchase_type,
+                    Purchase.created_at.label("purchase_created_at")
+                )
+                .outerjoin(Purchase, (Client.id == Purchase.client_id) &
+                                    (Purchase.created_at >= start_date) &
+                                    (Purchase.created_at < end_date))
+                .where(
+                    (Purchase.id.isnot(None)) |
+                    ((Client.created_at >= start_date) & (Client.created_at < end_date))
+                )
+                .order_by(Client.id, Purchase.created_at)
+            )
+            result = await session.execute(q)
+            rows = result.mappings().all()
+            return [
+                {
+                    "client_id": r["client_id"],
+                    "full_name": r["full_name"],
+                    "phone": r["phone"],
+                    "phones": r["phones"],
+                    "telegram_username": r["telegram_username"],
+                    "social_network": r["social_network"],
+                    "referral_source": r["referral_source"],
+                    "birth_date": r["birth_date"],
+                    "client_created_at": r["client_created_at"],
+                    "purchase_id": r["purchase_id"],
+                    "items_json": r["items_json"],
+                    "total_amount": r["total_amount"],
+                    "payment_details": r["payment_details"],
+                    "purchase_type": r["purchase_type"],
+                    "purchase_created_at": r["purchase_created_at"],
+                }
+                for r in rows
+            ]
