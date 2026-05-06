@@ -2,7 +2,6 @@ import logging
 from typing import Optional
 
 from sqlalchemy import select, func
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
 from bot.db import get_async_session_factory
@@ -35,8 +34,7 @@ class ItemRepository:
             new_cat = Category(name=name, sort_order=new_order)
             session.add(new_cat)
             try:
-                await session.commit()
-                await session.refresh(new_cat)
+                await session.flush()
                 return new_cat.id
             except IntegrityError:
                 # Категория была создана между select и insert
@@ -51,7 +49,7 @@ class ItemRepository:
             return await _impl(conn)
         else:
             async_session = get_async_session_factory()
-            async with async_session() as session:
+            async with async_session() as session, session.begin():
                 return await _impl(session)
 
     @staticmethod
@@ -73,7 +71,7 @@ class ItemRepository:
         is_booked = 'Бронь от' in text
 
         async_session = get_async_session_factory()
-        async with async_session() as session:
+        async with async_session() as session, session.begin():
             new_item = Item(
                 text=text,
                 serial=normalized_serial,
@@ -81,7 +79,6 @@ class ItemRepository:
                 is_booked=is_booked
             )
             session.add(new_item)
-            await session.commit()
             logger.info(f"✅ Товар добавлен: {text[:50]}")
 
     @staticmethod
@@ -145,20 +142,17 @@ class ItemRepository:
             )
             item_id = result.scalar_one_or_none()
             if item_id:
-                await session.execute(
-                    select(Item).where(Item.id == item_id)
-                )
                 item = await session.get(Item, item_id)
                 if item:
                     await session.delete(item)
-                    await session.commit()
+                    await session.flush()
                     return 1
             return 0
         if conn is not None:
             return await _impl(conn)
         else:
             async_session = get_async_session_factory()
-            async with async_session() as session:
+            async with async_session() as session, session.begin():
                 return await _impl(session)
 
     @staticmethod
@@ -179,13 +173,13 @@ class ItemRepository:
                 reason=reason
             )
             session.add(deleted)
-            await session.commit()
+            await session.flush()
         if conn is not None:
-            return await _impl(conn)
+            await _impl(conn)
         else:
             async_session = get_async_session_factory()
-            async with async_session() as session:
-                return await _impl(session)
+            async with async_session() as session, session.begin():
+                await _impl(session)
 
     @staticmethod
     async def get_last_deleted_item() -> Optional[dict]:
@@ -193,7 +187,7 @@ class ItemRepository:
         async with async_session() as session:
             result = await session.execute(
                 select(DeletedItem)
-                .where(DeletedItem.restored == False)
+                .where(~DeletedItem.restored)
                 .order_by(DeletedItem.deleted_at.desc())
                 .limit(1)
             )
@@ -215,11 +209,10 @@ class ItemRepository:
     @staticmethod
     async def restore_deleted_item(deleted_id: int) -> bool:
         async_session = get_async_session_factory()
-        async with async_session() as session:
+        async with async_session() as session, session.begin():
             item = await session.get(DeletedItem, deleted_id)
             if item:
                 item.restored = True
-                await session.commit()
                 return True
             return False
 
@@ -230,13 +223,14 @@ class ItemRepository:
             if item:
                 item.text = book_text
                 item.is_booked = True
-                await session.commit()
+                session.add(item)
+                await session.flush()
         if conn is not None:
-            return await _impl(conn)
+            await _impl(conn)
         else:
             async_session = get_async_session_factory()
-            async with async_session() as session:
-                return await _impl(session)
+            async with async_session() as session, session.begin():
+                await _impl(session)
 
     @staticmethod
     async def get_all_categories_with_items():
@@ -275,48 +269,40 @@ class ItemRepository:
         """Полностью заменяет ассортимент новыми категориями и товарами."""
         from bot.services.cache import cache
         async_session = get_async_session_factory()
-        async with async_session() as session:
-            async with session.begin():
-                # Очистка старых данных
-                await session.execute(
-                    select(Item).where(Item.category_id.notin_(
-                        select(Category.id).where(Category.name == '__SYSTEM__')
-                    ))
-                )
-                items_to_delete = await session.execute(
-                    select(Item).where(Item.category_id.notin_(
-                        select(Category.id).where(Category.name == '__SYSTEM__')
-                    ))
-                )
-                for item in items_to_delete.scalars():
-                    await session.delete(item)
-                await session.flush()
-                await session.execute(
-                    select(Category).where(Category.name != '__SYSTEM__')
-                )
-                cats_to_delete = await session.execute(
-                    select(Category).where(Category.name != '__SYSTEM__')
-                )
-                for cat in cats_to_delete.scalars():
-                    await session.delete(cat)
-                await session.flush()
+        async with async_session() as session, session.begin():
+            # Очистка старых данных
+            await session.execute(select(Item).where(Item.category_id.notin_(
+                select(Category.id).where(Category.name == '__SYSTEM__')
+            )))
+            items_to_delete = await session.execute(select(Item).where(Item.category_id.notin_(
+                select(Category.id).where(Category.name == '__SYSTEM__')
+            )))
+            for item in items_to_delete.scalars():
+                await session.delete(item)
+            await session.flush()
 
-                # Вставка новых категорий и товаров
-                for idx, cat_data in enumerate(categories):
-                    new_cat = Category(name=cat_data['header'], sort_order=idx)
-                    session.add(new_cat)
-                    await session.flush()
-                    for item_text in cat_data['items']:
-                        serials = extract_serials(item_text)
-                        serial = serials[0].strip().upper() if serials else None
-                        is_booked = 'Бронь от' in item_text
-                        new_item = Item(
-                            text=item_text,
-                            serial=serial,
-                            category_id=new_cat.id,
-                            is_booked=is_booked
-                        )
-                        session.add(new_item)
-                await session.commit()
+            cats_to_delete = await session.execute(
+                select(Category).where(Category.name != '__SYSTEM__')
+            )
+            for cat in cats_to_delete.scalars():
+                await session.delete(cat)
+            await session.flush()
+
+            # Вставка новых категорий и товаров
+            for idx, cat_data in enumerate(categories):
+                new_cat = Category(name=cat_data['header'], sort_order=idx)
+                session.add(new_cat)
+                await session.flush()
+                for item_text in cat_data['items']:
+                    serials = extract_serials(item_text)
+                    serial = serials[0].strip().upper() if serials else None
+                    is_booked = 'Бронь от' in item_text
+                    new_item = Item(
+                        text=item_text,
+                        serial=serial,
+                        category_id=new_cat.id,
+                        is_booked=is_booked
+                    )
+                    session.add(new_item)
         await cache.delete("assortment:all")
         logger.info(f"Ассортимент полностью заменён ({len(categories)} категорий)")
