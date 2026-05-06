@@ -145,6 +145,17 @@ async def merge_categories(from_id: int, to_id: int) -> tuple[bool, str]:
         msg = f"⚠️ Перенести {count} товаров из «{escape_markdown_v1(from_cat['name'])}» (ID {from_id}) в «{escape_markdown_v1(to_cat['name'])}» (ID {to_id})?\nПосле этого категория {from_id} будет удалена."
         return True, msg
 
+async def reset_assortment() -> str:
+    """Полностью очищает ассортимент: удаляет все товары и категории, кроме системных."""
+    pool = await get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        # Удаляем все товары
+        await conn.execute("DELETE FROM items WHERE category_id NOT IN (SELECT id FROM categories WHERE name = '__SYSTEM__')")
+        # Удаляем категории (кроме системной)
+        await conn.execute("DELETE FROM categories WHERE name != '__SYSTEM__'")
+    await AssortmentService.invalidate_cache()
+    return "✅ Ассортимент полностью очищен"
+
 # ─── Удаление по ID ─────────────────────────────────────────────
 async def delete_client_by_id(client_id: int) -> tuple[bool, str]:
     pool = await get_pool()
