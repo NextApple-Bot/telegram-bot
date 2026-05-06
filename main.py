@@ -4,25 +4,26 @@ import os
 import signal
 import sys
 import time
+import traceback
 
 import uvicorn
 from dotenv import load_dotenv
-
-# Prometheus
-from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
+# Prometheus
+from prometheus_fastapi_instrumentator import Instrumentator
+
 # Sentry (если настроен)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -79,7 +80,7 @@ class Application:
         from aiogram.fsm.storage.redis import RedisStorage
 
         from bot import config as bot_config
-        from bot.db import get_pool, init_db
+        from bot.db import get_pool
 
         self.config = bot_config
         logger.info("✅ Конфигурация загружена")
@@ -121,8 +122,7 @@ class Application:
         try:
             self._pool = await get_pool()
             logger.info("✅ Пул соединений БД инициализирован")
-            await init_db()
-            logger.info("✅ Инициализация БД выполнена")
+            # init_db() больше не вызывается — схема управляется Alembic
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации пула БД: {e}")
             raise
@@ -247,7 +247,7 @@ def create_starlette_app(app_instance: Application) -> Starlette:
             Route("/health", app_instance.health, methods=["GET"]),
             Route("/health/detailed", app_instance.health_detailed, methods=["GET"]),
         ],
-        on_startup=[lambda: None],   # реальная инициализация делается до запуска
+        on_startup=[lambda: None],
         on_shutdown=[lambda: None],
     )
 
@@ -279,7 +279,6 @@ def create_starlette_app(app_instance: Application) -> Starlette:
 
 
 async def main():
-    # Основной поток инициализации
     app = Application()
     try:
         await app.initialize()
@@ -289,7 +288,6 @@ async def main():
 
     starlette_app = create_starlette_app(app)
 
-    # Обработка сигналов
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
@@ -314,7 +312,6 @@ async def main():
 async def handle_signal(app: Application, starlette_app):
     logger.info("Получен сигнал завершения...")
     await app.shutdown()
-    # uvicorn сам остановится, но можно дополнительно вызвать shutdown у сервера
     sys.exit(0)
 
 
