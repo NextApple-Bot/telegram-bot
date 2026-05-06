@@ -1,11 +1,11 @@
-# Файл: web_admin/routes/assortment/manage.py
 import asyncio
 import logging
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from bot.db import get_pool
+from bot.db import get_async_session_factory
+from bot.models import Item, Category
 from bot.repositories import ClientRepository
 from bot.services.assortment import AssortmentService
 from web_admin.templates import templates
@@ -23,28 +23,20 @@ def validate_phone(phone: str) -> bool:
 
 @router.get("/edit/{item_id}")
 async def edit_item_form(request: Request, item_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT i.id, i.text, i.serial, i.is_booked, i.created_at,
-                   c.id as category_id, c.name as category_name,
-                   i.booking_price, i.booking_prepayment, i.booking_platform,
-                   i.booking_full_name, i.booking_phone, i.booking_payment_type,
-                   i.sale_price, i.sale_prepayment, i.sale_payment_type,
-                   i.sale_platform, i.sale_full_name, i.sale_phone, i.is_sold,
-                   i.sale_payment_amount
-            FROM items i
-            JOIN categories c ON i.category_id = c.id
-            WHERE i.id = $1
-        """, item_id)
-        if not row:
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        result = await session.execute(
+            select(Item).where(Item.id == item_id)
+        )
+        item = result.scalar_one_or_none()
+        if not item:
             raise HTTPException(status_code=404, detail="Item not found")
-        item = dict(row)
-        categories = await conn.fetch("SELECT id, name FROM categories ORDER BY sort_order, name")
+        categories = await session.execute(select(Category).order_by(Category.sort_order, Category.name))
+        categories = categories.scalars().all()
     return templates.TemplateResponse("assortment_edit_item.html", {
         "request": request,
         "item": item,
-        "categories": [dict(cat) for cat in categories],
+        "categories": [{"id": c.id, "name": c.name} for c in categories],
     })
 
 
@@ -84,18 +76,18 @@ async def edit_item_submit(
     if sale_phone and not validate_phone(sale_phone):
         raise HTTPException(status_code=400, detail="Номер телефона продажи должен быть в формате +7XXXXXXXXXX")
 
-    pool = await get_pool()
-    try:
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                old = await conn.fetchrow("SELECT is_sold, text, serial, category_id, is_booked FROM items WHERE id = $1 FOR UPDATE", item_id)
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        try:
+            async with session.begin():
+                old = await session.get(Item, item_id, populate_existing=True, with_for_update=True)
                 if not old:
                     raise HTTPException(status_code=404, detail="Item not found")
-                old_is_sold = old["is_sold"]
-                old_text = old["text"]
-                old_serial = old["serial"] or ""
-                old_category_id = old["category_id"]
-                old_is_booked = old["is_booked"]
+                old_is_sold = old.is_sold
+                old_text = old.text
+                old_serial = old.serial or ""
+                old_category_id = old.category_id
+                old_is_booked = old.is_booked
 
                 if old_is_sold:
                     raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
@@ -125,7 +117,7 @@ async def edit_item_submit(
                         sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
                         sale_birth_date=sale_birth_date,
                         accessories=accessories,
-                        conn=conn
+                        conn=session
                     )
                     if "error" in result:
                         raise HTTPException(status_code=400, detail=result["error"])
@@ -142,27 +134,37 @@ async def edit_item_submit(
                             full_name=booking_full_name,
                             social_network=booking_platform,
                             birth_date=booking_birth_date,
-                            conn=conn
+                            conn=session
                         )
 
-                    await conn.execute("""
-                        UPDATE items
-                        SET text = $1, serial = $2, category_id = $3, is_booked = $4,
-                            booking_price = $5, booking_prepayment = $6, booking_platform = $7,
-                            booking_full_name = $8, booking_phone = $9, booking_payment_type = $10,
-                            sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
-                            sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
-                            sale_payment_amount = NULL, is_sold = FALSE
-                        WHERE id = $11
-                    """, text, serial.strip().upper() if serial else None, category_id, is_booked,
-                       booking_price, booking_prepayment, booking_platform,
-                       booking_full_name, booking_phone, booking_payment_type, item_id)
+                    old.text = text
+                    old.serial = serial.strip().upper() if serial else None
+                    old.category_id = category_id
+                    old.is_booked = True
+                    old.booking_price = booking_price
+                    old.booking_prepayment = booking_prepayment
+                    old.booking_platform = booking_platform
+                    old.booking_full_name = booking_full_name
+                    old.booking_phone = booking_phone
+                    old.booking_payment_type = booking_payment_type
+                    old.sale_price = None
+                    old.sale_prepayment = None
+                    old.sale_payment_type = None
+                    old.sale_platform = None
+                    old.sale_full_name = None
+                    old.sale_phone = None
+                    old.sale_payment_amount = None
+                    old.is_sold = False
+                    session.add(old)
 
                     if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
-                        await conn.execute("""
-                            INSERT INTO daily_payments (type, payment_type, amount)
-                            VALUES ('preorder', $1, $2)
-                        """, booking_payment_type, booking_prepayment)
+                        from bot.models import DailyPayment
+                        payment = DailyPayment(
+                            type='preorder',
+                            payment_type=booking_payment_type,
+                            amount=booking_prepayment
+                        )
+                        session.add(payment)
 
                     from .notifications import send_booking_notification
                     asyncio.create_task(send_booking_notification(
@@ -179,16 +181,25 @@ async def edit_item_submit(
                     ))
                     logger.info(f"Бронь товара {item_id} успешно сохранена")
                 else:
-                    await conn.execute("""
-                        UPDATE items
-                        SET text = $1, serial = $2, category_id = $3, is_booked = $4,
-                            booking_price = NULL, booking_prepayment = NULL, booking_platform = NULL,
-                            booking_full_name = NULL, booking_phone = NULL, booking_payment_type = NULL,
-                            sale_price = NULL, sale_prepayment = NULL, sale_payment_type = NULL,
-                            sale_platform = NULL, sale_full_name = NULL, sale_phone = NULL,
-                            sale_payment_amount = NULL, is_sold = FALSE
-                        WHERE id = $5
-                    """, text, serial.strip().upper() if serial else None, category_id, is_booked, item_id)
+                    old.text = text
+                    old.serial = serial.strip().upper() if serial else None
+                    old.category_id = category_id
+                    old.is_booked = False
+                    old.booking_price = None
+                    old.booking_prepayment = None
+                    old.booking_platform = None
+                    old.booking_full_name = None
+                    old.booking_phone = None
+                    old.booking_payment_type = None
+                    old.sale_price = None
+                    old.sale_prepayment = None
+                    old.sale_payment_type = None
+                    old.sale_platform = None
+                    old.sale_full_name = None
+                    old.sale_phone = None
+                    old.sale_payment_amount = None
+                    old.is_sold = False
+                    session.add(old)
 
                     if old_is_booked and not is_booked:
                         from .notifications import send_booking_notification
@@ -198,11 +209,111 @@ async def edit_item_submit(
                             is_cancel=True
                         ))
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Ошибка редактирования товара {item_id}: {e}")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception(f"Ошибка редактирования товара {item_id}: {e}")
+            raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
+    await AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/delete/{item_id}")
+async def delete_item(request: Request, item_id: int):
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        async with session.begin():
+            item = await session.get(Item, item_id)
+            if item:
+                deleted = DeletedItem(
+                    item_id=item.id,
+                    text=item.text,
+                    serial=item.serial,
+                    category_id=item.category_id,
+                    reason='admin_manual'
+                )
+                session.add(deleted)
+                await session.delete(item)
+    await AssortmentService.invalidate_cache()
+    referer = request.headers.get("referer")
+    if referer:
+        return RedirectResponse(url=referer, status_code=303)
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/add")
+async def add_item(
+    request: Request,
+    text: str = Form(...),
+    serial: str | None = Form(None),
+    category_id: int = Form(...),
+    is_booked: bool = Form(False),
+    booking_price: float | None = Form(None),
+    booking_prepayment: float | None = Form(None),
+    booking_platform: str | None = Form(None),
+    booking_full_name: str | None = Form(None),
+    booking_phone: str | None = Form(None),
+    booking_payment_type: str | None = Form(None),
+):
+    if booking_phone and not validate_phone(booking_phone):
+        raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
+
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        async with session.begin():
+            new_item = Item(
+                text=text,
+                serial=serial.strip().upper() if serial else None,
+                category_id=category_id,
+                is_booked=is_booked,
+                booking_price=booking_price,
+                booking_prepayment=booking_prepayment,
+                booking_platform=booking_platform,
+                booking_full_name=booking_full_name,
+                booking_phone=booking_phone,
+                booking_payment_type=booking_payment_type
+            )
+            session.add(new_item)
+            if is_booked:
+                if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
+                    from bot.models import DailyPayment
+                    payment = DailyPayment(
+                        type='preorder',
+                        payment_type=booking_payment_type,
+                        amount=booking_prepayment
+                    )
+                    session.add(payment)
+
+                from .notifications import send_booking_notification
+                asyncio.create_task(send_booking_notification(
+                    item_text=text,
+                    serial=serial.strip().upper() if serial else "без серийного номера",
+                    price=booking_price,
+                    prepayment=booking_prepayment,
+                    platform=booking_platform,
+                    full_name=booking_full_name,
+                    phone=booking_phone,
+                    payment_type=booking_payment_type,
+                    is_cancel=False
+                ))
+    await AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/add_category")
+async def add_category(request: Request, name: str = Form(...)):
+    name = name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название не может быть пустым")
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        async with session.begin():
+            existing = await session.execute(select(Category.id).where(func.lower(Category.name) == func.lower(name)))
+            if existing.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Категория с таким именем уже существует")
+            max_order = await session.execute(select(func.coalesce(func.max(Category.sort_order), -1)))
+            new_category = Category(name=name, sort_order=max_order.scalar() + 1)
+            session.add(new_category)
     await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
