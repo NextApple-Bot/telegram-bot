@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy import select, func
 from bot.db import get_async_session_factory
 from bot.models import Item, DeletedItem, Sale, DailyPayment
-from bot.repositories import ClientRepository, StatsRepository
+from bot.repositories import ClientRepository
 from bot.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -49,139 +49,143 @@ async def handle_sale_from_form(
         processed_accessories = []
         accessories_payments = {}
 
-        own_session = False
-        if conn is None:
-            async_session = get_async_session_factory()
-            session = async_session()
-            own_session = True
-        else:
+        # Если сессия пришла извне, используем её и не управляем транзакцией
+        if conn is not None:
             session = conn
+            own_transaction = False
+        else:
+            session_factory = get_async_session_factory()
+            session = session_factory()
+            own_transaction = True
 
         try:
-            async with session.begin():
-                # Клиент
-                client_id = None
-                phone = sale_phone.strip() if sale_phone else None
-                if phone or sale_full_name:
-                    client_id = await ClientRepository.get_or_create_client(
-                        phone=phone,
-                        full_name=sale_full_name.strip() if sale_full_name else None,
-                        social_network=sale_platform.strip() if sale_platform else None,
-                        birth_date=sale_birth_date,
-                        conn=session
-                    )
+            if own_transaction:
+                await session.begin()
 
-                # Аксессуары
-                if accessories:
-                    for acc in accessories:
-                        acc_price = acc['price']
-                        accessories_total += acc_price
-                        display_text = acc['name']
-                        item_info = None
-                        if acc.get('serial'):
-                            item_info = await session.execute(
-                                select(Item).where(func.upper(Item.serial) == acc['serial'].strip().upper())
+            # Клиент
+            client_id = None
+            phone = sale_phone.strip() if sale_phone else None
+            if phone or sale_full_name:
+                client_id = await ClientRepository.get_or_create_client(
+                    phone=phone,
+                    full_name=sale_full_name.strip() if sale_full_name else None,
+                    social_network=sale_platform.strip() if sale_platform else None,
+                    birth_date=sale_birth_date,
+                    conn=session
+                )
+
+            # Аксессуары
+            if accessories:
+                for acc in accessories:
+                    acc_price = acc['price']
+                    accessories_total += acc_price
+                    display_text = acc['name']
+                    item_info = None
+                    if acc.get('serial'):
+                        q = select(Item).where(func.upper(Item.serial) == acc['serial'].strip().upper())
+                        item_info = (await session.execute(q)).scalar_one_or_none()
+                        if item_info:
+                            display_text = item_info.text
+                            deleted = DeletedItem(
+                                item_id=item_info.id,
+                                text=item_info.text,
+                                serial=acc['serial'],
+                                category_id=item_info.category_id,
+                                reason='sale_from_admin',
+                                sale_message_id=sale_message_id
                             )
-                            item_info = item_info.scalar_one_or_none()
-                            if item_info:
-                                display_text = item_info.text
-                                deleted = DeletedItem(
-                                    item_id=item_info.id,
-                                    text=item_info.text,
-                                    serial=acc['serial'],
-                                    category_id=item_info.category_id,
-                                    reason='sale_from_admin',
-                                    sale_message_id=sale_message_id
-                                )
-                                session.add(deleted)
-                                await session.delete(item_info)
+                            session.add(deleted)
+                            await session.delete(item_info)
 
-                        processed_accessories.append({
-                            "text": display_text,
-                            "price": acc_price,
-                            "payment_type": acc.get('payment_type')
-                        })
+                    processed_accessories.append({
+                        "text": display_text,
+                        "price": acc_price,
+                        "payment_type": acc.get('payment_type')
+                    })
 
-                        pay_type = acc.get('payment_type')
-                        if pay_type and pay_type != "paid" and acc_price > 0:
-                            accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
+                    pay_type = acc.get('payment_type')
+                    if pay_type and pay_type != "paid" and acc_price > 0:
+                        accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
 
-                # Сбор платежей
-                all_payments = dict(accessories_payments)
-                if sale_payment_type != "paid" and sale_payment_amount > 0:
-                    all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
+            # Сбор платежей
+            all_payments = dict(accessories_payments)
+            if sale_payment_type != "paid" and sale_payment_amount > 0:
+                all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
 
-                for pay_type, amount in all_payments.items():
-                    if amount > 0:
-                        payment = DailyPayment(
-                            type='sale',
-                            payment_type=pay_type,
-                            amount=amount,
-                            sale_message_id=sale_message_id
-                        )
-                        session.add(payment)
-
-                # Покупка
-                if client_id:
-                    items_list = [{"item_text": text, "price": sale_price, "serial": serial}]
-                    if processed_accessories:
-                        for acc in processed_accessories:
-                            items_list.append({"item_text": acc['text'], "price": acc['price']})
-                    payment_details_json = {pt: amt for pt, amt in all_payments.items() if amt > 0}
-                    await ClientRepository.add_purchase(
-                        client_id=client_id,
-                        items=items_list,
-                        total_amount=sale_price + accessories_total,
-                        payment_details=payment_details_json,
-                        purchase_type='sale',
-                        conn=session
-                    )
-
-                # Удаление товара и запись в deleted_items
-                old_item = await session.get(Item, item_id)
-                if old_item:
-                    deleted = DeletedItem(
-                        item_id=old_item.id,
-                        text=old_text,
-                        serial=old_serial,
-                        category_id=old_category_id,
-                        reason='sale_from_admin',
+            for pay_type, amount in all_payments.items():
+                if amount > 0:
+                    payment = DailyPayment(
+                        type='sale',
+                        payment_type=pay_type,
+                        amount=amount,
                         sale_message_id=sale_message_id
                     )
-                    session.add(deleted)
-                    await session.delete(old_item)
+                    session.add(payment)
 
-                # Статистика продажи
-                sale = Sale(
-                    count=1,
-                    cash=0,
-                    terminal=0,
-                    qr=0,
-                    transfer=0,
-                    invoice=0,
-                    installment=0,
-                    is_accessory=False,
-                    message_id=sale_message_id
+            # Покупка
+            if client_id:
+                items_list = [{"item_text": text, "price": sale_price, "serial": serial}]
+                if processed_accessories:
+                    for acc in processed_accessories:
+                        items_list.append({"item_text": acc['text'], "price": acc['price']})
+                payment_details_json = {pt: amt for pt, amt in all_payments.items() if amt > 0}
+                await ClientRepository.add_purchase(
+                    client_id=client_id,
+                    items=items_list,
+                    total_amount=sale_price + accessories_total,
+                    payment_details=payment_details_json,
+                    purchase_type='sale',
+                    conn=session
                 )
-                session.add(sale)
 
-                # Уведомление
-                from .notifications import send_sale_notification
-                asyncio.create_task(send_sale_notification(
-                    item_text=text,
-                    price=sale_price,
-                    payment_type=sale_payment_type,
-                    prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
-                    payment_amount=sale_payment_amount if sale_payment_type != "paid" else None,
-                    platform=sale_platform,
-                    full_name=sale_full_name,
-                    phone=sale_phone,
-                    birth_date=sale_birth_date,
-                    accessories=processed_accessories
-                ))
+            # Удаление товара и запись в deleted_items
+            old_item = await session.get(Item, item_id)
+            if old_item:
+                deleted = DeletedItem(
+                    item_id=old_item.id,
+                    text=old_text,
+                    serial=old_serial,
+                    category_id=old_category_id,
+                    reason='sale_from_admin',
+                    sale_message_id=sale_message_id
+                )
+                session.add(deleted)
+                await session.delete(old_item)
+
+            # Статистика продажи
+            sale = Sale(
+                count=1,
+                cash=0,
+                terminal=0,
+                qr=0,
+                transfer=0,
+                invoice=0,
+                installment=0,
+                is_accessory=False,
+                message_id=sale_message_id
+            )
+            session.add(sale)
+
+            if own_transaction:
+                await session.commit()
+
+            # Уведомление
+            from .notifications import send_sale_notification
+            asyncio.create_task(send_sale_notification(
+                item_text=text,
+                price=sale_price,
+                payment_type=sale_payment_type,
+                prepayment=sale_prepayment if sale_prepayment and sale_prepayment > 0 else None,
+                payment_amount=sale_payment_amount if sale_payment_type != "paid" else None,
+                platform=sale_platform,
+                full_name=sale_full_name,
+                phone=sale_phone,
+                birth_date=sale_birth_date,
+                accessories=processed_accessories
+            ))
 
         finally:
-            if own_session:
+            if own_transaction:
                 await session.close()
 
         await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
