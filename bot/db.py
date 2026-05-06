@@ -5,40 +5,14 @@ import os
 from functools import wraps
 
 import asyncpg
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from bot import config
 
 logger = logging.getLogger(__name__)
 
-
-def retry_on_db_error(retries=3, delay=1, backoff=2):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            last_exception = None
-            for attempt in range(retries):
-                try:
-                    return await func(*args, **kwargs)
-                except (asyncpg.exceptions.ConnectionFailureError,
-                        asyncpg.exceptions.InterfaceError,
-                        asyncpg.exceptions.PostgresConnectionError) as e:
-                    last_exception = e
-                    if attempt < retries - 1:
-                        wait = delay * (backoff ** attempt)
-                        logger.warning(f"Ошибка БД (попытка {attempt+1}/{retries}): {e}. Повтор через {wait}с")
-                        await asyncio.sleep(wait)
-                    else:
-                        logger.error(f"Все попытки исчерпаны: {e}")
-                        raise
-                except Exception:
-                    raise
-            raise last_exception
-        return wrapper
-    return decorator
-
-
+# ─── asyncpg pool (оставляем для обратной совместимости) ─────────
 _pool = None
-
 
 async def get_pool():
     global _pool
@@ -68,7 +42,6 @@ async def get_pool():
             raise last_exception
     return _pool
 
-
 async def close_pool():
     global _pool
     if _pool:
@@ -76,9 +49,43 @@ async def close_pool():
         _pool = None
         logger.info("✅ Пул соединений закрыт")
 
+# ─── SQLAlchemy async engine / session ──────────────────────────
+_async_engine = None
+_async_session_factory = None
 
+def get_async_session_factory():
+    """Возвращает фабрику асинхронных сессий SQLAlchemy."""
+    global _async_engine, _async_session_factory
+    if _async_session_factory is None:
+        # Заменяем синхронный URL на asyncpg, если нужно
+        db_url = config.DATABASE_URL
+        if db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        _async_engine = create_async_engine(
+            db_url,
+            echo=False,
+            pool_size=int(os.getenv("DB_POOL_MIN_SIZE", "1")),
+            max_overflow=int(os.getenv("DB_POOL_MAX_SIZE", "5")) - int(os.getenv("DB_POOL_MIN_SIZE", "1")),
+            pool_recycle=300,
+            connect_args={"ssl": False}
+        )
+        _async_session_factory = async_sessionmaker(
+            bind=_async_engine,
+            expire_on_commit=False
+        )
+        logger.info("✅ Фабрика асинхронных сессий SQLAlchemy создана")
+    return _async_session_factory
+
+async def dispose_engine():
+    global _async_engine, _async_session_factory
+    if _async_engine:
+        await _async_engine.dispose()
+        _async_engine = None
+        _async_session_factory = None
+        logger.info("✅ Движок SQLAlchemy остановлен")
+
+# ─── Health checks ──────────────────────────────────────────────
 async def check_db_health() -> bool:
-    """Проверяет доступность базы данных."""
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
@@ -87,9 +94,7 @@ async def check_db_health() -> bool:
     except Exception:
         return False
 
-
 async def check_redis_health() -> bool:
-    """Проверяет доступность Redis (если настроен)."""
     if not config.REDIS_URL:
         return True
     try:
