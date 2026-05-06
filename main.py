@@ -4,7 +4,6 @@ import os
 import signal
 import sys
 import time
-import traceback
 
 import uvicorn
 from dotenv import load_dotenv
@@ -14,10 +13,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
-# Prometheus
+# Prometheus + Sentry (как и раньше)
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Sentry (если настроен)
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     import sentry_sdk
@@ -29,16 +27,12 @@ if SENTRY_DSN:
         dsn=SENTRY_DSN,
         traces_sample_rate=1.0,
         environment=os.getenv("ENVIRONMENT", "production"),
-        integrations=[
-            StarletteIntegration(),
-            FastApiIntegration(),
-        ],
+        integrations=[StarletteIntegration(), FastApiIntegration()],
     )
     logging.info("✅ Sentry инициализирован")
 else:
     logging.info("ℹ️ SENTRY_DSN не задан, мониторинг ошибок отключён")
 
-# Настройка логирования
 log_format = os.getenv("LOG_FORMAT", "text").lower()
 if log_format == "json":
     from pythonjsonlogger import jsonlogger
@@ -73,7 +67,6 @@ class Application:
         self._pool = None
 
     async def initialize(self):
-        """Инициализация всех компонентов (бот, диспетчер, БД)."""
         import redis.asyncio as redis
         from aiogram import Bot, Dispatcher
         from aiogram.fsm.storage.memory import MemoryStorage
@@ -81,21 +74,19 @@ class Application:
 
         from bot import config as bot_config
         from bot.db import get_pool
+        from bot.middleware.error_handler import ErrorHandlerMiddleware
 
         self.config = bot_config
         logger.info("✅ Конфигурация загружена")
 
-        # Проверка масштабирования
         scaling_enabled = os.getenv("SCALING_ENABLED", "false").lower() == "true"
         if scaling_enabled and not self.config.REDIS_URL:
             logger.critical("❌ SCALING_ENABLED=True, но REDIS_URL не задан.")
             sys.exit(1)
 
-        # Bot
         self.bot = Bot(token=self.config.TOKEN)
         logger.info("✅ Экземпляр Bot создан")
 
-        # Storage и Dispatcher
         if self.config.REDIS_URL:
             redis_client = redis.from_url(self.config.REDIS_URL, decode_responses=True)
             storage = RedisStorage(redis=redis_client)
@@ -110,7 +101,10 @@ class Application:
         self.dp = Dispatcher(storage=storage)
         logger.info("✅ Диспетчер создан")
 
-        # Подключаем роутеры
+        # Подключаем middleware ошибок
+        self.dp.update.middleware(ErrorHandlerMiddleware())
+        logger.info("🔧 Middleware ошибок подключён")
+
         from bot.handlers import router
         if router.parent_router is None:
             self.dp.include_router(router)
@@ -118,21 +112,17 @@ class Application:
         else:
             logger.warning("⚠️ Роутер уже прикреплён к другому диспетчеру, пропускаем")
 
-        # Инициализация БД
         try:
             self._pool = await get_pool()
             logger.info("✅ Пул соединений БД инициализирован")
-            # init_db() больше не вызывается — схема управляется Alembic
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации пула БД: {e}")
             raise
 
-        # Фоновые задачи
         from bot.background import start_background_tasks
         asyncio.create_task(start_background_tasks(self.bot, self.dp))
         logger.info("✅ Фоновые задачи запущены")
 
-        # Установка вебхука
         await self._setup_webhook()
         return self
 
@@ -156,7 +146,6 @@ class Application:
                     logger.error(f"❌ Не удалось установить вебхук после {max_retries} попыток")
 
     async def shutdown(self):
-        """Корректное завершение работы."""
         logger.info("🛑 Завершение работы...")
         if self.bot:
             try:
@@ -175,7 +164,7 @@ class Application:
             await self._pool.close()
             logger.info("✅ Пул БД закрыт")
 
-    # --- HTTP обработчики ---
+    # HTTP handlers (webhook, health, health_detailed) – без изменений
     async def webhook(self, request: Request) -> Response:
         if not self.bot or not self.dp:
             return Response(status_code=503)
@@ -240,7 +229,6 @@ class Application:
 
 
 def create_starlette_app(app_instance: Application) -> Starlette:
-    """Создаёт Starlette-приложение, используя экземпляр Application."""
     starlette_app = Starlette(
         routes=[
             Route("/webhook", app_instance.webhook, methods=["POST"]),
@@ -250,21 +238,14 @@ def create_starlette_app(app_instance: Application) -> Starlette:
         on_startup=[lambda: None],
         on_shutdown=[lambda: None],
     )
-
-    # Prometheus
     Instrumentator().instrument(starlette_app).expose(starlette_app, endpoint="/metrics")
-
-    # Sentry ASGI middleware
     if SENTRY_DSN:
         starlette_app = SentryAsgiMiddleware(starlette_app)
-
-    # SessionMiddleware и админка
     if app_instance.config.SECRET_KEY:
         starlette_app.add_middleware(SessionMiddleware, secret_key=app_instance.config.SECRET_KEY)
         logger.info("✅ SessionMiddleware добавлена")
     else:
         logger.warning("⚠️ SECRET_KEY не задан, сессии не будут работать")
-
     if app_instance.config.ADMIN_PASSWORD and app_instance.config.SECRET_KEY:
         try:
             from web_admin.main import app as admin_app
@@ -274,7 +255,6 @@ def create_starlette_app(app_instance: Application) -> Starlette:
             logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
     else:
         logger.info("ℹ️ Веб-админка не настроена")
-
     return starlette_app
 
 
