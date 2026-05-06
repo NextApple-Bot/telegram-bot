@@ -41,7 +41,7 @@ class StatsRepository:
             )
             session.add(sale)
             try:
-                await session.commit()
+                await session.flush()
             except Exception:
                 await session.rollback()
                 logger.warning(f"Продажа с message_id={message_id} уже существует, пропущено")
@@ -50,13 +50,13 @@ class StatsRepository:
             await _impl(conn)
         else:
             async_session = get_async_session_factory()
-            async with async_session() as session:
+            async with async_session() as session, session.begin():
                 await _impl(session)
 
     @staticmethod
     async def add_preorder(cash=0, terminal=0, qr=0, transfer=0, invoice=0, installment=0):
         async_session = get_async_session_factory()
-        async with async_session() as session:
+        async with async_session() as session, session.begin():
             preorder = Preorder(
                 cash=cash,
                 terminal=terminal,
@@ -66,18 +66,16 @@ class StatsRepository:
                 installment=installment
             )
             session.add(preorder)
-            await session.commit()
 
     @staticmethod
     async def add_booking(item_id: int, total_amount: float):
         async_session = get_async_session_factory()
-        async with async_session() as session:
+        async with async_session() as session, session.begin():
             booking = Booking(
                 item_id=item_id,
                 total_amount=total_amount
             )
             session.add(booking)
-            await session.commit()
 
     @staticmethod
     async def get_today_stats() -> dict:
@@ -149,34 +147,31 @@ class StatsRepository:
     async def reset_today_stats():
         today = date.today()
         async_session = get_async_session_factory()
-        async with async_session() as session:
-            async with session.begin():
-                # Продажи
-                sales = await session.execute(
-                    select(Sale).where(func.date(Sale.sold_at) == today)
-                )
-                for s in sales.scalars():
-                    await session.delete(s)
+        async with async_session() as session, session.begin():
+            # Продажи
+            sales = await session.execute(
+                select(Sale).where(func.date(Sale.sold_at) == today)
+            )
+            for s in sales.scalars():
+                await session.delete(s)
 
-                # Предзаказы
-                preorders = await session.execute(
-                    select(Preorder).where(func.date(Preorder.created_at) == today)
-                )
-                for p in preorders.scalars():
-                    await session.delete(p)
+            # Предзаказы
+            preorders = await session.execute(
+                select(Preorder).where(func.date(Preorder.created_at) == today)
+            )
+            for p in preorders.scalars():
+                await session.delete(p)
 
-                # Брони
-                bookings = await session.execute(
-                    select(Booking).where(func.date(Booking.booked_at) == today)
-                )
-                for b in bookings.scalars():
-                    await session.delete(b)
+            # Брони
+            bookings = await session.execute(
+                select(Booking).where(func.date(Booking.booked_at) == today)
+            )
+            for b in bookings.scalars():
+                await session.delete(b)
 
-                # Платежи
-                payments = await session.execute(
-                    select(DailyPayment).where(func.date(DailyPayment.created_at) == today)
-                )
-                for dp in payments.scalars():
-                    await session.delete(dp)
-
-                await session.commit()
+            # Платежи
+            payments = await session.execute(
+                select(DailyPayment).where(func.date(DailyPayment.created_at) == today)
+            )
+            for dp in payments.scalars():
+                await session.delete(dp)
