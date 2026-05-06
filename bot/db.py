@@ -1,4 +1,3 @@
-# Файл: bot/db.py
 import asyncio
 import logging
 import os
@@ -13,6 +12,31 @@ logger = logging.getLogger(__name__)
 
 # ─── asyncpg pool (оставляем для обратной совместимости) ─────────
 _pool = None
+
+def retry_on_db_error(retries=3, delay=1, backoff=2):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(retries):
+                try:
+                    return await func(*args, **kwargs)
+                except (asyncpg.exceptions.ConnectionFailureError,
+                        asyncpg.exceptions.InterfaceError,
+                        asyncpg.exceptions.PostgresConnectionError) as e:
+                    last_exception = e
+                    if attempt < retries - 1:
+                        wait = delay * (backoff ** attempt)
+                        logger.warning(f"Ошибка БД (попытка {attempt+1}/{retries}): {e}. Повтор через {wait}с")
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.error(f"Все попытки исчерпаны: {e}")
+                        raise
+                except Exception:
+                    raise
+            raise last_exception
+        return wrapper
+    return decorator
 
 async def get_pool():
     global _pool
@@ -57,7 +81,6 @@ def get_async_session_factory():
     """Возвращает фабрику асинхронных сессий SQLAlchemy."""
     global _async_engine, _async_session_factory
     if _async_session_factory is None:
-        # Заменяем синхронный URL на asyncpg, если нужно
         db_url = config.DATABASE_URL
         if db_url.startswith("postgresql://"):
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
