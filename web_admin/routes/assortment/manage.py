@@ -3,9 +3,10 @@ import logging
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select, func
 
 from bot.db import get_async_session_factory
-from bot.models import Item, Category
+from bot.models import Item, Category, DeletedItem, DailyPayment
 from bot.repositories import ClientRepository
 from bot.services.assortment import AssortmentService
 from web_admin.templates import templates
@@ -158,7 +159,6 @@ async def edit_item_submit(
                     session.add(old)
 
                     if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
-                        from bot.models import DailyPayment
                         payment = DailyPayment(
                             type='preorder',
                             payment_type=booking_payment_type,
@@ -277,7 +277,6 @@ async def add_item(
             session.add(new_item)
             if is_booked:
                 if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
-                    from bot.models import DailyPayment
                     payment = DailyPayment(
                         type='preorder',
                         payment_type=booking_payment_type,
