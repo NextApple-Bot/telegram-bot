@@ -18,10 +18,10 @@
                     <div class="col-md-3"><label class="form-label">Стоимость *</label><input type="number" step="0.01" class="form-control" name="booking_price" id="booking_price" value="{{ item.booking_price or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="booking_prepayment" id="booking_prepayment" value="{{ item.booking_prepayment or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">Способ оплаты</label><select name="booking_payment_type" class="form-select"><option value="">Не указан</option><option value="cash" {% if item.booking_payment_type=='cash' %}selected{% endif %}>Наличные</option><option value="terminal" {% if item.booking_payment_type=='terminal' %}selected{% endif %}>Терминал</option><option value="qr" {% if item.booking_payment_type=='qr' %}selected{% endif %}>QR-код</option><option value="transfer" {% if item.booking_payment_type=='transfer' %}selected{% endif %}>Перевод</option><option value="invoice" {% if item.booking_payment_type=='invoice' %}selected{% endif %}>По счёту</option><option value="installment" {% if item.booking_payment_type=='installment' %}selected{% endif %}>Рассрочка</option></select></div>
-                    <div class="col-md-3"><label class="form-label">Площадка</label><input type="text" class="form-control" name="booking_platform" value="{{ item.booking_platform or '' }}"></div>
-                    <div class="col-md-4"><label class="form-label">ФИО</label><input type="text" class="form-control" name="booking_full_name" value="{{ item.booking_full_name or '' }}"></div>
-                    <div class="col-md-4"><label class="form-label">Телефон</label><input type="tel" class="form-control" name="booking_phone" value="{{ item.booking_phone or '' }}" placeholder="+7XXXXXXXXXX"></div>
-                    <div class="col-md-4"><label class="form-label">Дата рождения</label><input type="text" class="form-control" name="booking_birth_date" placeholder="ДД.ММ.ГГГГ" value="{{ item.booking_birth_date or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Площадка</label><input type="text" class="form-control" name="booking_platform" id="booking_platform" value="{{ item.booking_platform or '' }}"></div>
+                    <div class="col-md-4"><label class="form-label">ФИО</label><input type="text" class="form-control" name="booking_full_name" id="booking_full_name" value="{{ item.booking_full_name or '' }}"></div>
+                    <div class="col-md-4"><label class="form-label">Телефон</label><input type="tel" class="form-control" name="booking_phone" id="booking_phone" value="{{ item.booking_phone or '' }}" placeholder="+7XXXXXXXXXX"></div>
+                    <div class="col-md-4"><label class="form-label">Дата рождения</label><input type="text" class="form-control" name="booking_birth_date" id="booking_birth_date" placeholder="ДД.ММ.ГГГГ" value="{{ item.booking_birth_date or '' }}"></div>
                 </div>
             </div>
             <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="is_sold" name="is_sold" {% if item.is_sold %}checked{% endif %}><label class="form-check-label fw-semibold">Продажа</label><small class="text-danger ms-2">(товар удалится)</small></div>
@@ -32,10 +32,10 @@
                     <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="sale_prepayment" id="sale_prepayment" value="{{ item.sale_prepayment or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">Оплата *</label><input type="number" step="0.01" class="form-control" name="sale_payment_amount" id="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">Способ оплаты</label><select name="sale_payment_type" class="form-select"><option value="cash" {% if item.sale_payment_type=='cash' %}selected{% endif %}>Наличные</option><option value="terminal" {% if item.sale_payment_type=='terminal' %}selected{% endif %}>Терминал</option><option value="qr" {% if item.sale_payment_type=='qr' %}selected{% endif %}>QR-код</option><option value="transfer" {% if item.sale_payment_type=='transfer' %}selected{% endif %}>Перевод</option><option value="invoice" {% if item.sale_payment_type=='invoice' %}selected{% endif %}>По счёту</option><option value="installment" {% if item.sale_payment_type=='installment' %}selected{% endif %}>Рассрочка</option><option value="paid" {% if item.sale_payment_type=='paid' %}selected{% endif %}>Оплачен</option></select></div>
-                    <div class="col-md-4"><label class="form-label">Площадка</label><input type="text" class="form-control" name="sale_platform" value="{{ item.sale_platform or '' }}"></div>
-                    <div class="col-md-4"><label class="form-label">ФИО</label><input type="text" class="form-control" name="sale_full_name" value="{{ item.sale_full_name or '' }}"></div>
-                    <div class="col-md-4"><label class="form-label">Телефон</label><input type="tel" class="form-control" name="sale_phone" value="{{ item.sale_phone or '' }}" placeholder="+7XXXXXXXXXX"></div>
-                    <div class="col-md-4"><label class="form-label">Дата рождения</label><input type="text" class="form-control" name="sale_birth_date" placeholder="ДД.ММ.ГГГГ" value="{{ item.sale_birth_date or '' }}"></div>
+                    <div class="col-md-4"><label class="form-label">Площадка</label><input type="text" class="form-control" name="sale_platform" id="sale_platform" value="{{ item.sale_platform or '' }}"></div>
+                    <div class="col-md-4"><label class="form-label">ФИО</label><input type="text" class="form-control" name="sale_full_name" id="sale_full_name" value="{{ item.sale_full_name or '' }}"></div>
+                    <div class="col-md-4"><label class="form-label">Телефон</label><input type="tel" class="form-control" name="sale_phone" id="sale_phone" value="{{ item.sale_phone or '' }}" placeholder="+7XXXXXXXXXX"></div>
+                    <div class="col-md-4"><label class="form-label">Дата рождения</label><input type="text" class="form-control" name="sale_birth_date" id="sale_birth_date" placeholder="ДД.ММ.ГГГГ" value="{{ item.sale_birth_date or '' }}"></div>
                 </div>
                 <div class="mt-4">
                     <h6>Дополнительные товары / аксессуары</h6>
@@ -55,6 +55,26 @@
     const saleDiv = document.getElementById('saleFields');
     const isSoldCheckbox = document.getElementById('is_sold');
 
+    // ID полей, которые нужно копировать из брони в продажу
+    const fieldsToCopy = [
+        { from: 'booking_platform', to: 'sale_platform' },
+        { from: 'booking_full_name', to: 'sale_full_name' },
+        { from: 'booking_phone', to: 'sale_phone' },
+        { from: 'booking_birth_date', to: 'sale_birth_date' }
+    ];
+
+    function copyFieldsIfEmpty() {
+        if (isSoldCheckbox.checked) {
+            fieldsToCopy.forEach(({ from, to }) => {
+                const fromEl = document.getElementById(from);
+                const toEl = document.getElementById(to);
+                if (fromEl && toEl && !toEl.value.trim()) {
+                    toEl.value = fromEl.value;
+                }
+            });
+        }
+    }
+
     function updateVisibility() {
         const bookingVisible = isBookedCheckbox.checked;
         const saleVisible = isSoldCheckbox.checked;
@@ -67,6 +87,7 @@
         if (saleVisible) {
             isBookedCheckbox.checked = false;
             bookingDiv.style.display = 'none';
+            copyFieldsIfEmpty();   // переносим данные из брони
         }
     }
     isBookedCheckbox.addEventListener('change', updateVisibility);
