@@ -1,4 +1,3 @@
-# Файл: bot/repositories/client.py
 import json
 import logging
 from datetime import datetime
@@ -85,9 +84,8 @@ class ClientRepository:
             return await _impl(conn)
         else:
             async_session = get_async_session_factory()
-            async with async_session() as session:
-                async with session.begin():
-                    return await _impl(session)
+            async with async_session() as session, session.begin():
+                return await _impl(session)
 
     @staticmethod
     async def add_purchase(
@@ -115,9 +113,8 @@ class ClientRepository:
             await _impl(conn)
         else:
             async_session = get_async_session_factory()
-            async with async_session() as session:
-                async with session.begin():
-                    await _impl(session)
+            async with async_session() as session, session.begin():
+                await _impl(session)
 
     @staticmethod
     async def get_client_purchases(client_id: int) -> list[dict]:
