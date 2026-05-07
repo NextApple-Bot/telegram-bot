@@ -1,262 +1,366 @@
-import csv
-import json
 import logging
 import os
-import tempfile
-from datetime import datetime
+import secrets
 
-from sqlalchemy import select, func
+from aiogram import Router
+from aiogram.filters import Command
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from bot.db import get_async_session_factory
-from bot.models import Client, Purchase, Category, Item, Sale, DeletedItem
-from bot.repositories import ClientRepository, ItemRepository
-from bot.services.assortment import AssortmentService
+from bot import config
+from bot.handlers.service_commands import (
+    export_clients_csv,
+    export_purchases_csv,
+    export_full_report_csv,
+    get_client_info_text,
+    list_categories_text,
+    find_empty_categories,
+    delete_category_if_empty,
+    merge_categories,
+    reset_assortment,
+    delete_client_by_id,
+    delete_purchase_by_id,
+    undo_last_deletion,
+    fix_sales_unique,
+    set_webhook_manually,
+)
+from bot.utils.helpers import send_and_clean
 from bot.utils.markdown import escape_markdown_v1
+from .base import cancel_action, get_main_menu_keyboard, show_help, show_inventory
 
+router = Router()
 logger = logging.getLogger(__name__)
 
+def is_admin(user_id: int) -> bool:
+    return user_id in config.ADMIN_IDS
 
-# ─── Экспорт данных ─────────────────────────────────────────────
-async def export_clients_csv() -> str:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        result = await session.execute(select(Client).order_by(Client.id))
-        rows = result.scalars().all()
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
-        writer = csv.writer(tmp)
-        writer.writerow(['ID', 'ФИО', 'Основной телефон', 'Все телефоны', 'Telegram', 'Соцсети', 'Источник', 'Дата регистрации'])
-        for row in rows:
-            writer.writerow([
-                row.id, row.full_name, row.phone, row.phones,
-                row.telegram_username, row.social_network, row.referral_source,
-                row.created_at.strftime("%d.%m.%y") if row.created_at else ''
-            ])
-        return tmp.name
-
-async def export_purchases_csv() -> str:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        result = await session.execute(select(Purchase).order_by(Purchase.id))
-        rows = result.scalars().all()
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
-        writer = csv.writer(tmp)
-        writer.writerow(['ID покупки', 'ID клиента', 'Товары (JSON)', 'Сумма', 'Оплата (JSON)', 'Тип', 'Дата'])
-        for row in rows:
-            writer.writerow([row.id, row.client_id, row.items_json, row.total_amount,
-                             row.payment_details, row.purchase_type,
-                             row.created_at.strftime("%d.%m.%y") if row.created_at else ''])
-        return tmp.name
-
-async def get_client_info_text(query: str) -> str | None:
-    clients = await ClientRepository.search_clients(query)
-    if not clients:
-        return None
-    parts = []
-    for client in clients:
-        full_name = escape_markdown_v1(client['full_name'] or '—')
-        phone = escape_markdown_v1(client['phone'] or '—')
-        phones = escape_markdown_v1(client['phones'] or '—')
-        telegram = escape_markdown_v1(f"@{client['telegram_username']}" if client['telegram_username'] else '—')
-        social = escape_markdown_v1(client['social_network'] or '—')
-        source = escape_markdown_v1(client['referral_source'] or '—')
-        created_at = client['created_at'].strftime("%d.%m.%y") if client['created_at'] else '—'
-        text = f"👤 *Клиент ID {client['id']}*\n"
-        text += f"ФИО: {full_name}\nТелефон: {phone}\nДоп. телефоны: {phones}\nTelegram: {telegram}\nСоцсети: {social}\nИсточник: {source}\nДата регистрации: {created_at}\n\n"
-        purchases = await ClientRepository.get_client_purchases(client['id'])
-        if purchases:
-            text += "*Покупки:*\n"
-            for p in purchases:
-                p_created = p['created_at'].strftime("%d.%m.%y") if p['created_at'] else '—'
-                text += f"📅 Дата покупки: {p_created}\n"
-                items = json.loads(p['items_json']) if p['items_json'] else []
-                for item in items:
-                    item_text = escape_markdown_v1(item.get('item_text', '')[:50])
-                    text += f"  • {item_text}"
-                    if item.get('price'):
-                        text += f" \\- {item['price']}₽"
-                    text += "\n"
-                text += f"  💰 Сумма: {p['total_amount']}₽\n  💳 Оплата: {p['payment_details']}\n  🏷️ Тип: {p['purchase_type']}\n\n"
-        else:
-            text += "Нет покупок\n"
-        parts.append(text)
-    return "\n\n".join(parts)
-
-async def export_full_report_csv() -> str:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        q = (
-            select(
-                Client.id.label("client_id"),
-                Client.full_name,
-                Client.phone,
-                Client.telegram_username,
-                Purchase.created_at,
-                Purchase.items_json,
-                Purchase.total_amount,
-                Purchase.payment_details
-            )
-            .outerjoin(Purchase, Client.id == Purchase.client_id)
-            .order_by(Client.id, Purchase.created_at)
+@router.message(Command("start"))
+async def cmd_start(message: Message):
+    try:
+        keyboard = get_main_menu_keyboard()
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text="👋 Добро пожаловать! Используйте кнопки ниже для управления.",
+            reply_markup=keyboard,
+            message_thread_id=message.message_thread_id,
+            delete_after=60
         )
-        result = await session.execute(q)
-        rows = result.all()
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp:
-        writer = csv.writer(tmp)
-        writer.writerow(['ID клиента', 'ФИО', 'Телефон', 'Telegram', 'Дата покупки', 'Товары', 'Сумма', 'Способ оплаты'])
-        for row in rows:
-            items = json.loads(row.items_json) if row.items_json else []
-            items_short = ', '.join([it.get('item_text', '')[:30] + '...' for it in items])
-            p_created = row.created_at.strftime("%d.%m.%y") if row.created_at else ''
-            writer.writerow([row.client_id, row.full_name, row.phone, row.telegram_username,
-                             p_created, items_short, row.total_amount, row.payment_details])
-        return tmp.name
+    except Exception as e:
+        logger.exception("Ошибка в /start")
 
-# ─── Управление категориями ─────────────────────────────────────
-async def list_categories_text() -> str:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        q = (
-            select(
-                Category.id,
-                Category.name,
-                func.count(Item.id).label("item_count")
-            )
-            .outerjoin(Item, Category.id == Item.category_id)
-            .group_by(Category.id, Category.name)
-            .order_by(Category.id)
-        )
-        result = await session.execute(q)
-        rows = result.all()
-    text = "📋 **Список категорий:**\n\n"
-    for r in rows:
-        text += f"🆔 `{r.id}` — **{escape_markdown_v1(r.name)}** (товаров: {r.item_count})\n"
-    return text
+@router.message(Command("inventory"))
+async def cmd_inventory(message: Message, bot):
+    await show_inventory(bot, message.chat.id)
 
-async def find_empty_categories() -> list[dict]:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        q = (
-            select(Category.id, Category.name)
-            .outerjoin(Item, Category.id == Item.category_id)
-            .where(Item.id == None)
-        )
-        result = await session.execute(q)
-        rows = result.all()
-    return [{"id": r.id, "name": r.name} for r in rows]
-
-async def delete_category_if_empty(cat_id: int) -> tuple[bool, str]:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        cat = await session.get(Category, cat_id)
-        if not cat:
-            return False, f"❌ Категория с ID {cat_id} не найдена."
-        count_q = select(func.count(Item.id)).where(Item.category_id == cat_id)
-        count = (await session.execute(count_q)).scalar()
-        if count > 0:
-            return False, f"❌ Категория «{escape_markdown_v1(cat.name)}» содержит {count} товаров. Удаление невозможно."
-        return True, f"«{escape_markdown_v1(cat.name)}» (ID {cat_id})"
-
-async def merge_categories(from_id: int, to_id: int) -> tuple[bool, str]:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        from_cat = await session.get(Category, from_id)
-        to_cat = await session.get(Category, to_id)
-        if not from_cat or not to_cat:
-            return False, "❌ Одна из категорий не найдена"
-        count_q = select(func.count(Item.id)).where(Item.category_id == from_id)
-        count = (await session.execute(count_q)).scalar()
-        if count == 0:
-            return False, f"❌ В категории «{escape_markdown_v1(from_cat.name)}» нет товаров. Удалите её через /delete_category."
-        msg = f"⚠️ Перенести {count} товаров из «{escape_markdown_v1(from_cat.name)}» (ID {from_id}) в «{escape_markdown_v1(to_cat.name)}» (ID {to_id})?\nПосле этого категория {from_id} будет удалена."
-        return True, msg
-
-async def reset_assortment() -> str:
-    async_session = get_async_session_factory()
-    async with async_session() as session, session.begin():
-        subq = select(Category.id).where(Category.name == '__SYSTEM__')
-        sys_id = (await session.execute(subq)).scalar()
-        if sys_id:
-            await session.execute(
-                "DELETE FROM items WHERE category_id != :sys_id",
-                {"sys_id": sys_id}
-            )
-        await session.execute("DELETE FROM categories WHERE name != '__SYSTEM__'")
-    await AssortmentService.invalidate_cache()
-    return "✅ Ассортимент полностью очищен"
-
-# ─── Удаление по ID ─────────────────────────────────────────────
-async def delete_client_by_id(client_id: int) -> tuple[bool, str]:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        client = await session.get(Client, client_id)
-        if not client:
-            return False, f"❌ Клиент с ID {client_id} не найден."
-        count_q = select(func.count(Purchase.id)).where(Purchase.client_id == client_id)
-        purchases = (await session.execute(count_q)).scalar()
-        warning = f"⚠️ Удалить клиента «{escape_markdown_v1(client.full_name or 'Без имени')}» (ID {client_id})?"
-        if purchases:
-            warning += f"\n⚠️ У клиента есть {purchases} покупок — они будут удалены вместе с клиентом."
-        return True, warning
-
-async def delete_purchase_by_id(purchase_id: int) -> tuple[bool, str]:
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        purchase = await session.get(Purchase, purchase_id)
-        if not purchase:
-            return False, f"❌ Покупка с ID {purchase_id} не найдена."
-        return True, f"⚠️ Удалить покупку ID {purchase_id} на сумму {purchase.total_amount} ₽?"
-
-async def undo_last_deletion() -> str:
-    deleted = await ItemRepository.get_last_deleted_item()
-    if not deleted:
-        return "📭 Нет удалённых товаров для восстановления."
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        cat = await session.get(Category, deleted['category_id'])
-        if not cat:
-            cat_id = await ItemRepository.get_or_create_category("Общее:")
-        else:
-            cat_id = deleted['category_id']
-    await ItemRepository.add_item(
-        text=deleted['text'],
-        serial=deleted['serial'],
-        category_id=cat_id
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, bot, state):
+    await cancel_action(bot, message.chat.id, state)
+    await send_and_clean(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        text="Главное меню:",
+        reply_markup=get_main_menu_keyboard(),
+        message_thread_id=message.message_thread_id,
+        delete_after=60
     )
-    await ItemRepository.restore_deleted_item(deleted['id'])
-    return f"✅ Товар восстановлен:\n{escape_markdown_v1(deleted['text'])}"
 
-async def fix_sales_unique() -> str:
-    async_session = get_async_session_factory()
-    async with async_session() as session, session.begin():
-        result1 = await session.execute("DELETE FROM sales WHERE message_id IS NULL")
-        deleted_null = result1.rowcount
-        result2 = await session.execute(
-            "DELETE FROM sales a USING sales b WHERE a.id > b.id AND a.message_id = b.message_id"
+@router.message(Command("help"))
+async def cmd_help(message: Message, bot):
+    await show_help(bot, message.chat.id)
+
+# ---------- Экспорт данных ----------
+@router.message(Command("export_clients"))
+async def cmd_export_clients(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        file_path = await export_clients_csv()
+        await message.answer_document(FSInputFile(file_path, filename="clients.csv"), caption="📁 Экспорт клиентов")
+    except Exception:
+        logger.exception("Ошибка экспорта клиентов")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка экспорта")
+
+@router.message(Command("export_purchases"))
+async def cmd_export_purchases(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        file_path = await export_purchases_csv()
+        await message.answer_document(FSInputFile(file_path, filename="purchases.csv"), caption="📁 Экспорт покупок")
+    except Exception:
+        logger.exception("Ошибка экспорта покупок")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка экспорта")
+
+@router.message(Command("client_info"))
+async def cmd_client_info(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    args = message.text.replace('/client_info', '').strip()
+    if not args:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="Укажите телефон или имя клиента")
+        return
+    try:
+        text = await get_client_info_text(args)
+        if text is None:
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="Клиент не найден")
+            return
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text, parse_mode='Markdown')
+    except Exception:
+        logger.exception("Ошибка получения информации о клиенте")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+@router.message(Command("export_full_report"))
+async def cmd_export_full_report(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        file_path = await export_full_report_csv()
+        await message.answer_document(FSInputFile(file_path, filename="full_report.csv"), caption="📁 Полный отчёт")
+    except Exception:
+        logger.exception("Ошибка экспорта полного отчёта")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка экспорта")
+
+# ---------- Управление категориями ----------
+@router.message(Command("show_categories"))
+async def cmd_show_categories(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        text = await list_categories_text()
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text, parse_mode='Markdown')
+    except Exception:
+        logger.exception("Ошибка списка категорий")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+@router.message(Command("clean_empty"))
+async def cmd_clean_empty(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        empty = await find_empty_categories()
+        if not empty:
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="✅ Пустых категорий нет.")
+            return
+        categories_list = "\n".join([f"• {escape_markdown_v1(r['name'])} (ID {r['id']})" for r in empty])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, удалить все", callback_data="clean_empty:confirm")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+        ])
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"⚠️ Найдены пустые категории:\n{categories_list}\n\nУдалить их?",
+            reply_markup=keyboard,
         )
-        deleted_dups = result2.rowcount
-        try:
-            await session.execute("ALTER TABLE sales ADD CONSTRAINT sales_message_id_key UNIQUE (message_id)")
-            constraint_added = True
-        except Exception:
-            constraint_added = False
-    return f"✅ Исправление таблицы sales:\n• Удалено записей с NULL message_id: {deleted_null}\n• Удалено дубликатов: {deleted_dups}\n• Уникальное ограничение: {'добавлено' if constraint_added else 'уже существовало'}"
+    except Exception:
+        logger.exception("Ошибка поиска пустых категорий")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
 
-async def set_webhook_manually() -> str:
-    import secrets
-    from aiogram import Bot
-    from bot import config
-    if not config.RENDER_URL:
-        return "❌ RENDER_URL не задан в переменных окружения."
-    webhook_url = f"{config.RENDER_URL}/webhook"
-    webhook_secret = os.getenv("WEBHOOK_SECRET")
-    if not webhook_secret:
-        webhook_secret = secrets.token_urlsafe(32)
-    temp_bot = Bot(token=config.TOKEN)
-    await temp_bot.delete_webhook(drop_pending_updates=True)
-    await temp_bot.set_webhook(
-        url=webhook_url,
-        secret_token=webhook_secret,
-        allowed_updates=["message", "callback_query"]
+@router.message(Command("delete_category"))
+async def cmd_delete_category(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 2:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /delete_category <ID>")
+        return
+    try:
+        cat_id = int(args[1])
+    except ValueError:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должен быть числом")
+        return
+    try:
+        can_delete, reason = await delete_category_if_empty(cat_id)
+        if not can_delete:
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=reason)
+            return
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_cat:{cat_id}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+        ])
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"⚠️ Точно удалить категорию {reason}?",
+            reply_markup=keyboard,
+        )
+    except Exception:
+        logger.exception("Ошибка подготовки удаления категории")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+@router.message(Command("merge_categories"))
+async def cmd_merge_categories(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 3:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /merge_categories <from_id> <to_id>")
+        return
+    try:
+        from_id = int(args[1])
+        to_id = int(args[2])
+    except ValueError:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должны быть числами")
+        return
+    if from_id == to_id:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должны быть разными")
+        return
+    try:
+        can_merge, msg_text = await merge_categories(from_id, to_id)
+        if not can_merge:
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=msg_text)
+            return
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, перенести и удалить", callback_data=f"merge:{from_id}:{to_id}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+        ])
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=msg_text,
+            reply_markup=keyboard,
+        )
+    except Exception:
+        logger.exception("Ошибка подготовки слияния категорий")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+@router.message(Command("reset_assortment"))
+async def cmd_reset_assortment(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ ДА, УДАЛИТЬ ВСЁ", callback_data="reset_assortment:confirm")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+    ])
+    await send_and_clean(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        text="⚠️ **ВНИМАНИЕ!** Эта команда **полностью удалит** все товары и категории из ассортимента.\nДанные о клиентах, покупках, статистике и бронях сохранятся.\n\nВы уверены?",
+        reply_markup=keyboard,
+        parse_mode='Markdown',
     )
-    await temp_bot.session.close()
-    return f"✅ Вебхук успешно установлен на:\n{webhook_url}\nСекретный токен: `{webhook_secret}`"
+
+# ---------- Удаление по ID ----------
+@router.message(Command("delete_client"))
+async def cmd_delete_client(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 2:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /delete_client <ID>")
+        return
+    try:
+        client_id = int(args[1])
+    except ValueError:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должен быть числом")
+        return
+    try:
+        can_delete, warning = await delete_client_by_id(client_id)
+        if not can_delete:
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=warning)
+            return
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_client:{client_id}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+        ])
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=warning,
+            reply_markup=keyboard,
+        )
+    except Exception:
+        logger.exception("Ошибка подготовки удаления клиента")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+@router.message(Command("delete_purchase"))
+async def cmd_delete_purchase(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    args = message.text.split()
+    if len(args) != 2:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Используйте: /delete_purchase <ID>")
+        return
+    try:
+        purchase_id = int(args[1])
+    except ValueError:
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ ID должен быть числом")
+        return
+    try:
+        can_delete, warning = await delete_purchase_by_id(purchase_id)
+        if not can_delete:
+            await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=warning)
+            return
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_purchase:{purchase_id}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+        ])
+        await send_and_clean(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=warning,
+            reply_markup=keyboard,
+        )
+    except Exception:
+        logger.exception("Ошибка подготовки удаления покупки")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+# ---------- Команда /undo ----------
+@router.message(Command("undo"))
+async def cmd_undo(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        text = await undo_last_deletion()
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=text)
+    except Exception:
+        logger.exception("Ошибка восстановления")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+# ---------- Команда /chatid ----------
+@router.message(Command("chatid"))
+async def cmd_chatid(message: Message):
+    chat_id = message.chat.id
+    thread_id = message.message_thread_id
+    response = f"Chat ID: `{chat_id}`\n"
+    if thread_id:
+        response += f"Thread ID: `{thread_id}`"
+    await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=response, parse_mode="Markdown")
+
+# ---------- Команда /fix_sales_unique ----------
+@router.message(Command("fix_sales_unique"))
+async def cmd_fix_sales_unique(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        result_msg = await fix_sales_unique()
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=result_msg)
+    except Exception:
+        logger.exception("Ошибка fix_sales_unique")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
+
+# ---------- Команда /set_webhook ----------
+@router.message(Command("set_webhook"))
+async def cmd_set_webhook(message: Message):
+    if not is_admin(message.from_user.id):
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="⛔ Доступ запрещён")
+        return
+    try:
+        result_msg = await set_webhook_manually()
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text=result_msg, parse_mode='Markdown')
+    except Exception:
+        logger.exception("Ошибка ручной установки вебхука")
+        await send_and_clean(bot=message.bot, chat_id=message.chat.id, text="❌ Ошибка")
