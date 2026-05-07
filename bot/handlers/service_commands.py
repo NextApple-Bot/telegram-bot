@@ -6,7 +6,7 @@ import tempfile
 from datetime import datetime
 
 from bot.db import get_pool
-from bot.repositories import ClientRepository, ItemRepository, StatsRepository
+from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.markdown import escape_markdown_v1
 
@@ -62,6 +62,7 @@ async def get_client_info_text(query: str) -> str | None:
             text += "*Покупки:*\n"
             for p in purchases:
                 p_created = p['created_at'].strftime("%d.%m.%y") if p['created_at'] else '—'
+                text += f"📅 Дата покупки: {p_created}\n"
                 items = json.loads(p['items_json']) if p['items_json'] else []
                 for item in items:
                     item_text = escape_markdown_v1(item.get('item_text', '')[:50])
@@ -149,9 +150,7 @@ async def reset_assortment() -> str:
     """Полностью очищает ассортимент: удаляет все товары и категории, кроме системных."""
     pool = await get_pool()
     async with pool.acquire() as conn, conn.transaction():
-        # Удаляем все товары
         await conn.execute("DELETE FROM items WHERE category_id NOT IN (SELECT id FROM categories WHERE name = '__SYSTEM__')")
-        # Удаляем категории (кроме системной)
         await conn.execute("DELETE FROM categories WHERE name != '__SYSTEM__'")
     await AssortmentService.invalidate_cache()
     return "✅ Ассортимент полностью очищен"
