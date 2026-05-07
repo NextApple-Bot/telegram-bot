@@ -169,7 +169,7 @@ async def process_remains(callback: CallbackQuery):
         result = await session.execute(
             select(Item.text)
             .join(Category, Item.category_id == Category.id)
-            .where(Item.is_booked == False, ~Category.name.in_(['Б/У:', 'Б/У', 'NS:', 'NS']))
+            .where(~Item.is_booked, ~Category.name.in_(['Б/У:', 'Б/У', 'NS:', 'NS']))
         )
         rows = result.all()
 
