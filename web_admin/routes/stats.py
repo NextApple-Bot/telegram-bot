@@ -1,9 +1,7 @@
-from datetime import date, timedelta
-from fastapi import APIRouter, Query, Request
-from sqlalchemy import select, func
+from datetime import date
 
-from bot.db import get_async_session_factory
-from bot.models import Sale, Preorder, Booking, DailyPayment
+from fastapi import APIRouter, Query, Request
+
 from web_admin.templates import templates
 
 router = APIRouter()

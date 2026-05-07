@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from bot.db import get_async_session_factory
-from bot.models import Seller, SellerDay
+from bot.models import Seller
 from web_admin.templates import templates
 
 router = APIRouter()

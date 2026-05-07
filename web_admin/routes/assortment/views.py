@@ -1,13 +1,11 @@
 # Файл: web_admin/routes/assortment/views.py
-import re
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from sqlalchemy import select, func
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import HTMLResponse
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
-from bot.services.assortment import AssortmentService
-from bot.models import Item, Category
+from bot.models import Category, Item
 from web_admin.templates import templates
 
 router = APIRouter()

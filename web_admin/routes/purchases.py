@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
-from bot.models import Purchase, Client
+from bot.models import Client, Purchase
 from web_admin.templates import templates
 
 router = APIRouter()

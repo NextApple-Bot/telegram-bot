@@ -8,10 +8,10 @@ from datetime import datetime
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from cachetools import TTLCache
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from bot.db import get_async_session_factory
-from bot.models import Item, Category, Client, Purchase, Sale, Preorder, Booking, DailyPayment
+from bot.models import Category, Item
 from bot.repositories import ClientRepository, StatsRepository
 from bot.utils.helpers import send_and_clean
 from bot.utils.sort import detect_sim_type, get_full_model_name

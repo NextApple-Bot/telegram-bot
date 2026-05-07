@@ -1,6 +1,4 @@
 import logging
-import os
-import secrets
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -8,23 +6,23 @@ from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarku
 
 from bot import config
 from bot.handlers.service_commands import (
-    export_clients_csv,
-    export_purchases_csv,
-    export_full_report_csv,
-    get_client_info_text,
-    list_categories_text,
-    find_empty_categories,
     delete_category_if_empty,
-    merge_categories,
-    reset_assortment,
     delete_client_by_id,
     delete_purchase_by_id,
-    undo_last_deletion,
+    export_clients_csv,
+    export_full_report_csv,
+    export_purchases_csv,
+    find_empty_categories,
     fix_sales_unique,
+    get_client_info_text,
+    list_categories_text,
+    merge_categories,
     set_webhook_manually,
+    undo_last_deletion,
 )
 from bot.utils.helpers import send_and_clean
 from bot.utils.markdown import escape_markdown_v1
+
 from .base import cancel_action, get_main_menu_keyboard, show_help, show_inventory
 
 router = Router()
@@ -45,7 +43,7 @@ async def cmd_start(message: Message):
             message_thread_id=message.message_thread_id,
             delete_after=60
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Ошибка в /start")
 
 @router.message(Command("inventory"))

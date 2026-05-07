@@ -7,17 +7,17 @@ import aiofiles
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from bot import config
 from bot.db import get_async_session_factory
 from bot.handlers.states import ArrivalConfirmState
+from bot.models import Item
 from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.helpers import send_and_clean
 from bot.utils.sort import extract_base_name, normalize_name
 from bot.utils.validators import extract_serials
-from bot.models import Item, Category
 
 logger = logging.getLogger(__name__)
 

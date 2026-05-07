@@ -2,10 +2,10 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func, text
+from sqlalchemy import func, select, text
 
 from bot.db import get_async_session_factory
-from bot.models import Sale, Preorder, Booking, DailyPayment, Seller, SellerDay, Item, Category
+from bot.models import Booking, Category, DailyPayment, Item, Preorder, Sale, Seller, SellerDay
 from web_admin.templates import templates
 
 router = APIRouter()

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
 from bot.models import DeletedItem, Item

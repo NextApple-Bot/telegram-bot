@@ -1,7 +1,5 @@
 import logging
 
-from sqlalchemy import select, func
-
 from bot.db import get_async_session_factory
 from bot.repositories import ItemRepository, StatsRepository
 from bot.utils.validators import extract_serials

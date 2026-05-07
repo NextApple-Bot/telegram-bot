@@ -3,12 +3,11 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
-from bot.models import Client, Purchase, Category, Item, Sale, DeletedItem
+from bot.models import Category, Client, Item, Purchase
 from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.markdown import escape_markdown_v1
@@ -243,7 +242,9 @@ async def fix_sales_unique() -> str:
 
 async def set_webhook_manually() -> str:
     import secrets
+
     from aiogram import Bot
+
     from bot import config
     if not config.RENDER_URL:
         return "❌ RENDER_URL не задан в переменных окружения."

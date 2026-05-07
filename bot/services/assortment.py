@@ -1,10 +1,10 @@
 import logging
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
+from bot.models import DeletedItem, Item
 from bot.services.cache import cache
-from bot.models import Item, DeletedItem
 
 logger = logging.getLogger(__name__)
 

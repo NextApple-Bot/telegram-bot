@@ -5,9 +5,9 @@ from .clients import router as clients_router
 from .dashboard import router as dashboard_router
 from .debug import router as debug_router
 from .purchases import router as purchases_router
+from .sellers import router as sellers_router
 from .sold import router as sold_router
 from .stats import router as stats_router
-from .sellers import router as sellers_router
 
 routers = [
     auth_router,
