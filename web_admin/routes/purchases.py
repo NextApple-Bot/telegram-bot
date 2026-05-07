@@ -1,8 +1,9 @@
-# Файл: web_admin/routes/purchases.py
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select, func
 
-from bot.db import get_pool
+from bot.db import get_async_session_factory
+from bot.models import Purchase, Client
 from web_admin.templates import templates
 
 router = APIRouter()
@@ -18,54 +19,47 @@ async def list_purchases(
     date_to: str | None = Query(None),
     payment_type: str = Query("all"),
     purchase_type: str = Query("all"),
-    sort_by: str = Query("id", regex="^(id|client_name|created_at|total_amount|purchase_type)$"),
-    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    sort_by: str = Query("id", pattern="^(id|client_name|created_at|total_amount|purchase_type)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
 ):
-    pool = await get_pool()
-    offset = (page - 1) * per_page
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        offset = (page - 1) * per_page
+        base_query = select(Purchase, Client.full_name.label('client_name')) \
+            .outerjoin(Client, Purchase.client_id == Client.id)
+        count_query = select(func.count(Purchase.id)).outerjoin(Client, Purchase.client_id == Client.id)
 
-    base_query = """SELECT p.*, c.full_name as client_name FROM purchases p LEFT JOIN clients c ON p.client_id = c.id WHERE 1=1"""
-    count_query = "SELECT COUNT(*) FROM purchases p LEFT JOIN clients c ON p.client_id = c.id WHERE 1=1"
-    params = []
-    count_params = []
+        if client_search:
+            base_query = base_query.where(
+                (Client.full_name.ilike(f"%{client_search}%")) | (Client.phone.ilike(f"%{client_search}%"))
+            )
+            count_query = count_query.where(
+                (Client.full_name.ilike(f"%{client_search}%")) | (Client.phone.ilike(f"%{client_search}%"))
+            )
+        if date_from:
+            base_query = base_query.where(Purchase.created_at >= date_from)
+            count_query = count_query.where(Purchase.created_at >= date_from)
+        if date_to:
+            base_query = base_query.where(Purchase.created_at <= date_to)
+            count_query = count_query.where(Purchase.created_at <= date_to)
+        if purchase_type != "all":
+            base_query = base_query.where(Purchase.purchase_type == purchase_type)
+            count_query = count_query.where(Purchase.purchase_type == purchase_type)
 
-    if client_search:
-        clause = " AND (c.full_name ILIKE $" + str(len(params)+1) + " OR c.phone ILIKE $" + str(len(params)+1) + ")"
-        base_query += clause
-        count_query += clause
-        params.append(f"%{client_search}%")
-        count_params.append(f"%{client_search}%")
+        allowed_sort = {"id": Purchase.id, "client_name": Client.full_name,
+                        "created_at": Purchase.created_at, "total_amount": Purchase.total_amount,
+                        "purchase_type": Purchase.purchase_type}
+        sort_col = allowed_sort.get(sort_by, Purchase.id)
+        order_dir = sort_col.desc() if sort_order == "desc" else sort_col.asc()
+        base_query = base_query.order_by(order_dir).limit(per_page).offset(offset)
 
-    if date_from:
-        base_query += " AND p.created_at >= $" + str(len(params)+1)
-        count_query += " AND p.created_at >= $" + str(len(count_params)+1)
-        params.append(date_from)
-        count_params.append(date_from)
-
-    if date_to:
-        base_query += " AND p.created_at <= $" + str(len(params)+1)
-        count_query += " AND p.created_at <= $" + str(len(count_params)+1)
-        params.append(date_to)
-        count_params.append(date_to)
-
-    if purchase_type != "all":
-        base_query += " AND p.purchase_type = $" + str(len(params)+1)
-        count_query += " AND p.purchase_type = $" + str(len(count_params)+1)
-        params.append(purchase_type)
-        count_params.append(purchase_type)
-
-    allowed_sort = {"id": "p.id", "client_name": "c.full_name", "created_at": "p.created_at", "total_amount": "p.total_amount", "purchase_type": "p.purchase_type"}
-    sort_col = allowed_sort.get(sort_by, "p.id")
-    order_dir = "DESC" if sort_order == "desc" else "ASC"
-    base_query += f" ORDER BY {sort_col} {order_dir} LIMIT $" + str(len(params)+1) + " OFFSET $" + str(len(params)+2)
-    params.append(per_page)
-    params.append(offset)
-
-    async with pool.acquire() as conn:
-        total = await conn.fetchval(count_query, *count_params)
+        total = (await session.execute(count_query)).scalar()
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-        rows = await conn.fetch(base_query, *params)
-        purchases = [dict(r) for r in rows]
+        rows = (await session.execute(base_query)).all()
+
+    purchases = [{"id": p.id, "client_id": p.client_id, "client_name": client_name,
+                  "created_at": p.created_at, "total_amount": p.total_amount,
+                  "purchase_type": p.purchase_type, "payment_details": p.payment_details} for p, client_name in rows]
 
     return templates.TemplateResponse("purchases.html", {
         "request": request,
@@ -88,12 +82,9 @@ async def list_purchases(
 
 @router.post("/delete/{purchase_id}")
 async def delete_purchase(purchase_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM purchases WHERE id = $1", purchase_id)
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        purchase = await session.get(Purchase, purchase_id)
+        if purchase:
+            await session.delete(purchase)
     return RedirectResponse(url="/admin/purchases", status_code=303)
-
-
-@router.get("/export/csv")
-async def export_csv(request: Request):
-    return RedirectResponse(url="/admin/purchases")
