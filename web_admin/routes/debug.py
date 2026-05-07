@@ -1,4 +1,3 @@
-# Файл: web_admin/routes/debug.py
 from fastapi import APIRouter, Request
 
 router = APIRouter()
