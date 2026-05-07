@@ -1,6 +1,6 @@
 import os
 from unittest.mock import AsyncMock
-import pytest
+
 from fastapi.testclient import TestClient
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -18,6 +18,7 @@ os.environ["DATABASE_URL"] = "postgresql://none/none"
 
 # Мок пула БД
 import bot.db  # noqa: E402
+
 bot.db.get_pool = AsyncMock()
 
 from web_admin.main import app  # noqa: E402
