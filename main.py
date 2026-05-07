@@ -7,20 +7,22 @@ import time
 import traceback
 
 import uvicorn
-from prometheus_fastapi_instrumentator import Instrumentator
-from sqlalchemy import text
+from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
+from sqlalchemy import text
+
+from prometheus_fastapi_instrumentator import Instrumentator
 
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -54,14 +56,13 @@ class Application:
         self._redis_client = None
 
     async def initialize(self):
-        import redis.asyncio as redis
-        from aiogram import Bot, Dispatcher
-        from aiogram.fsm.storage.memory import MemoryStorage
-        from aiogram.fsm.storage.redis import RedisStorage
-
         from bot.config import config as bot_config
         from bot.db import get_async_session_factory
         from bot.middleware.error_handler import ErrorHandlerMiddleware
+        from aiogram import Bot, Dispatcher
+        from aiogram.fsm.storage.memory import MemoryStorage
+        import redis.asyncio as redis
+        from aiogram.fsm.storage.redis import RedisStorage
 
         self.config = bot_config
         logger.info("✅ Конфигурация загружена")
@@ -132,57 +133,55 @@ class Application:
         await dispose_engine()
         logger.info("✅ Пул БД закрыт")
 
+    # HTTP-обработчики (теперь методы класса)
+    async def webhook(self, request: Request) -> Response:
+        if not self.bot or not self.dp:
+            return Response(status_code=503)
+        try:
+            from aiogram.types import Update
+            update_data = await request.json()
+            update = Update(**update_data)
+            await self.dp.feed_update(self.bot, update)
+            return Response(status_code=200)
+        except Exception:
+            logger.exception("❌ Ошибка обработки вебхука")
+            return Response(status_code=500)
 
-async def webhook(request: Request, app: Application) -> Response:
-    if not app.bot or not app.dp:
-        return Response(status_code=503)
-    try:
-        from aiogram.types import Update
-        update_data = await request.json()
-        update = Update(**update_data)
-        await app.dp.feed_update(app.bot, update)
-        return Response(status_code=200)
-    except Exception:
-        logger.exception("❌ Ошибка обработки вебхука")
-        return Response(status_code=500)
+    async def health(self, _: Request) -> Response:
+        from bot.db import check_db_health, check_redis_health
+        db_ok = await check_db_health()
+        redis_ok = await check_redis_health()
+        if db_ok and redis_ok:
+            return PlainTextResponse("OK")
+        status = {}
+        if not db_ok:
+            status["database"] = "unhealthy"
+        if not redis_ok:
+            status["redis"] = "unhealthy"
+        return JSONResponse(status, status_code=503)
 
-
-async def health(_: Request) -> Response:
-    from bot.db import check_db_health, check_redis_health
-    db_ok = await check_db_health()
-    redis_ok = await check_redis_health()
-    if db_ok and redis_ok:
-        return PlainTextResponse("OK")
-    status = {}
-    if not db_ok:
-        status["database"] = "unhealthy"
-    if not redis_ok:
-        status["redis"] = "unhealthy"
-    return JSONResponse(status, status_code=503)
-
-
-async def health_detailed(_: Request) -> Response:
-    from bot.db import check_db_health, check_redis_health
-    start = time.monotonic()
-    db_ok = await check_db_health()
-    db_time = time.monotonic() - start
-    start = time.monotonic()
-    redis_ok = await check_redis_health()
-    redis_time = time.monotonic() - start
-    overall = db_ok and redis_ok
-    return JSONResponse({
-        "status": "healthy" if overall else "unhealthy",
-        "database": {"status": "up" if db_ok else "down", "response_time_ms": round(db_time*1000, 2) if db_ok else None},
-        "redis": {"status": "up" if redis_ok else "down", "response_time_ms": round(redis_time*1000, 2) if redis_ok else None},
-        "telegram_api": {"status": "up", "response_time_ms": None}
-    }, status_code=200 if overall else 503)
+    async def health_detailed(self, _: Request) -> Response:
+        from bot.db import check_db_health, check_redis_health
+        start = time.monotonic()
+        db_ok = await check_db_health()
+        db_time = time.monotonic() - start
+        start = time.monotonic()
+        redis_ok = await check_redis_health()
+        redis_time = time.monotonic() - start
+        overall = db_ok and redis_ok
+        return JSONResponse({
+            "status": "healthy" if overall else "unhealthy",
+            "database": {"status": "up" if db_ok else "down", "response_time_ms": round(db_time*1000, 2) if db_ok else None},
+            "redis": {"status": "up" if redis_ok else "down", "response_time_ms": round(redis_time*1000, 2) if redis_ok else None},
+            "telegram_api": {"status": "up", "response_time_ms": None}
+        }, status_code=200 if overall else 503)
 
 
 def create_starlette_app(app_instance):
     routes = [
-        Route("/webhook", lambda req: webhook(req, app_instance), methods=["POST"]),
-        Route("/health", health, methods=["GET"]),
-        Route("/health/detailed", health_detailed, methods=["GET"]),
+        Route("/webhook", app_instance.webhook, methods=["POST"]),
+        Route("/health", app_instance.health, methods=["GET"]),
+        Route("/health/detailed", app_instance.health_detailed, methods=["GET"]),
     ]
     starlette_app = Starlette(routes=routes, on_startup=[lambda: None], on_shutdown=[lambda: None])
 
