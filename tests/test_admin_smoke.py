@@ -1,7 +1,7 @@
-import os
+import pytest
 from unittest.mock import AsyncMock
-
 from fastapi.testclient import TestClient
+import os
 
 os.environ["SECRET_KEY"] = "test_secret_key_for_admin_at_least_32_chars"
 os.environ["ADMIN_PASSWORD"] = "testpass"
@@ -14,83 +14,74 @@ os.environ["THREAD_ARRIVAL"] = "3"
 os.environ["THREAD_PREORDER"] = "4"
 os.environ["DATABASE_URL"] = "postgresql://none/none"
 
-# Мокаем пул БД до импорта приложения
 import bot.db
-
 bot.db.get_pool = AsyncMock()
 
-from web_admin.main import app  # noqa: E402
+from web_admin.main import app
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY"))
 
 client = TestClient(app)
 
 
 def test_login_page():
-    response = client.get("/admin/auth/login")
+    response = client.get("/auth/login")
     assert response.status_code == 200
     assert "Вход в админку" in response.text
 
-
 def test_login_failure():
-    response = client.post("/admin/auth/login", data={"password": "wrong"})
+    response = client.post("/auth/login", data={"password": "wrong"})
     assert response.status_code == 200
     assert "Неверный пароль" in response.text
 
-
 def test_login_success():
-    response = client.post("/admin/auth/login", data={"password": "testpass"})
+    response = client.post("/auth/login", data={"password": "testpass"})
     assert response.status_code == 303
     assert response.headers["location"] == "/admin/dashboard"
 
-
 def test_dashboard_redirect_when_not_authenticated():
-    response = client.get("/admin/dashboard", follow_redirects=False)
-    assert response.status_code == 307 or response.status_code == 303
-
+    response = client.get("/dashboard", follow_redirects=False)
+    assert response.status_code in (307, 303)
 
 def test_dashboard_authenticated():
     with client:
-        client.post("/admin/auth/login", data={"password": "testpass"})
-        response = client.get("/admin/dashboard")
+        client.post("/auth/login", data={"password": "testpass"})
+        response = client.get("/dashboard")
         assert response.status_code == 200
         assert "Дашборд" in response.text
 
-
 def test_clients_page_authenticated():
     with client:
-        client.post("/admin/auth/login", data={"password": "testpass"})
-        response = client.get("/admin/clients")
+        client.post("/auth/login", data={"password": "testpass"})
+        response = client.get("/clients")
         assert response.status_code == 200
         assert "Клиенты" in response.text
 
-
 def test_assortment_page_authenticated():
     with client:
-        client.post("/admin/auth/login", data={"password": "testpass"})
-        response = client.get("/admin/assortment")
+        client.post("/auth/login", data={"password": "testpass"})
+        response = client.get("/assortment")
         assert response.status_code == 200
         assert "Ассортимент" in response.text
 
-
 def test_sold_page_authenticated():
     with client:
-        client.post("/admin/auth/login", data={"password": "testpass"})
-        response = client.get("/admin/sold")
+        client.post("/auth/login", data={"password": "testpass"})
+        response = client.get("/sold")
         assert response.status_code == 200
         assert "Проданные товары" in response.text
 
-
 def test_stats_page_authenticated():
     with client:
-        client.post("/admin/auth/login", data={"password": "testpass"})
-        response = client.get("/admin/stats")
+        client.post("/auth/login", data={"password": "testpass"})
+        response = client.get("/stats")
         assert response.status_code == 200
         assert "Статистика" in response.text
 
-
 def test_logout():
     with client:
-        client.post("/admin/auth/login", data={"password": "testpass"})
-        response = client.get("/admin/auth/logout", follow_redirects=False)
+        client.post("/auth/login", data={"password": "testpass"})
+        response = client.get("/auth/logout", follow_redirects=False)
         assert response.status_code == 303
-        response = client.get("/admin/dashboard", follow_redirects=False)
-        assert response.status_code == 307 or response.status_code == 303
+        response = client.get("/dashboard", follow_redirects=False)
+        assert response.status_code in (307, 303)
