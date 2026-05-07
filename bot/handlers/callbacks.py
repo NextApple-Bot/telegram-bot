@@ -8,8 +8,10 @@ from datetime import datetime
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from cachetools import TTLCache
+from sqlalchemy import select, func
 
-from bot.db import get_pool
+from bot.db import get_async_session_factory
+from bot.models import Item, Category, Client, Purchase, Sale, Preorder, Booking, DailyPayment
 from bot.repositories import ClientRepository, StatsRepository
 from bot.utils.helpers import send_and_clean
 from bot.utils.sort import detect_sim_type, get_full_model_name
@@ -162,15 +164,14 @@ async def process_remains(callback: CallbackQuery):
         except Exception:
             pass
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        rows = await conn.fetch('''
-            SELECT i.text
-            FROM items i
-            JOIN categories c ON i.category_id = c.id
-            WHERE i.is_booked = false
-              AND c.name NOT IN ('Б/У:', 'Б/У', 'NS:', 'NS')
-        ''')
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        result = await session.execute(
+            select(Item.text)
+            .join(Category, Item.category_id == Category.id)
+            .where(Item.is_booked == False, ~Category.name.in_(['Б/У:', 'Б/У', 'NS:', 'NS']))
+        )
+        rows = result.all()
 
     if not rows:
         await safe_delete(callback.message)
@@ -181,7 +182,7 @@ async def process_remains(callback: CallbackQuery):
 
     groups = {}
     for row in rows:
-        text = row['text']
+        text = row[0]
         full_name = get_full_model_name(text)
         sim = detect_sim_type(text)
         key = (full_name, sim)
