@@ -138,7 +138,7 @@ async def find_empty_categories() -> list[dict]:
         q = (
             select(Category.id, Category.name)
             .outerjoin(Item, Category.id == Item.category_id)
-            .where(Item.id == None)
+            .where(Item.id.is_(None))
         )
         result = await session.execute(q)
         rows = result.all()
@@ -173,7 +173,6 @@ async def merge_categories(from_id: int, to_id: int) -> tuple[bool, str]:
 async def reset_assortment() -> str:
     async_session = get_async_session_factory()
     async with async_session() as session, session.begin():
-        # Удаляем товары не из системной категории
         subq = select(Category.id).where(Category.name == '__SYSTEM__')
         sys_id = (await session.execute(subq)).scalar()
         if sys_id:
