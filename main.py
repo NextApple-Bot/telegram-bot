@@ -13,10 +13,10 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
+from sqlalchemy import text
 
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# ====================== SENTRY ======================
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     import sentry_sdk
@@ -34,7 +34,6 @@ if SENTRY_DSN:
 else:
     logging.info("ℹ️ SENTRY_DSN не задан, мониторинг ошибок отключён")
 
-# ====================== LOGGING ======================
 log_format = os.getenv("LOG_FORMAT", "text").lower()
 if log_format == "json":
     from pythonjsonlogger import jsonlogger
@@ -58,7 +57,7 @@ class Application:
 
     async def initialize(self):
         from bot.config import config as bot_config
-        from bot.db import get_async_session_factory, dispose_engine
+        from bot.db import get_async_session_factory
         from bot.middleware.error_handler import ErrorHandlerMiddleware
         from aiogram import Bot, Dispatcher
         from aiogram.fsm.storage.memory import MemoryStorage
@@ -68,11 +67,9 @@ class Application:
         self.config = bot_config
         logger.info("✅ Конфигурация загружена")
 
-        # Bot
         self.bot = Bot(token=bot_config.BOT_TOKEN)
         logger.info("✅ Экземпляр Bot создан")
 
-        # Storage
         if bot_config.REDIS_URL:
             self._redis_client = redis.from_url(bot_config.REDIS_URL, decode_responses=True)
             storage = RedisStorage(redis=self._redis_client)
@@ -85,23 +82,19 @@ class Application:
         self.dp.update.middleware(ErrorHandlerMiddleware())
         logger.info("✅ Диспетчер создан")
 
-        # Роутеры
         from bot.handlers import router
         self.dp.include_router(router)
         logger.info("✅ Роутер подключён")
 
-        # Проверка доступа к БД
         async_session = get_async_session_factory()
         async with async_session() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
         logger.info("✅ Подключение к БД подтверждено")
 
-        # Фоновые задачи
         from bot.background import start_background_tasks
         asyncio.create_task(start_background_tasks(self.bot, self.dp))
         logger.info("✅ Фоновые задачи запущены")
 
-        # Вебхук
         await self._setup_webhook()
         return self
 
@@ -141,7 +134,6 @@ class Application:
         logger.info("✅ Пул БД закрыт")
 
 
-# ─── HTTP handlers ──────────────────────────────────────
 async def webhook(request: Request, app: Application) -> Response:
     if not app.bot or not app.dp:
         return Response(status_code=503)
@@ -178,14 +170,12 @@ async def health_detailed(_: Request) -> Response:
     start = time.monotonic()
     redis_ok = await check_redis_health()
     redis_time = time.monotonic() - start
-    telegram_ok = True
-    telegram_time = None
-    overall = db_ok and redis_ok and telegram_ok
+    overall = db_ok and redis_ok
     return JSONResponse({
         "status": "healthy" if overall else "unhealthy",
         "database": {"status": "up" if db_ok else "down", "response_time_ms": round(db_time*1000, 2) if db_ok else None},
         "redis": {"status": "up" if redis_ok else "down", "response_time_ms": round(redis_time*1000, 2) if redis_ok else None},
-        "telegram_api": {"status": "up" if telegram_ok else "down", "response_time_ms": round(telegram_time*1000, 2) if telegram_ok and telegram_time else None}
+        "telegram_api": {"status": "up", "response_time_ms": None}
     }, status_code=200 if overall else 503)
 
 
@@ -197,14 +187,11 @@ def create_starlette_app(app_instance):
     ]
     starlette_app = Starlette(routes=routes, on_startup=[lambda: None], on_shutdown=[lambda: None])
 
-    # Prometheus
     Instrumentator().instrument(starlette_app).expose(starlette_app, endpoint="/metrics")
 
-    # Sentry
     if SENTRY_DSN:
         starlette_app = SentryAsgiMiddleware(starlette_app)
 
-    # SessionMiddleware & админка
     if app_instance.config.SECRET_KEY:
         starlette_app.add_middleware(SessionMiddleware, secret_key=app_instance.config.SECRET_KEY)
         logger.info("✅ SessionMiddleware добавлена")
@@ -224,12 +211,12 @@ def create_starlette_app(app_instance):
     return starlette_app
 
 
-async def main():
+async def main_entry():
     app = Application()
     try:
         await app.initialize()
     except Exception:
-        logger.critical("Не удалось инициализировать приложение. Полный стек ошибки:\n" + traceback.format_exc())
+        logger.critical("Не удалось инициализировать приложение.\n" + traceback.format_exc())
         sys.exit(1)
 
     starlette_app = create_starlette_app(app)
@@ -253,4 +240,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main_entry())
