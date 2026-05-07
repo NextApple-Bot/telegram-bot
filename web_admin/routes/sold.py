@@ -1,8 +1,9 @@
-# Файл: web_admin/routes/sold.py
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select, func
 
-from bot.db import get_pool
+from bot.db import get_async_session_factory
+from bot.models import DeletedItem, Item
 from bot.services.assortment import AssortmentService
 from web_admin.templates import templates
 
@@ -15,16 +16,16 @@ async def list_sold(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=10, le=200),
 ):
-    pool = await get_pool()
-    offset = (page - 1) * per_page
-    query = "SELECT * FROM deleted_items WHERE reason = 'sale_from_admin' ORDER BY deleted_at DESC LIMIT $1 OFFSET $2"
-    count_query = "SELECT COUNT(*) FROM deleted_items WHERE reason = 'sale_from_admin'"
-
-    async with pool.acquire() as conn:
-        total = await conn.fetchval(count_query)
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        offset = (page - 1) * per_page
+        count_q = select(func.count()).select_from(DeletedItem).where(DeletedItem.reason == 'sale_from_admin')
+        total = (await session.execute(count_q)).scalar()
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-        rows = await conn.fetch(query, per_page, offset)
-        items = [dict(r) for r in rows]
+
+        q = select(DeletedItem).where(DeletedItem.reason == 'sale_from_admin') \
+            .order_by(DeletedItem.deleted_at.desc()).limit(per_page).offset(offset)
+        items = (await session.execute(q)).scalars().all()
 
     return templates.TemplateResponse("sold.html", {
         "request": request,
@@ -38,12 +39,16 @@ async def list_sold(
 
 @router.post("/restore/{item_id}")
 async def restore_sold(item_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn, conn.transaction():
-        row = await conn.fetchrow("SELECT * FROM deleted_items WHERE id = $1", item_id)
-        if row:
-            await conn.execute("INSERT INTO items (text, serial, category_id, is_booked) VALUES ($1, $2, $3, $4)",
-                               row["text"], row["serial"], row["category_id"], False)
-            await conn.execute("DELETE FROM deleted_items WHERE id = $1", item_id)
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        deleted = await session.get(DeletedItem, item_id)
+        if deleted:
+            session.add(Item(
+                text=deleted.text,
+                serial=deleted.serial,
+                category_id=deleted.category_id,
+                is_booked=False
+            ))
+            await session.delete(deleted)
     await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/sold", status_code=303)
