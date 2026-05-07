@@ -1,56 +1,36 @@
-# Файл: bot/services/message_service.py
 import logging
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, ReactionTypeEmoji
 
-from bot.db import get_pool
+from bot.db import get_async_session_factory
+from bot.models import ProcessedMessage
 
 logger = logging.getLogger(__name__)
 
 
 async def is_message_processed(chat_id: int, message_id: int) -> bool:
-    """
-    Атомарно проверяет, было ли сообщение обработано.
-    Использует INSERT ... ON CONFLICT DO NOTHING RETURNING 1,
-    чтобы гарантировать однократную обработку даже при гонках.
-    """
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO processed_messages (chat_id, message_id)
-            VALUES ($1, $2)
-            ON CONFLICT (chat_id, message_id) DO NOTHING
-            RETURNING 1
-            """,
-            chat_id, message_id
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        result = await session.execute(
+            "SELECT 1 FROM processed_messages WHERE chat_id = :chat_id AND message_id = :msg_id",
+            {"chat_id": chat_id, "msg_id": message_id}
         )
-        # Если строка возвращена, значит вставка прошла успешно (сообщение не было обработано)
-        return row is None
+        return result.fetchone() is not None
 
 
 async def mark_message_processed(chat_id: int, message_id: int) -> bool:
-    """
-    Помечает сообщение как обработанное и возвращает True, если это первая обработка.
-    Атомарно: если сообщение уже было в таблице, вернёт False.
-    """
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO processed_messages (chat_id, message_id)
-            VALUES ($1, $2)
-            ON CONFLICT (chat_id, message_id) DO NOTHING
-            RETURNING 1
-            """,
-            chat_id, message_id
-        )
-        return row is not None
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        try:
+            session.add(ProcessedMessage(chat_id=chat_id, message_id=message_id))
+            return True
+        except Exception:
+            await session.rollback()
+            return False
 
 
 async def safe_react(message: Message, emoji: str) -> None:
-    """Безопасно ставит реакцию на сообщение, игнорируя ошибки прав."""
     try:
         await message.react([ReactionTypeEmoji(emoji=emoji)])
     except TelegramBadRequest as e:
