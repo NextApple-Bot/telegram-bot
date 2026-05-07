@@ -4,6 +4,7 @@ import os
 import signal
 import sys
 import time
+import traceback
 
 import uvicorn
 from dotenv import load_dotenv
@@ -48,15 +49,6 @@ else:
 logger = logging.getLogger(__name__)
 
 
-class HealthCheckFilter(logging.Filter):
-    def filter(self, record):
-        return not (hasattr(record, 'message') and '/health' in record.getMessage())
-
-
-logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
-load_dotenv()
-
-
 class Application:
     def __init__(self):
         self.bot = None
@@ -65,7 +57,7 @@ class Application:
         self._redis_client = None
 
     async def initialize(self):
-        from bot.config import config
+        from bot.config import config as bot_config
         from bot.db import get_async_session_factory, dispose_engine
         from bot.middleware.error_handler import ErrorHandlerMiddleware
         from aiogram import Bot, Dispatcher
@@ -73,16 +65,16 @@ class Application:
         import redis.asyncio as redis
         from aiogram.fsm.storage.redis import RedisStorage
 
-        self.config = config
+        self.config = bot_config
         logger.info("✅ Конфигурация загружена")
 
         # Bot
-        self.bot = Bot(token=config.BOT_TOKEN)
+        self.bot = Bot(token=bot_config.BOT_TOKEN)
         logger.info("✅ Экземпляр Bot создан")
 
         # Storage
-        if config.REDIS_URL:
-            self._redis_client = redis.from_url(config.REDIS_URL, decode_responses=True)
+        if bot_config.REDIS_URL:
+            self._redis_client = redis.from_url(bot_config.REDIS_URL, decode_responses=True)
             storage = RedisStorage(redis=self._redis_client)
             logger.info("✅ RedisStorage для FSM")
         else:
@@ -98,7 +90,7 @@ class Application:
         self.dp.include_router(router)
         logger.info("✅ Роутер подключён")
 
-        # Проверка доступа к БД (создаст движок, если нужно)
+        # Проверка доступа к БД
         async_session = get_async_session_factory()
         async with async_session() as session:
             await session.execute("SELECT 1")
@@ -168,7 +160,6 @@ async def health(_: Request) -> Response:
     from bot.db import check_db_health, check_redis_health
     db_ok = await check_db_health()
     redis_ok = await check_redis_health()
-    # Telegram проверка не делается для быстроты, всегда OK
     if db_ok and redis_ok:
         return PlainTextResponse("OK")
     status = {}
@@ -189,7 +180,6 @@ async def health_detailed(_: Request) -> Response:
     redis_time = time.monotonic() - start
     telegram_ok = True
     telegram_time = None
-    # Можно добавить проверку Telegram API, если есть бот
     overall = db_ok and redis_ok and telegram_ok
     return JSONResponse({
         "status": "healthy" if overall else "unhealthy",
@@ -239,7 +229,7 @@ async def main():
     try:
         await app.initialize()
     except Exception:
-        logger.critical("Не удалось инициализировать приложение")
+        logger.critical("Не удалось инициализировать приложение. Полный стек ошибки:\n" + traceback.format_exc())
         sys.exit(1)
 
     starlette_app = create_starlette_app(app)
