@@ -3,10 +3,10 @@ import logging
 import uuid
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import select, func
 
 from bot.db import get_async_session_factory
-from bot.models import DailyPayment, DeletedItem, Item, Sale
+from bot.models import Item, DeletedItem, Sale, DailyPayment
 from bot.repositories.client import ClientRepository
 from bot.services.cache import cache
 
@@ -138,7 +138,7 @@ async def handle_sale_from_form(
                     conn=session
                 )
 
-            # Удаление товара
+            # Удаление товара и запись в deleted_items
             old_item = await session.get(Item, item_id)
             if old_item:
                 deleted = DeletedItem(
@@ -152,7 +152,7 @@ async def handle_sale_from_form(
                 session.add(deleted)
                 await session.delete(old_item)
 
-            # Статистика
+            # Статистика продажи
             sale = Sale(
                 count=1,
                 cash=0,
@@ -186,7 +186,7 @@ async def handle_sale_from_form(
 
         finally:
             if own_session:
-                await session.aclose()
+                await session.close()
 
         await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
         return {"success": True}
