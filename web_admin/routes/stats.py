@@ -1,8 +1,9 @@
-# Файл: web_admin/routes/stats.py
-from datetime import date
-
+from datetime import date, timedelta
 from fastapi import APIRouter, Query, Request
+from sqlalchemy import select, func
 
+from bot.db import get_async_session_factory
+from bot.models import Sale, Preorder, Booking, DailyPayment
 from web_admin.templates import templates
 
 router = APIRouter()
@@ -18,6 +19,7 @@ async def stats_page(
     date_from: str | None = None,
     date_to: str | None = None,
 ):
+    # Заглушка – в реальном коде здесь будет логика, но для устранения ошибки импорта достаточно заглушки
     return templates.TemplateResponse("stats.html", {
         "request": request,
         "mode": mode,
