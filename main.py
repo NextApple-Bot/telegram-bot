@@ -7,22 +7,20 @@ import time
 import traceback
 
 import uvicorn
-from dotenv import load_dotenv
+from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy import text
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
-from sqlalchemy import text
-
-from prometheus_fastapi_instrumentator import Instrumentator
 
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-    from sentry_sdk.integrations.starlette import StarletteIntegration
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -56,13 +54,14 @@ class Application:
         self._redis_client = None
 
     async def initialize(self):
+        import redis.asyncio as redis
+        from aiogram import Bot, Dispatcher
+        from aiogram.fsm.storage.memory import MemoryStorage
+        from aiogram.fsm.storage.redis import RedisStorage
+
         from bot.config import config as bot_config
         from bot.db import get_async_session_factory
         from bot.middleware.error_handler import ErrorHandlerMiddleware
-        from aiogram import Bot, Dispatcher
-        from aiogram.fsm.storage.memory import MemoryStorage
-        import redis.asyncio as redis
-        from aiogram.fsm.storage.redis import RedisStorage
 
         self.config = bot_config
         logger.info("✅ Конфигурация загружена")
