@@ -1,4 +1,3 @@
-# Файл: web_admin/routes/__init__.py
 from .assortment.manage import router as assortment_manage_router
 from .assortment.views import router as assortment_views_router
 from .auth import router as auth_router
@@ -8,6 +7,7 @@ from .debug import router as debug_router
 from .purchases import router as purchases_router
 from .sold import router as sold_router
 from .stats import router as stats_router
+from .sellers import router as sellers_router
 
 routers = [
     auth_router,
@@ -19,4 +19,5 @@ routers = [
     debug_router,
     assortment_views_router,
     assortment_manage_router,
+    sellers_router,
 ]
