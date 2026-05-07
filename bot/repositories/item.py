@@ -1,11 +1,10 @@
 import logging
-from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from bot.db import get_async_session_factory
-from bot.models import Category, Item, DeletedItem
+from bot.models import Category, DeletedItem, Item
 from bot.utils.validators import extract_serials
 
 logger = logging.getLogger(__name__)
@@ -55,9 +54,9 @@ class ItemRepository:
     @staticmethod
     async def add_item(
         text: str,
-        serial: Optional[str] = None,
-        category_id: Optional[int] = None,
-        category_name: Optional[str] = None
+        serial: str | None = None,
+        category_id: int | None = None,
+        category_name: str | None = None
     ):
         """Добавляет товар. Можно указать category_id или category_name."""
         if category_id is None:
@@ -82,7 +81,7 @@ class ItemRepository:
             logger.info(f"✅ Товар добавлен: {text[:50]}")
 
     @staticmethod
-    async def get_item_id_by_serial(serial: str, conn=None) -> Optional[int]:
+    async def get_item_id_by_serial(serial: str, conn=None) -> int | None:
         if not serial:
             return None
         normalized = serial.strip().upper()
@@ -99,7 +98,7 @@ class ItemRepository:
                 return await _impl(session)
 
     @staticmethod
-    async def get_item_by_serial(serial: str, conn=None) -> Optional[dict]:
+    async def get_item_by_serial(serial: str, conn=None) -> dict | None:
         normalized = serial.strip().upper()
         async def _impl(session):
             result = await session.execute(
@@ -117,7 +116,7 @@ class ItemRepository:
                 return await _impl(session)
 
     @staticmethod
-    async def get_item_by_text(text: str, conn=None) -> Optional[dict]:
+    async def get_item_by_text(text: str, conn=None) -> dict | None:
         async def _impl(session):
             result = await session.execute(
                 select(Item.id, Item.text, Category.name.label('category_name'))
@@ -182,7 +181,7 @@ class ItemRepository:
                 await _impl(session)
 
     @staticmethod
-    async def get_last_deleted_item() -> Optional[dict]:
+    async def get_last_deleted_item() -> dict | None:
         async_session = get_async_session_factory()
         async with async_session() as session:
             result = await session.execute(

@@ -1,10 +1,10 @@
 import logging
 from datetime import date
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
-from bot.models import Sale, Preorder, Booking, DailyPayment
+from bot.models import Booking, DailyPayment, Preorder, Sale
 
 logger = logging.getLogger(__name__)
 

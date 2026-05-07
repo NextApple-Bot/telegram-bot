@@ -3,10 +3,10 @@ import logging
 import uuid
 from datetime import date
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
-from bot.models import Item, DeletedItem, Sale, DailyPayment
+from bot.models import DailyPayment, DeletedItem, Item, Sale
 from bot.repositories.client import ClientRepository
 from bot.services.cache import cache
 

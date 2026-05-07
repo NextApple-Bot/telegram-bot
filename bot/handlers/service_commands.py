@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime
 
 from bot.db import get_pool
 from bot.repositories import ClientRepository, ItemRepository
@@ -214,7 +213,9 @@ async def fix_sales_unique() -> str:
 
 async def set_webhook_manually() -> str:
     import secrets
+
     from aiogram import Bot
+
     from bot import config
     if not config.RENDER_URL:
         return "❌ RENDER_URL не задан в переменных окружения."

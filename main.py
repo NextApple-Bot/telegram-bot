@@ -7,21 +7,21 @@ import time
 
 import uvicorn
 from dotenv import load_dotenv
+
+# Prometheus + Sentry (как и раньше)
+from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
-# Prometheus + Sentry (как и раньше)
-from prometheus_fastapi_instrumentator import Instrumentator
-
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-    from sentry_sdk.integrations.starlette import StarletteIntegration
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,

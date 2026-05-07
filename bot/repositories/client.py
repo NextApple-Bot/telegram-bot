@@ -1,12 +1,11 @@
 import json
 import logging
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
-from bot.models import Client, Purchase
 from bot.db import get_async_session_factory
+from bot.models import Client, Purchase
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +15,13 @@ class ClientRepository:
 
     @staticmethod
     async def get_or_create_client(
-        phone: Optional[str] = None,
-        phones: Optional[list[str]] = None,
-        full_name: Optional[str] = None,
-        telegram_username: Optional[str] = None,
-        social_network: Optional[str] = None,
-        referral_source: Optional[str] = None,
-        birth_date: Optional[str] = None,
+        phone: str | None = None,
+        phones: list[str] | None = None,
+        full_name: str | None = None,
+        telegram_username: str | None = None,
+        social_network: str | None = None,
+        referral_source: str | None = None,
+        birth_date: str | None = None,
         conn=None
     ) -> int:
         async def _impl(session):
