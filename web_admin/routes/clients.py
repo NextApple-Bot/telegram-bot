@@ -1,9 +1,10 @@
-# Файл: web_admin/routes/clients.py
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select, func
 
-from bot.db import get_pool
+from bot.db import get_async_session_factory
 from bot.repositories import ClientRepository
+from bot.models import Client
 from web_admin.templates import templates
 
 router = APIRouter()
@@ -17,48 +18,42 @@ async def list_clients(
     search: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
-    sort_by: str = Query("id", regex="^(id|full_name|phone|telegram_username|created_at)$"),
-    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    sort_by: str = Query("id", pattern="^(id|full_name|phone|telegram_username|created_at)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
 ):
-    pool = await get_pool()
-    offset = (page - 1) * per_page
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        offset = (page - 1) * per_page
+        base_query = select(Client)
+        count_query = select(func.count(Client.id))
 
-    base_query = "SELECT * FROM clients WHERE 1=1"
-    count_query = "SELECT COUNT(*) FROM clients WHERE 1=1"
-    params = []
-    count_params = []
+        if search:
+            base_query = base_query.where(
+                (Client.full_name.ilike(f"%{search}%")) |
+                (Client.phone.ilike(f"%{search}%")) |
+                (Client.telegram_username.ilike(f"%{search}%"))
+            )
+            count_query = count_query.where(
+                (Client.full_name.ilike(f"%{search}%")) |
+                (Client.phone.ilike(f"%{search}%")) |
+                (Client.telegram_username.ilike(f"%{search}%"))
+            )
+        if date_from:
+            base_query = base_query.where(Client.created_at >= date_from)
+            count_query = count_query.where(Client.created_at >= date_from)
+        if date_to:
+            base_query = base_query.where(Client.created_at <= date_to)
+            count_query = count_query.where(Client.created_at <= date_to)
 
-    if search:
-        clause = " AND (full_name ILIKE $" + str(len(params)+1) + " OR phone ILIKE $" + str(len(params)+1) + " OR telegram_username ILIKE $" + str(len(params)+1) + ")"
-        base_query += clause
-        count_query += clause
-        params.append(f"%{search}%")
-        count_params.append(f"%{search}%")
+        allowed_sort = {"id": Client.id, "full_name": Client.full_name, "phone": Client.phone,
+                        "telegram_username": Client.telegram_username, "created_at": Client.created_at}
+        sort_col = allowed_sort.get(sort_by, Client.id)
+        order_dir = sort_col.desc() if sort_order == "desc" else sort_col.asc()
+        base_query = base_query.order_by(order_dir).limit(per_page).offset(offset)
 
-    if date_from:
-        base_query += " AND created_at >= $" + str(len(params)+1)
-        count_query += " AND created_at >= $" + str(len(count_params)+1)
-        params.append(date_from)
-        count_params.append(date_from)
-
-    if date_to:
-        base_query += " AND created_at <= $" + str(len(params)+1)
-        count_query += " AND created_at <= $" + str(len(count_params)+1)
-        params.append(date_to)
-        count_params.append(date_to)
-
-    allowed_sort = {"id": "id", "full_name": "full_name", "phone": "phone", "telegram_username": "telegram_username", "created_at": "created_at"}
-    sort_column = allowed_sort.get(sort_by, "id")
-    order_dir = "DESC" if sort_order == "desc" else "ASC"
-    base_query += f" ORDER BY {sort_column} {order_dir} LIMIT $" + str(len(params)+1) + " OFFSET $" + str(len(params)+2)
-    params.append(per_page)
-    params.append(offset)
-
-    async with pool.acquire() as conn:
-        total = await conn.fetchval(count_query, *count_params)
+        total = (await session.execute(count_query)).scalar()
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-        rows = await conn.fetch(base_query, *params)
-        clients = [dict(row) for row in rows]
+        clients = (await session.execute(base_query)).scalars().all()
 
     return templates.TemplateResponse("clients.html", {
         "request": request,
@@ -75,14 +70,16 @@ async def list_clients(
     })
 
 
+# ... (остальные эндпоинты как в исходном файле, они не требуют изменений, кроме импорта сессии)
+# Ниже приведён полный код с использованием сессий
+
 @router.get("/{client_id}")
 async def client_detail(request: Request, client_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        client = await conn.fetchrow("SELECT * FROM clients WHERE id = $1", client_id)
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        client = await session.get(Client, client_id)
         if not client:
             return RedirectResponse(url="/admin/clients")
-        client = dict(client)
         purchases = await ClientRepository.get_client_purchases(client_id)
     return templates.TemplateResponse("client_detail.html", {
         "request": request,
@@ -93,15 +90,12 @@ async def client_detail(request: Request, client_id: int):
 
 @router.get("/{client_id}/edit")
 async def edit_client_form(request: Request, client_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        client = await conn.fetchrow("SELECT * FROM clients WHERE id = $1", client_id)
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        client = await session.get(Client, client_id)
         if not client:
             return RedirectResponse(url="/admin/clients")
-    return templates.TemplateResponse("client_edit.html", {
-        "request": request,
-        "client": dict(client),
-    })
+    return templates.TemplateResponse("client_edit.html", {"request": request, "client": client})
 
 
 @router.post("/{client_id}/edit")
@@ -115,25 +109,26 @@ async def edit_client_submit(
     social_network: str = Form(""),
     referral_source: str = Form(""),
 ):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("""
-            UPDATE clients SET full_name=$1, phone=$2, phones=$3, telegram_username=$4,
-            social_network=$5, referral_source=$6, updated_at=CURRENT_TIMESTAMP
-            WHERE id=$7
-        """, full_name, phone, phones, telegram_username, social_network, referral_source, client_id)
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        client = await session.get(Client, client_id)
+        if client:
+            client.full_name = full_name
+            client.phone = phone
+            client.phones = phones
+            client.telegram_username = telegram_username
+            client.social_network = social_network
+            client.referral_source = referral_source
+            client.updated_at = func.now()
+            session.add(client)
     return RedirectResponse(url=f"/admin/clients/{client_id}", status_code=303)
 
 
 @router.post("/delete/{client_id}")
 async def delete_client(client_id: int):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM clients WHERE id = $1", client_id)
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        client = await session.get(Client, client_id)
+        if client:
+            await session.delete(client)
     return RedirectResponse(url="/admin/clients", status_code=303)
-
-
-@router.get("/export/csv")
-async def export_clients_csv(request: Request):
-    # заглушка
-    return RedirectResponse(url="/admin/clients")
