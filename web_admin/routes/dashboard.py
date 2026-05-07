@@ -1,10 +1,11 @@
-# Файл: web_admin/routes/dashboard.py
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import select, func, text
 
-from bot.db import get_pool
+from bot.db import get_async_session_factory
+from bot.models import Sale, Preorder, Booking, DailyPayment, Seller, SellerDay, Item, Category
 from web_admin.templates import templates
 
 router = APIRouter()
@@ -13,68 +14,60 @@ router = APIRouter()
 @router.get("/")
 async def dashboard(request: Request, target_date: str | None = None):
     today = datetime.now().date() if not target_date else datetime.strptime(target_date, "%Y-%m-%d").date()
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        # Продажи
+        sales_count = (await session.execute(
+            select(func.count(Sale.id)).where(func.date(Sale.sold_at) == today)
+        )).scalar() or 0
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Количество продаж за выбранную дату
-        sales = await conn.fetchval("SELECT COUNT(*) FROM sales WHERE DATE(sold_at) = $1", today) or 0
-
-        # Суммы платежей по типам из daily_payments
-        row = await conn.fetchrow("""
-            SELECT
-                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'cash'), 0) as cash,
-                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'terminal'), 0) as terminal,
-                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'qr'), 0) as qr,
-                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'transfer'), 0) as transfer,
-                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'invoice'), 0) as invoice,
-                COALESCE(SUM(amount) FILTER (WHERE payment_type = 'installment'), 0) as installment
-            FROM daily_payments WHERE DATE(created_at) = $1
-        """, today)
-
-        payments = dict(row) if row else {}
+        # Платежи
+        payment_rows = (await session.execute(
+            select(
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'cash'), 0).label('cash'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'terminal'), 0).label('terminal'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'qr'), 0).label('qr'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'transfer'), 0).label('transfer'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'invoice'), 0).label('invoice'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'installment'), 0).label('installment'),
+            ).where(func.date(DailyPayment.created_at) == today)
+        )).one()
+        payments = {col: getattr(payment_rows, col, 0) for col in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
         total_revenue = sum(payments.values())
         plan = 600000
 
-        # Количество предзаказов и броней за дату
-        stats = await conn.fetchrow("""
-            SELECT
-                (SELECT COUNT(*) FROM preorders WHERE DATE(created_at)=$1) as preorders_count,
-                (SELECT COUNT(*) FROM bookings WHERE DATE(booked_at)=$1) as bookings_count
-        """, today)
-        preorders_count = stats["preorders_count"] if stats else 0
-        bookings_count = stats["bookings_count"] if stats else 0
+        # Предзаказы и брони
+        preorders_count = (await session.execute(
+            select(func.count(Preorder.id)).where(func.date(Preorder.created_at) == today)
+        )).scalar() or 0
+        bookings_count = (await session.execute(
+            select(func.count(Booking.id)).where(func.date(Booking.booked_at) == today)
+        )).scalar() or 0
 
-        # Графики за последние 7 дней
-        dates = [(today - timedelta(days=i)).strftime("%d.%m") for i in range(6, -1, -1)]
+        # Графики за 7 дней
+        dates_labels = [(today - timedelta(days=i)).strftime("%d.%m") for i in range(6, -1, -1)]
         sales_chart = []
         revenue_chart = []
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
-            cnt = await conn.fetchval("SELECT COUNT(*) FROM sales WHERE DATE(sold_at)=$1", d) or 0
-            rev_row = await conn.fetchrow("""
-                SELECT COALESCE(SUM(amount), 0) FROM daily_payments WHERE DATE(created_at)=$1
-            """, d)
+            cnt = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == d))).scalar() or 0
+            rev = (await session.execute(select(func.coalesce(func.sum(DailyPayment.amount), 0)).where(func.date(DailyPayment.created_at) == d))).scalar() or 0
             sales_chart.append(cnt)
-            revenue_chart.append(float(rev_row[0]) if rev_row else 0)
+            revenue_chart.append(float(rev))
 
-        # Продавцы и отметки присутствия
-        sellers_rows = await conn.fetch("""
-            SELECT s.id, s.name,
-                   (sd.seller_id IS NOT NULL) as present
-            FROM sellers s
-            LEFT JOIN seller_days sd ON s.id = sd.seller_id AND sd.date = $1
-            ORDER BY s.name
-        """, today)
-        sellers = [dict(r) for r in sellers_rows]
-
-        top_labels = []
-        top_counts = []
+        # Продавцы
+        sellers_rows = (await session.execute(
+            select(Seller.id, Seller.name, SellerDay.id.isnot(None).label('present'))
+            .outerjoin(SellerDay, (Seller.id == SellerDay.seller_id) & (SellerDay.date == today))
+            .order_by(Seller.name)
+        )).all()
+        sellers = [{"id": r.id, "name": r.name, "present": r.present} for r in sellers_rows]
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "target_date": today.strftime("%d.%m.%Y"),
         "target_date_iso": today.isoformat(),
-        "sales_today": sales,
+        "sales_today": sales_count,
         "revenue_today": total_revenue,
         "sales_change_yesterday": 0,
         "sales_change_week": 0,
@@ -83,114 +76,78 @@ async def dashboard(request: Request, target_date: str | None = None):
         "payments": payments,
         "total_revenue": total_revenue,
         "plan_amount": plan,
-        "stats": {"sales_count": sales, "preorders_count": preorders_count, "bookings_count": bookings_count},
+        "stats": {"sales_count": sales_count, "preorders_count": preorders_count, "bookings_count": bookings_count},
         "sellers": sellers,
-        "chart_dates": dates,
+        "chart_dates": dates_labels,
         "chart_sales": sales_chart,
         "chart_revenue": revenue_chart,
-        "top_labels": top_labels,
-        "top_counts": top_counts,
+        "top_labels": [],
+        "top_counts": [],
         "days": 7,
     })
 
 
 @router.post("/toggle_seller_day")
-async def toggle_seller_day(
-    request: Request,
-    seller_id: int = Form(...),
-    target_date: str = Form(...),
-):
-    """Добавляет или удаляет отметку о присутствии продавца в указанный день."""
-    try:
-        date_obj = datetime.strptime(target_date, "%Y-%m-%d").date()
-    except ValueError:
-        return {"success": False, "error": "Неверный формат даты"}
-
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        existing = await conn.fetchrow(
-            "SELECT id FROM seller_days WHERE seller_id = $1 AND date = $2",
-            seller_id, date_obj
-        )
+async def toggle_seller_day(seller_id: int = Form(...), target_date: str = Form(...)):
+    date_obj = datetime.strptime(target_date, "%Y-%m-%d").date()
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        existing = (await session.execute(
+            select(SellerDay).where(SellerDay.seller_id == seller_id, SellerDay.date == date_obj)
+        )).scalar_one_or_none()
         if existing:
-            await conn.execute("DELETE FROM seller_days WHERE id = $1", existing["id"])
+            await session.delete(existing)
             status = "removed"
         else:
-            try:
-                await conn.execute(
-                    "INSERT INTO seller_days (seller_id, date) VALUES ($1, $2)",
-                    seller_id, date_obj
-                )
-                status = "added"
-            except Exception:
-                status = "exists"
+            session.add(SellerDay(seller_id=seller_id, date=date_obj))
+            status = "added"
     return {"success": True, "status": status}
 
 
 @router.post("/update_stats")
 async def update_stats(request: Request):
-    """Сохраняет отредактированные данные статистики за день."""
     data = await request.json()
     target_date_str = data.get("target_date")
     if not target_date_str:
         return JSONResponse({"success": False, "error": "target_date is required"}, status_code=400)
+    target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
 
-    try:
-        target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
-    except ValueError:
-        return JSONResponse({"success": False, "error": "Неверный формат даты"}, status_code=400)
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        # Очистка старых данных за день
+        await session.execute(text("DELETE FROM daily_payments WHERE DATE(created_at) = :d"), {"d": target_date})
+        await session.execute(text("DELETE FROM sales WHERE DATE(sold_at) = :d"), {"d": target_date})
+        await session.execute(text("DELETE FROM preorders WHERE DATE(created_at) = :d"), {"d": target_date})
+        await session.execute(text("DELETE FROM bookings WHERE DATE(booked_at) = :d"), {"d": target_date})
 
-    pool = await get_pool()
-    async with pool.acquire() as conn, conn.transaction():
-        # Обновление платежей
-        await conn.execute("DELETE FROM daily_payments WHERE DATE(created_at) = $1", target_date)
-        payment_types = ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']
-        for pt in payment_types:
+        # Платежи
+        for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
             amount = float(data.get(pt, 0))
             if amount > 0:
-                await conn.execute(
-                    "INSERT INTO daily_payments (type, payment_type, amount, created_at) VALUES ('sale', $1, $2, $3)",
-                    pt, amount, target_date
-                )
+                session.add(DailyPayment(type='sale', payment_type=pt, amount=amount, created_at=target_date))
 
-        # Обновление количества продаж
-        sales_count = int(data.get("sales_count", 0))
-        await conn.execute("DELETE FROM sales WHERE DATE(sold_at) = $1", target_date)
-        for _ in range(sales_count):
-            await conn.execute("INSERT INTO sales (sold_at) VALUES ($1)", target_date)
-
-        # Обновление количества предзаказов
-        preorders_count = int(data.get("preorders_count", 0))
-        await conn.execute("DELETE FROM preorders WHERE DATE(created_at) = $1", target_date)
-        for _ in range(preorders_count):
-            await conn.execute("INSERT INTO preorders (created_at) VALUES ($1)", target_date)
-
-        # Обновление количества броней
-        bookings_count = int(data.get("bookings_count", 0))
-        await conn.execute("DELETE FROM bookings WHERE DATE(booked_at) = $1", target_date)
-
-        # Проверяем наличие служебного товара для бронирований
-        sys_item = await conn.fetchval("SELECT id FROM items WHERE id = 0")
+        # Продажи
+        for _ in range(int(data.get("sales_count", 0))):
+            session.add(Sale(sold_at=target_date))
+        # Предзаказы
+        for _ in range(int(data.get("preorders_count", 0))):
+            session.add(Preorder(created_at=target_date))
+        # Брони
+        # Проверка служебного товара
+        sys_item = (await session.execute(select(Item).where(Item.id == 0))).scalar_one_or_none()
         if not sys_item:
-            # Создаём служебную категорию и товар с id=0, если их нет
-            await conn.execute("""
-                INSERT INTO categories (name, sort_order)
-                VALUES ('__SYSTEM__', -1)
-                ON CONFLICT (name) DO NOTHING
-            """)
-            sys_cat_id = await conn.fetchval("SELECT id FROM categories WHERE name = '__SYSTEM__'")
-            await conn.execute(
-                "INSERT INTO items (id, text, category_id, is_booked) VALUES (0, '__SYSTEM_STATS__', $1, FALSE) ON CONFLICT (id) DO NOTHING",
-                sys_cat_id
-            )
-
-        for _ in range(bookings_count):
-            await conn.execute("INSERT INTO bookings (item_id, booked_at) VALUES (0, $1)", target_date)
+            sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__'))).scalar_one_or_none()
+            if not sys_cat:
+                sys_cat = Category(name='__SYSTEM__', sort_order=-1)
+                session.add(sys_cat)
+                await session.flush()
+            session.add(Item(id=0, text='__SYSTEM_STATS__', category_id=sys_cat.id, is_booked=False))
+        for _ in range(int(data.get("bookings_count", 0))):
+            session.add(Booking(item_id=0, booked_at=target_date))
 
     return JSONResponse({"success": True})
 
 
 @router.get("/top_models_data")
 async def top_models_data(request: Request, days: int = 7, target_date: str | None = None):
-    """Возвращает данные для графика топ-5 моделей (заглушка)."""
     return JSONResponse({"labels": [], "counts": []})
