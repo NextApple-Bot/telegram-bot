@@ -1,8 +1,6 @@
 # Файл: bot/services/sale.py
 import logging
 
-from bot.db import get_pool
-from bot.repositories import ItemRepository, StatsRepository
 from bot.utils.validators import extract_serials
 
 logger = logging.getLogger(__name__)
@@ -11,6 +9,10 @@ logger = logging.getLogger(__name__)
 class SaleService:
     @staticmethod
     async def process_sale(content: str, chat_id: int, message_id: int, payments: dict) -> dict:
+        # Локальные импорты для предотвращения циклической зависимости
+        from bot.db import get_pool
+        from bot.repositories import ItemRepository, StatsRepository
+
         serials = list(set(extract_serials(content)))
         is_accessory = (len(serials) == 0)
 
@@ -25,7 +27,6 @@ class SaleService:
             }
 
         pool = await get_pool()
-        # SIM117: объединяем контекстные менеджеры
         async with pool.acquire() as conn, conn.transaction():
             sold_items = []
             for serial in serials:
