@@ -1,4 +1,4 @@
-# Файл: bot/models.py
+```python
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -15,7 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
 Base = declarative_base()
