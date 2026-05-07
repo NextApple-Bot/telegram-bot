@@ -1,19 +1,18 @@
 import logging
 import os
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from bot import config
 
 logger = logging.getLogger(__name__)
 
-# ─── SQLAlchemy async engine / session ──────────────────────────
 _async_engine = None
 _async_session_factory = None
 
 
 def get_async_session_factory():
-    """Возвращает фабрику асинхронных сессий SQLAlchemy."""
     global _async_engine, _async_session_factory
     if _async_session_factory is None:
         db_url = config.DATABASE_URL
@@ -44,20 +43,17 @@ async def dispose_engine():
         logger.info("✅ Движок SQLAlchemy остановлен")
 
 
-# ─── Health checks ──────────────────────────────────────────────
 async def check_db_health() -> bool:
-    """Проверяет доступность базы данных."""
     try:
         async_session = get_async_session_factory()
         async with async_session() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
         return True
     except Exception:
         return False
 
 
 async def check_redis_health() -> bool:
-    """Проверяет доступность Redis (если настроен)."""
     if not config.REDIS_URL:
         return True
     try:
