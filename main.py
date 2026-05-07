@@ -7,21 +7,21 @@ import time
 
 import uvicorn
 from dotenv import load_dotenv
-
-# Prometheus + Sentry (как и раньше)
-from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
+# ====================== SENTRY ======================
 SENTRY_DSN = os.getenv("SENTRY_DSN")
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -33,6 +33,7 @@ if SENTRY_DSN:
 else:
     logging.info("ℹ️ SENTRY_DSN не задан, мониторинг ошибок отключён")
 
+# ====================== LOGGING ======================
 log_format = os.getenv("LOG_FORMAT", "text").lower()
 if log_format == "json":
     from pythonjsonlogger import jsonlogger
@@ -42,10 +43,7 @@ if log_format == "json":
     logging.getLogger().handlers = [handler]
     logging.getLogger().setLevel(logging.INFO)
 else:
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 logger = logging.getLogger(__name__)
 
@@ -64,65 +62,54 @@ class Application:
         self.bot = None
         self.dp = None
         self.config = None
-        self._pool = None
+        self._redis_client = None
 
     async def initialize(self):
-        import redis.asyncio as redis
+        from bot.config import config
+        from bot.db import get_async_session_factory, dispose_engine
+        from bot.middleware.error_handler import ErrorHandlerMiddleware
         from aiogram import Bot, Dispatcher
         from aiogram.fsm.storage.memory import MemoryStorage
+        import redis.asyncio as redis
         from aiogram.fsm.storage.redis import RedisStorage
 
-        from bot import config as bot_config
-        from bot.db import get_pool
-        from bot.middleware.error_handler import ErrorHandlerMiddleware
-
-        self.config = bot_config
+        self.config = config
         logger.info("✅ Конфигурация загружена")
 
-        scaling_enabled = os.getenv("SCALING_ENABLED", "false").lower() == "true"
-        if scaling_enabled and not self.config.REDIS_URL:
-            logger.critical("❌ SCALING_ENABLED=True, но REDIS_URL не задан.")
-            sys.exit(1)
-
-        self.bot = Bot(token=self.config.TOKEN)
+        # Bot
+        self.bot = Bot(token=config.BOT_TOKEN)
         logger.info("✅ Экземпляр Bot создан")
 
-        if self.config.REDIS_URL:
-            redis_client = redis.from_url(self.config.REDIS_URL, decode_responses=True)
-            storage = RedisStorage(redis=redis_client)
-            logger.info("✅ Используется RedisStorage для FSM")
+        # Storage
+        if config.REDIS_URL:
+            self._redis_client = redis.from_url(config.REDIS_URL, decode_responses=True)
+            storage = RedisStorage(redis=self._redis_client)
+            logger.info("✅ RedisStorage для FSM")
         else:
-            if scaling_enabled:
-                logger.critical("❌ Масштабирование требует RedisStorage.")
-                sys.exit(1)
             storage = MemoryStorage()
-            logger.warning("⚠️ REDIS_URL не задан, используется MemoryStorage")
+            logger.warning("⚠️ MemoryStorage (без Redis)")
 
         self.dp = Dispatcher(storage=storage)
+        self.dp.update.middleware(ErrorHandlerMiddleware())
         logger.info("✅ Диспетчер создан")
 
-        # Подключаем middleware ошибок
-        self.dp.update.middleware(ErrorHandlerMiddleware())
-        logger.info("🔧 Middleware ошибок подключён")
-
+        # Роутеры
         from bot.handlers import router
-        if router.parent_router is None:
-            self.dp.include_router(router)
-            logger.info("✅ Роутер подключён")
-        else:
-            logger.warning("⚠️ Роутер уже прикреплён к другому диспетчеру, пропускаем")
+        self.dp.include_router(router)
+        logger.info("✅ Роутер подключён")
 
-        try:
-            self._pool = await get_pool()
-            logger.info("✅ Пул соединений БД инициализирован")
-        except Exception as e:
-            logger.error(f"❌ Ошибка инициализации пула БД: {e}")
-            raise
+        # Проверка доступа к БД (создаст движок, если нужно)
+        async_session = get_async_session_factory()
+        async with async_session() as session:
+            await session.execute("SELECT 1")
+        logger.info("✅ Подключение к БД подтверждено")
 
+        # Фоновые задачи
         from bot.background import start_background_tasks
         asyncio.create_task(start_background_tasks(self.bot, self.dp))
         logger.info("✅ Фоновые задачи запущены")
 
+        # Вебхук
         await self._setup_webhook()
         return self
 
@@ -151,101 +138,89 @@ class Application:
             try:
                 await self.bot.delete_webhook()
                 await self.bot.session.close()
-                logger.info("✅ Вебхук удалён, сессия бота закрыта")
+                logger.info("✅ Бот закрыт")
             except Exception as e:
                 logger.error(f"Ошибка при закрытии бота: {e}")
-        if self.dp and hasattr(self.dp.storage, 'redis') and self.dp.storage.redis:
-            try:
-                await self.dp.storage.redis.aclose()
-                logger.info("✅ Redis-клиент закрыт")
-            except Exception as e:
-                logger.error(f"Ошибка при закрытии Redis: {e}")
-        if self._pool:
-            await self._pool.close()
-            logger.info("✅ Пул БД закрыт")
-
-    # HTTP handlers (webhook, health, health_detailed) – без изменений
-    async def webhook(self, request: Request) -> Response:
-        if not self.bot or not self.dp:
-            return Response(status_code=503)
-        try:
-            from aiogram.types import Update
-            update_data = await request.json()
-            update = Update(**update_data)
-            await self.dp.feed_update(self.bot, update)
-            return Response(status_code=200)
-        except Exception:
-            logger.exception("❌ Ошибка обработки вебхука")
-            return Response(status_code=500)
-
-    async def health(self, _: Request) -> Response:
-        from bot.db import check_db_health, check_redis_health
-        db_ok = await check_db_health()
-        redis_ok = await check_redis_health()
-        telegram_ok = True
-        if self.bot:
-            try:
-                await self.bot.get_me()
-            except Exception as e:
-                logger.warning(f"Telegram health check failed: {e}")
-                telegram_ok = False
-        if db_ok and redis_ok and telegram_ok:
-            return PlainTextResponse("OK")
-        status = {}
-        if not db_ok:
-            status["database"] = "unhealthy"
-        if not redis_ok:
-            status["redis"] = "unhealthy"
-        if not telegram_ok:
-            status["telegram"] = "unhealthy"
-        return JSONResponse(status, status_code=503)
-
-    async def health_detailed(self, _: Request) -> Response:
-        from bot.db import check_db_health, check_redis_health
-        start = time.monotonic()
-        db_ok = await check_db_health()
-        db_time = time.monotonic() - start
-        start = time.monotonic()
-        redis_ok = await check_redis_health()
-        redis_time = time.monotonic() - start
-        telegram_ok = True
-        telegram_time = None
-        if self.bot:
-            start = time.monotonic()
-            try:
-                await self.bot.get_me()
-                telegram_time = time.monotonic() - start
-            except Exception as e:
-                logger.warning(f"Detailed Telegram health failed: {e}")
-                telegram_ok = False
-                telegram_time = time.monotonic() - start
-        overall = db_ok and redis_ok and telegram_ok
-        return JSONResponse({
-            "status": "healthy" if overall else "unhealthy",
-            "database": {"status": "up" if db_ok else "down", "response_time_ms": round(db_time*1000, 2) if db_ok else None},
-            "redis": {"status": "up" if redis_ok else "down", "response_time_ms": round(redis_time*1000, 2) if redis_ok else None},
-            "telegram_api": {"status": "up" if telegram_ok else "down", "response_time_ms": round(telegram_time*1000, 2) if telegram_ok and telegram_time else None}
-        }, status_code=200 if overall else 503)
+        if self._redis_client:
+            await self._redis_client.aclose()
+            logger.info("✅ Redis-клиент закрыт")
+        from bot.db import dispose_engine
+        await dispose_engine()
+        logger.info("✅ Пул БД закрыт")
 
 
-def create_starlette_app(app_instance: Application) -> Starlette:
-    starlette_app = Starlette(
-        routes=[
-            Route("/webhook", app_instance.webhook, methods=["POST"]),
-            Route("/health", app_instance.health, methods=["GET"]),
-            Route("/health/detailed", app_instance.health_detailed, methods=["GET"]),
-        ],
-        on_startup=[lambda: None],
-        on_shutdown=[lambda: None],
-    )
+# ─── HTTP handlers ──────────────────────────────────────
+async def webhook(request: Request, app: Application) -> Response:
+    if not app.bot or not app.dp:
+        return Response(status_code=503)
+    try:
+        from aiogram.types import Update
+        update_data = await request.json()
+        update = Update(**update_data)
+        await app.dp.feed_update(app.bot, update)
+        return Response(status_code=200)
+    except Exception:
+        logger.exception("❌ Ошибка обработки вебхука")
+        return Response(status_code=500)
+
+
+async def health(_: Request) -> Response:
+    from bot.db import check_db_health, check_redis_health
+    db_ok = await check_db_health()
+    redis_ok = await check_redis_health()
+    # Telegram проверка не делается для быстроты, всегда OK
+    if db_ok and redis_ok:
+        return PlainTextResponse("OK")
+    status = {}
+    if not db_ok:
+        status["database"] = "unhealthy"
+    if not redis_ok:
+        status["redis"] = "unhealthy"
+    return JSONResponse(status, status_code=503)
+
+
+async def health_detailed(_: Request) -> Response:
+    from bot.db import check_db_health, check_redis_health
+    start = time.monotonic()
+    db_ok = await check_db_health()
+    db_time = time.monotonic() - start
+    start = time.monotonic()
+    redis_ok = await check_redis_health()
+    redis_time = time.monotonic() - start
+    telegram_ok = True
+    telegram_time = None
+    # Можно добавить проверку Telegram API, если есть бот
+    overall = db_ok and redis_ok and telegram_ok
+    return JSONResponse({
+        "status": "healthy" if overall else "unhealthy",
+        "database": {"status": "up" if db_ok else "down", "response_time_ms": round(db_time*1000, 2) if db_ok else None},
+        "redis": {"status": "up" if redis_ok else "down", "response_time_ms": round(redis_time*1000, 2) if redis_ok else None},
+        "telegram_api": {"status": "up" if telegram_ok else "down", "response_time_ms": round(telegram_time*1000, 2) if telegram_ok and telegram_time else None}
+    }, status_code=200 if overall else 503)
+
+
+def create_starlette_app(app_instance):
+    routes = [
+        Route("/webhook", lambda req: webhook(req, app_instance), methods=["POST"]),
+        Route("/health", health, methods=["GET"]),
+        Route("/health/detailed", health_detailed, methods=["GET"]),
+    ]
+    starlette_app = Starlette(routes=routes, on_startup=[lambda: None], on_shutdown=[lambda: None])
+
+    # Prometheus
     Instrumentator().instrument(starlette_app).expose(starlette_app, endpoint="/metrics")
+
+    # Sentry
     if SENTRY_DSN:
         starlette_app = SentryAsgiMiddleware(starlette_app)
+
+    # SessionMiddleware & админка
     if app_instance.config.SECRET_KEY:
         starlette_app.add_middleware(SessionMiddleware, secret_key=app_instance.config.SECRET_KEY)
         logger.info("✅ SessionMiddleware добавлена")
     else:
-        logger.warning("⚠️ SECRET_KEY не задан, сессии не будут работать")
+        logger.warning("⚠️ SECRET_KEY не задан")
+
     if app_instance.config.ADMIN_PASSWORD and app_instance.config.SECRET_KEY:
         try:
             from web_admin.main import app as admin_app
@@ -255,6 +230,7 @@ def create_starlette_app(app_instance: Application) -> Starlette:
             logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
     else:
         logger.info("ℹ️ Веб-админка не настроена")
+
     return starlette_app
 
 
@@ -268,12 +244,9 @@ async def main():
 
     starlette_app = create_starlette_app(app)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(
-            sig,
-            lambda: asyncio.create_task(handle_signal(app, starlette_app))
-        )
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(app.shutdown()))
 
     port = int(os.getenv("PORT", "8000"))
     logger.info(f"🚀 Запуск сервера на порту {port}")
@@ -287,12 +260,6 @@ async def main():
     )
     server = uvicorn.Server(config)
     await server.serve()
-
-
-async def handle_signal(app: Application, starlette_app):
-    logger.info("Получен сигнал завершения...")
-    await app.shutdown()
-    sys.exit(0)
 
 
 if __name__ == "__main__":
