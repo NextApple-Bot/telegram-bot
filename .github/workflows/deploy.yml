@@ -59,9 +59,9 @@ jobs:
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+          DATABASE_URL: postgresql+asyncpg://testuser:testpass@localhost:5432/testdb
           REDIS_URL: redis://localhost:6379/0
-          BOT_TOKEN: dummy_token
+          BOT_TOKEN: test_token
           ADMIN_ID: "123"
           MAIN_GROUP_ID: "-100123"
           THREAD_SALES: "1"
@@ -82,3 +82,10 @@ jobs:
       - name: Trigger Render Deploy Hook
         run: |
           curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+
+      - name: Wait for deployment and health check
+        run: |
+          echo "Waiting 30 seconds for service to start..."
+          sleep 30
+          # Если у вас есть публичный URL, можно проверить health endpoint
+          # curl -f https://your-app.onrender.com/health || exit 1
