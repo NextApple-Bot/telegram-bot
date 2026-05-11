@@ -3,13 +3,12 @@ import json
 import logging
 import os
 import tempfile
-from datetime import datetime
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from bot.db import get_async_session_factory
-from bot.models import Client, Purchase, Category, Item, Sale, DeletedItem
+from bot.models import Category, Client, Item, Purchase
 from bot.repositories import ClientRepository, ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.markdown import escape_markdown_v1
@@ -34,7 +33,7 @@ async def export_clients_csv() -> str:
                     row.created_at.strftime("%d.%m.%y") if row.created_at else ''
                 ])
             return tmp.name
-    except (SQLAlchemyError, OSError) as e:
+    except (SQLAlchemyError, OSError):
         logger.exception("Ошибка экспорта клиентов")
         raise
 
@@ -53,7 +52,7 @@ async def export_purchases_csv() -> str:
                                  row.payment_details, row.purchase_type,
                                  row.created_at.strftime("%d.%m.%y") if row.created_at else ''])
             return tmp.name
-    except (SQLAlchemyError, OSError) as e:
+    except (SQLAlchemyError, OSError):
         logger.exception("Ошибка экспорта покупок")
         raise
 
@@ -61,7 +60,7 @@ async def export_purchases_csv() -> str:
 async def get_client_info_text(query: str) -> str | None:
     try:
         clients = await ClientRepository.search_clients(query)
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при поиске клиента")
         raise
     if not clients:
@@ -79,7 +78,7 @@ async def get_client_info_text(query: str) -> str | None:
         text += f"ФИО: {full_name}\nТелефон: {phone}\nДоп. телефоны: {phones}\nTelegram: {telegram}\nСоцсети: {social}\nИсточник: {source}\nДата регистрации: {created_at}\n\n"
         try:
             purchases = await ClientRepository.get_client_purchases(client['id'])
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             logger.exception("Ошибка получения покупок клиента")
             purchases = []
         if purchases:
@@ -134,7 +133,7 @@ async def export_full_report_csv() -> str:
                 writer.writerow([row.client_id, row.full_name, row.phone, row.telegram_username,
                                  p_created, items_short, row.total_amount, row.payment_details])
             return tmp.name
-    except (SQLAlchemyError, OSError, json.JSONDecodeError) as e:
+    except (SQLAlchemyError, OSError, json.JSONDecodeError):
         logger.exception("Ошибка экспорта полного отчёта")
         raise
 
@@ -156,7 +155,7 @@ async def list_categories_text() -> str:
             )
             result = await session.execute(q)
             rows = result.all()
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при получении списка категорий")
         raise
     text = "📋 **Список категорий:**\n\n"
@@ -177,7 +176,7 @@ async def find_empty_categories() -> list[dict]:
             result = await session.execute(q)
             rows = result.all()
         return [{"id": r.id, "name": r.name} for r in rows]
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при поиске пустых категорий")
         raise
 
@@ -194,7 +193,7 @@ async def delete_category_if_empty(cat_id: int) -> tuple[bool, str]:
             if count > 0:
                 return False, f"❌ Категория «{escape_markdown_v1(cat.name)}» содержит {count} товаров. Удаление невозможно."
             return True, f"«{escape_markdown_v1(cat.name)}» (ID {cat_id})"
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при проверке категории на удаление")
         raise
 
@@ -213,7 +212,7 @@ async def merge_categories(from_id: int, to_id: int) -> tuple[bool, str]:
                 return False, f"❌ В категории «{escape_markdown_v1(from_cat.name)}» нет товаров. Удалите её через /delete_category."
             msg = f"⚠️ Перенести {count} товаров из «{escape_markdown_v1(from_cat.name)}» (ID {from_id}) в «{escape_markdown_v1(to_cat.name)}» (ID {to_id})?\nПосле этого категория {from_id} будет удалена."
             return True, msg
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при подготовке слияния категорий")
         raise
 
@@ -229,7 +228,7 @@ async def reset_assortment() -> str:
             await session.execute("DELETE FROM categories WHERE name != '__SYSTEM__'")
         await AssortmentService.invalidate_cache()
         return "✅ Ассортимент полностью очищен"
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при очистке ассортимента")
         raise
 
@@ -248,7 +247,7 @@ async def delete_client_by_id(client_id: int) -> tuple[bool, str]:
             if purchases:
                 warning += f"\n⚠️ У клиента есть {purchases} покупок — они будут удалены вместе с клиентом."
             return True, warning
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при подготовке удаления клиента")
         raise
 
@@ -261,7 +260,7 @@ async def delete_purchase_by_id(purchase_id: int) -> tuple[bool, str]:
             if not purchase:
                 return False, f"❌ Покупка с ID {purchase_id} не найдена."
             return True, f"⚠️ Удалить покупку ID {purchase_id} на сумму {purchase.total_amount} ₽?"
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка при подготовке удаления покупки")
         raise
 
@@ -269,7 +268,7 @@ async def delete_purchase_by_id(purchase_id: int) -> tuple[bool, str]:
 async def undo_last_deletion() -> str:
     try:
         deleted = await ItemRepository.get_last_deleted_item()
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка получения последнего удалённого товара")
         raise
     if not deleted:
@@ -289,7 +288,7 @@ async def undo_last_deletion() -> str:
         )
         await ItemRepository.restore_deleted_item(deleted['id'])
         return f"✅ Товар восстановлен:\n{escape_markdown_v1(deleted['text'])}"
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка восстановления товара")
         raise
 
@@ -310,14 +309,16 @@ async def fix_sales_unique() -> str:
             except SQLAlchemyError:
                 constraint_added = False
         return f"✅ Исправление таблицы sales:\n• Удалено записей с NULL message_id: {deleted_null}\n• Удалено дубликатов: {deleted_dups}\n• Уникальное ограничение: {'добавлено' if constraint_added else 'уже существовало'}"
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("Ошибка исправления таблицы sales")
         raise
 
 
 async def set_webhook_manually() -> str:
     import secrets
+
     from aiogram import Bot
+
     from bot import config
     if not config.RENDER_URL:
         return "❌ RENDER_URL не задан в переменных окружения."
