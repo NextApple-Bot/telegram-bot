@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from aiogram import Bot
 
@@ -88,7 +89,8 @@ async def send_sale_notification(
     bonus: float = None,
     change: float = None,
     change_type: str = None,
-    accessories: list = None
+    accessories: list = None,
+    accessories_total: float = 0.0
 ):
     try:
         bot = Bot(token=config.TOKEN)
@@ -147,7 +149,8 @@ async def send_sale_notification(
             lines.pop()
         lines.append("")
 
-        total = price - (bonus or 0)
+        # ИТОГОВАЯ ОБЩАЯ СУММА = цена товара + аксессуары - бонус
+        total = price + accessories_total - (bonus or 0)
         lines.append(f"Общая – {format_number(total)}")
         lines.append("")
         lines.append("")
