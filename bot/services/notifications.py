@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from aiogram import Bot
 
@@ -7,7 +6,7 @@ from bot import config
 
 logger = logging.getLogger(__name__)
 
-_notification_bot: Optional[Bot] = None
+_notification_bot: Bot | None = None
 
 
 def get_notification_bot() -> Bot:
