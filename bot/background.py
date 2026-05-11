@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
-from bot.config import config  # <--- ИСПРАВЛЕНО
+from bot.config import config
 from bot.db import get_async_session_factory
 from bot.services.cache import cache
 
