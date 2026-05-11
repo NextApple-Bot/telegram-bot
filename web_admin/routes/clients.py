@@ -2,7 +2,7 @@ from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
-from bot.db import get_async_session_factory
+from bot.db import get_async_session_factory  # <--- ПРАВИЛЬНО
 from bot.models import Client
 from bot.repositories import ClientRepository
 from web_admin.templates import templates
@@ -69,9 +69,6 @@ async def list_clients(
         "sort_order": sort_order,
     })
 
-
-# ... (остальные эндпоинты как в исходном файле, они не требуют изменений, кроме импорта сессии)
-# Ниже приведён полный код с использованием сессий
 
 @router.get("/{client_id}")
 async def client_detail(request: Request, client_id: int):
