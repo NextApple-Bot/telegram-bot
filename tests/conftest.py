@@ -1,5 +1,6 @@
 import os
-from unittest.mock import AsyncMock, patch
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -24,19 +25,32 @@ os.environ["SECRET_KEY"] = "dummy_secret_key_for_testing_only_min_32_chars"
 os.environ["ADMIN_PASSWORD"] = "testpass"
 
 
+class AsyncSessionMock:
+    """Асинхронный контекстный менеджер, который заменяет SQLAlchemy сессию."""
+    def __init__(self):
+        self.execute = AsyncMock()
+        self.commit = AsyncMock()
+        self.rollback = AsyncMock()
+        self.close = AsyncMock()
+        # Для методов get, add и т.д.
+        self.get = AsyncMock()
+        self.add = MagicMock()
+        self.delete = AsyncMock()
+        self.begin = MagicMock()
+        self.begin_nested = MagicMock()
+        self.flush = AsyncMock()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 @pytest.fixture(autouse=True)
 def mock_db_session():
-    """Подменяет get_async_session_factory на мок, возвращающий AsyncMock-сессию."""
-    mock_session = AsyncMock()
-    mock_session_factory = AsyncMock()
-    mock_session_factory.return_value.__aenter__.return_value = mock_session
-
-    mock_session.execute = AsyncMock()
-    mock_session.commit = AsyncMock()
-    mock_session.rollback = AsyncMock()
-    mock_session.close = AsyncMock()
-
-    with patch('bot.db.get_async_session_factory', return_value=mock_session_factory):
+    """Подменяет get_async_session_factory на мок, возвращающий AsyncSessionMock."""
+    with patch('bot.db.get_async_session_factory', return_value=lambda: AsyncSessionMock()):
         yield
 
 
