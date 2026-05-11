@@ -1,3 +1,4 @@
+from decimal import Decimal
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, Request
@@ -17,12 +18,10 @@ async def dashboard(request: Request, target_date: str | None = None):
     today = datetime.now().date() if not target_date else datetime.strptime(target_date, "%Y-%m-%d").date()
     async_session = get_async_session_factory()
     async with async_session() as session:
-        # Продажи
         sales_count = (await session.execute(
             select(func.count(Sale.id)).where(func.date(Sale.sold_at) == today)
         )).scalar() or 0
 
-        # Платежи
         payment_rows = (await session.execute(
             select(
                 func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'cash'), 0).label('cash'),
@@ -117,25 +116,21 @@ async def update_stats(request: Request):
 
         async_session = get_async_session_factory()
         async with async_session() as session, session.begin():
-            # Очистка старых данных за день
             await session.execute(text("DELETE FROM daily_payments WHERE DATE(created_at) = :d"), {"d": target_date})
             await session.execute(text("DELETE FROM sales WHERE DATE(sold_at) = :d"), {"d": target_date})
             await session.execute(text("DELETE FROM preorders WHERE DATE(created_at) = :d"), {"d": target_date})
             await session.execute(text("DELETE FROM bookings WHERE DATE(booked_at) = :d"), {"d": target_date})
 
-            # Платежи
             for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
                 amount = float(data.get(pt, 0))
                 if amount > 0:
                     session.add(DailyPayment(type='sale', payment_type=pt, amount=amount, created_at=target_date))
 
-            # Продажи
             for _ in range(int(data.get("sales_count", 0))):
                 session.add(Sale(sold_at=target_date))
-            # Предзаказы
             for _ in range(int(data.get("preorders_count", 0))):
                 session.add(Preorder(created_at=target_date))
-            # Брони
+
             sys_item = (await session.execute(select(Item).where(Item.id == 0))).scalar_one_or_none()
             if not sys_item:
                 sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__'))).scalar_one_or_none()
@@ -152,5 +147,4 @@ async def update_stats(request: Request):
 
 @router.get("/top_models_data")
 async def top_models_data(request: Request, days: int = 7, target_date: str | None = None):
-    # Здесь можно закэшировать
     return JSONResponse({"labels": [], "counts": []})
