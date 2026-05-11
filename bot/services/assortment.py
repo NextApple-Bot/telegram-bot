@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from bot.db import get_async_session_factory
+from bot.db import get_async_session_factory  # <--- ПРАВИЛЬНО
 from bot.models import DeletedItem, Item
 from bot.services.cache import cache
 
