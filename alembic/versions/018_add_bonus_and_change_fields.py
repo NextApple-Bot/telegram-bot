@@ -28,9 +28,9 @@ def upgrade() -> None:
     op.add_column('items', sa.Column('sale_phone', sa.String(), nullable=True))
     op.add_column('items', sa.Column('is_sold', sa.Boolean(), nullable=False, server_default='false'))
 
-    # Поля для брони (дополнительно)
+    # Поля для брони (дополнительные)
     op.add_column('items', sa.Column('booking_bonus', sa.Numeric(12,2), nullable=True))
-    # booking_price и booking_prepayment уже были в миграции 003, они есть
+    # booking_price, booking_prepayment уже были добавлены в миграции 003
 
 def downgrade() -> None:
     op.drop_column('items', 'is_sold')
