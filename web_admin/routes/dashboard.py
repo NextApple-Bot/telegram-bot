@@ -1,3 +1,4 @@
+from decimal import Decimal
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, Request
@@ -6,6 +7,7 @@ from sqlalchemy import func, select, text
 
 from bot.db import get_async_session_factory
 from bot.models import Booking, Category, DailyPayment, Item, Preorder, Sale, Seller, SellerDay
+from bot.services.lock import redis_lock
 from web_admin.templates import templates
 
 router = APIRouter()
@@ -32,11 +34,10 @@ async def dashboard(request: Request, target_date: str | None = None):
                 func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'installment'), 0).label('installment'),
             ).where(func.date(DailyPayment.created_at) == today)
         )).one()
-        payments = {col: getattr(payment_rows, col, 0) for col in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
+        payments = {col: float(getattr(payment_rows, col, 0) or 0) for col in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
         total_revenue = sum(payments.values())
         plan = 600000
 
-        # Предзаказы и брони
         preorders_count = (await session.execute(
             select(func.count(Preorder.id)).where(func.date(Preorder.created_at) == today)
         )).scalar() or 0
@@ -44,7 +45,6 @@ async def dashboard(request: Request, target_date: str | None = None):
             select(func.count(Booking.id)).where(func.date(Booking.booked_at) == today)
         )).scalar() or 0
 
-        # Графики за 7 дней
         dates_labels = [(today - timedelta(days=i)).strftime("%d.%m") for i in range(6, -1, -1)]
         sales_chart = []
         revenue_chart = []
@@ -55,7 +55,6 @@ async def dashboard(request: Request, target_date: str | None = None):
             sales_chart.append(cnt)
             revenue_chart.append(float(rev))
 
-        # Продавцы
         sellers_rows = (await session.execute(
             select(Seller.id, Seller.name, SellerDay.id.isnot(None).label('present'))
             .outerjoin(SellerDay, (Seller.id == SellerDay.seller_id) & (SellerDay.date == today))
@@ -112,42 +111,47 @@ async def update_stats(request: Request):
         return JSONResponse({"success": False, "error": "target_date is required"}, status_code=400)
     target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
 
-    async_session = get_async_session_factory()
-    async with async_session() as session, session.begin():
-        # Очистка старых данных за день
-        await session.execute(text("DELETE FROM daily_payments WHERE DATE(created_at) = :d"), {"d": target_date})
-        await session.execute(text("DELETE FROM sales WHERE DATE(sold_at) = :d"), {"d": target_date})
-        await session.execute(text("DELETE FROM preorders WHERE DATE(created_at) = :d"), {"d": target_date})
-        await session.execute(text("DELETE FROM bookings WHERE DATE(booked_at) = :d"), {"d": target_date})
+    lock_key = f"stats_update:{target_date_str}"
+    async with redis_lock(lock_key, ttl=60) as locked:
+        if not locked:
+            return JSONResponse({"success": False, "error": "Another update in progress"}, status_code=423)
 
-        # Платежи
-        for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
-            amount = float(data.get(pt, 0))
-            if amount > 0:
-                session.add(DailyPayment(type='sale', payment_type=pt, amount=amount, created_at=target_date))
+        async_session = get_async_session_factory()
+        async with async_session() as session, session.begin():
+            # Очистка старых данных за день
+            await session.execute(text("DELETE FROM daily_payments WHERE DATE(created_at) = :d"), {"d": target_date})
+            await session.execute(text("DELETE FROM sales WHERE DATE(sold_at) = :d"), {"d": target_date})
+            await session.execute(text("DELETE FROM preorders WHERE DATE(created_at) = :d"), {"d": target_date})
+            await session.execute(text("DELETE FROM bookings WHERE DATE(booked_at) = :d"), {"d": target_date})
 
-        # Продажи
-        for _ in range(int(data.get("sales_count", 0))):
-            session.add(Sale(sold_at=target_date))
-        # Предзаказы
-        for _ in range(int(data.get("preorders_count", 0))):
-            session.add(Preorder(created_at=target_date))
-        # Брони
-        # Проверка служебного товара
-        sys_item = (await session.execute(select(Item).where(Item.id == 0))).scalar_one_or_none()
-        if not sys_item:
-            sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__'))).scalar_one_or_none()
-            if not sys_cat:
-                sys_cat = Category(name='__SYSTEM__', sort_order=-1)
-                session.add(sys_cat)
-                await session.flush()
-            session.add(Item(id=0, text='__SYSTEM_STATS__', category_id=sys_cat.id, is_booked=False))
-        for _ in range(int(data.get("bookings_count", 0))):
-            session.add(Booking(item_id=0, booked_at=target_date))
+            # Платежи
+            for pt in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']:
+                amount = float(data.get(pt, 0))
+                if amount > 0:
+                    session.add(DailyPayment(type='sale', payment_type=pt, amount=amount, created_at=target_date))
 
-    return JSONResponse({"success": True})
+            # Продажи
+            for _ in range(int(data.get("sales_count", 0))):
+                session.add(Sale(sold_at=target_date))
+            # Предзаказы
+            for _ in range(int(data.get("preorders_count", 0))):
+                session.add(Preorder(created_at=target_date))
+            # Брони
+            sys_item = (await session.execute(select(Item).where(Item.id == 0))).scalar_one_or_none()
+            if not sys_item:
+                sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__'))).scalar_one_or_none()
+                if not sys_cat:
+                    sys_cat = Category(name='__SYSTEM__', sort_order=-1)
+                    session.add(sys_cat)
+                    await session.flush()
+                session.add(Item(id=0, text='__SYSTEM_STATS__', category_id=sys_cat.id, is_booked=False))
+            for _ in range(int(data.get("bookings_count", 0))):
+                session.add(Booking(item_id=0, booked_at=target_date))
+
+        return JSONResponse({"success": True})
 
 
 @router.get("/top_models_data")
 async def top_models_data(request: Request, days: int = 7, target_date: str | None = None):
+    # Здесь можно закэшировать
     return JSONResponse({"labels": [], "counts": []})
