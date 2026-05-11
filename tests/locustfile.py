@@ -3,9 +3,9 @@ from locust import HttpUser, between, task
 
 class AdminUser(HttpUser):
     wait_time = between(1, 3)
+    host = "http://localhost:8000"
 
     def on_start(self):
-        # Логинимся в админку
         self.client.post("/admin/auth/login", data={"password": "testpass"})
 
     @task(3)
