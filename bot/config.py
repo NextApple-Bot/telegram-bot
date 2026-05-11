@@ -1,3 +1,4 @@
+import secrets
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -41,7 +42,6 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_secrets(self):
-        # Проверка SECRET_KEY
         if not self.SECRET_KEY or len(self.SECRET_KEY) < 32:
             raise ValueError("SECRET_KEY должен содержать не менее 32 символов")
         if not self.ADMIN_PASSWORD and not self.ADMIN_PASSWORD_HASH:
