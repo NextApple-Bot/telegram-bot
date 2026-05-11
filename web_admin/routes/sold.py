@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
-from bot.db import get_async_session_factory
+from bot.db import get_async_session_factory  # <--- ПРАВИЛЬНО
 from bot.models import DeletedItem, Item
 from bot.services.assortment import AssortmentService
 from web_admin.templates import templates
