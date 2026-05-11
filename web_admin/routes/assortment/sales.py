@@ -36,6 +36,7 @@ async def handle_sale_from_form(
     accessories: list = None,
     sale_birth_date: str | None = None,
     sale_bonus: float | None = None,
+    sale_bonus_reason: str | None = None,
     sale_change: float | None = None,
     sale_change_type: str | None = None,
     conn=None
@@ -179,6 +180,7 @@ async def handle_sale_from_form(
                 phone=sale_phone,
                 birth_date=sale_birth_date,
                 bonus=sale_bonus,
+                bonus_reason=sale_bonus_reason,
                 change=sale_change,
                 change_type=sale_change_type,
                 accessories=processed_accessories,
