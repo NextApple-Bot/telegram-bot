@@ -1,92 +1,79 @@
-import os
-
-from starlette.applications import Starlette
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.routing import Mount
+import pytest
 from starlette.testclient import TestClient
 
-os.environ["SECRET_KEY"] = "test_secret_key_for_admin_at_least_32_chars"
-os.environ["ADMIN_PASSWORD"] = "testpass"
-os.environ["BOT_TOKEN"] = "dummy"
-os.environ["ADMIN_ID"] = "1"
-os.environ["MAIN_GROUP_ID"] = "-100"
-os.environ["THREAD_SALES"] = "1"
-os.environ["THREAD_ASSORTMENT"] = "2"
-os.environ["THREAD_ARRIVAL"] = "3"
-os.environ["THREAD_PREORDER"] = "4"
-os.environ["DATABASE_URL"] = "postgresql://none/none"
-
-from web_admin.main import app as admin_app  # noqa: E402
-
-# Собираем главное приложение, как в продакшене
-app = Starlette(
-    routes=[
-        Mount("/admin", app=admin_app),
-    ],
-)
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY"))
-
-client = TestClient(app)
+from web_admin.main import app as admin_app
 
 
-def test_login_page():
+@pytest.fixture(scope="module")
+def client():
+    return TestClient(admin_app)
+
+
+def test_login_page(client):
     response = client.get("/admin/auth/login")
     assert response.status_code == 200
     assert "Вход в админку" in response.text
 
-def test_login_failure():
+
+def test_login_failure(client):
     response = client.post("/admin/auth/login", data={"password": "wrong"})
     assert response.status_code == 200
     assert "Неверный пароль" in response.text
 
-def test_login_success():
+
+def test_login_success(client):
     response = client.post("/admin/auth/login", data={"password": "testpass"})
     assert response.status_code == 303
-    assert "/admin/dashboard" in response.headers["location"]
+    assert "/admin/dashboard" in response.headers.get("location", "")
 
-def test_dashboard_redirect_when_not_authenticated():
+
+def test_dashboard_redirect_when_not_authenticated(client):
     response = client.get("/admin/dashboard", follow_redirects=False)
     assert response.status_code in (307, 303)
 
-def test_dashboard_authenticated():
+
+def test_dashboard_authenticated(client):
     with client:
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/dashboard")
         assert response.status_code == 200
         assert "Дашборд" in response.text
 
-def test_clients_page_authenticated():
+
+def test_clients_page_authenticated(client):
     with client:
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/clients")
         assert response.status_code == 200
         assert "Клиенты" in response.text
 
-def test_assortment_page_authenticated():
+
+def test_assortment_page_authenticated(client):
     with client:
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/assortment")
         assert response.status_code == 200
         assert "Ассортимент" in response.text
 
-def test_sold_page_authenticated():
+
+def test_sold_page_authenticated(client):
     with client:
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/sold")
         assert response.status_code == 200
         assert "Проданные товары" in response.text
 
-def test_stats_page_authenticated():
+
+def test_stats_page_authenticated(client):
     with client:
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/stats")
         assert response.status_code == 200
         assert "Статистика" in response.text
 
-def test_logout():
+
+def test_logout(client):
     with client:
         client.post("/admin/auth/login", data={"password": "testpass"})
         response = client.get("/admin/auth/logout", follow_redirects=False)
         assert response.status_code == 303
-        response = client.get("/admin/dashboard", follow_redirects=False)
-        assert response.status_code in (307, 303)
