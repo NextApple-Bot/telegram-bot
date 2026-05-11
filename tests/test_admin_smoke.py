@@ -1,8 +1,10 @@
 import os
 from unittest.mock import AsyncMock
-
-from fastapi.testclient import TestClient
+import pytest
+from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.testclient import TestClient
+from starlette.routing import Mount
 
 os.environ["SECRET_KEY"] = "test_secret_key_for_admin_at_least_32_chars"
 os.environ["ADMIN_PASSWORD"] = "testpass"
@@ -16,17 +18,21 @@ os.environ["THREAD_PREORDER"] = "4"
 os.environ["DATABASE_URL"] = "postgresql://none/none"
 
 import bot.db  # noqa: E402
-
 bot.db.get_async_session_factory = AsyncMock
 
-from web_admin.main import app  # noqa: E402
+from web_admin.main import app as admin_app
 
+# Собираем главное Starlette‑приложение как в продакшене
+app = Starlette(
+    routes=[
+        Mount("/admin", app=admin_app),
+    ],
+)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY"))
 
 client = TestClient(app)
 
-# Все запросы должны начинаться с /admin, так как в реальном окружении
-# приложение монтируется на этот префикс через Starlette.
+
 def test_login_page():
     response = client.get("/admin/auth/login")
     assert response.status_code == 200
