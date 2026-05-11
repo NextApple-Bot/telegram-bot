@@ -1,4 +1,3 @@
-import pytest
 
 from bot.handlers.topics.arrival import determine_category_for_item
 
