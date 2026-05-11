@@ -3,11 +3,11 @@ import logging
 import uuid
 from datetime import date
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from bot.db import get_async_session_factory
-from bot.models import Item, DeletedItem, Sale, DailyPayment
+from bot.models import DailyPayment, DeletedItem, Item, Sale
 from bot.repositories.client import ClientRepository
 from bot.services.cache import cache
 
@@ -190,7 +190,7 @@ async def handle_sale_from_form(
             if own_session:
                 await session.rollback()
             return {"error": str(e)}
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             logger.exception("Ошибка БД при продаже")
             if own_session:
                 await session.rollback()
