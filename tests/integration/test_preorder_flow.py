@@ -1,24 +1,34 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from bot import config
+
 
 @pytest.mark.asyncio
-async def test_restore_via_undo_command():
-    """
-    Проверяет логику восстановления товара без загрузки реальных модулей,
-    которые вызывают циклический импорт.
-    """
-    mock_remove = AsyncMock(return_value=1)
-    mock_restore = AsyncMock(return_value=True)
+async def test_preorder_flow_success(mock_bot):
+    content = """iPad Pro 11 (IPAD789) - 80000₽
+П/О 20000 (нал)
+Клиент: Петр Петров
+Телефон: +79123456789
+Площадка: Авито"""
 
-    with patch('bot.services.assortment.AssortmentService.remove_by_serial', new=mock_remove), \
-         patch('bot.repositories.item.ItemRepository.restore_deleted_item', new=mock_restore):
+    message = MagicMock()
+    message.message_id = 456
+    message.chat = MagicMock(id=config.MAIN_GROUP_ID)
+    message.message_thread_id = config.THREAD_PREORDER
+    message.text = content
+    message.bot = mock_bot
 
-        deleted = await mock_remove('S24XYZ', reason='test')
-        assert deleted == 1
-        mock_remove.assert_called_once_with('S24XYZ', reason='test')
-
-        restored = await mock_restore(1)
-        assert restored is True
-        mock_restore.assert_called_once_with(1)
+    with patch.multiple(
+        'bot.handlers.topics.preorder',
+        mark_message_processed=AsyncMock(return_value=True),
+        extract_prepayments=AsyncMock(return_value={'cash': 20000.0}),
+        parse_client_data=AsyncMock(return_value={'phones': ['+79123456789'], 'full_name': 'Петр Петров', 'main_phone': '+79123456789'}),
+        ClientRepository=AsyncMock(get_or_create_client=AsyncMock(return_value=1)),
+        StatsRepository=AsyncMock(add_preorder=AsyncMock()),
+        PaymentService=AsyncMock(add_payments_batch=AsyncMock()),
+        safe_react=AsyncMock()
+    ):
+        from bot.handlers.topics.preorder import handle_preorder
+        await handle_preorder(message)
