@@ -1,9 +1,10 @@
 import os
+import sys
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# Блокируем uvloop до любых импортов aiogram
+# Отключаем uvloop глобально до любых импортов aiogram
 try:
     import uvloop
     uvloop.install = lambda: None
@@ -24,9 +25,24 @@ os.environ["SECRET_KEY"] = "dummy_secret_key_for_testing_only_min_32_chars"
 os.environ["ADMIN_PASSWORD"] = "testpass"
 
 
+@pytest.fixture(autouse=True)
+def mock_db_session():
+    """Подменяет get_async_session_factory на мок, возвращающий AsyncMock-сессию."""
+    mock_session = AsyncMock()
+    mock_session_factory = AsyncMock()
+    mock_session_factory.return_value.__aenter__.return_value = mock_session
+
+    mock_session.execute = AsyncMock()
+    mock_session.commit = AsyncMock()
+    mock_session.rollback = AsyncMock()
+    mock_session.close = AsyncMock()
+
+    with patch('bot.db.get_async_session_factory', return_value=mock_session_factory):
+        yield
+
+
 @pytest.fixture
 def mock_bot():
-    """AsyncMock для aiogram.Bot."""
     bot = AsyncMock()
     bot.send_message = AsyncMock(return_value=AsyncMock(message_id=1))
     bot.send_document = AsyncMock(return_value=AsyncMock(message_id=2))
@@ -42,7 +58,6 @@ def mock_bot():
 
 @pytest.fixture
 def mock_state():
-    """AsyncMock для FSMContext."""
     state = AsyncMock()
     state.get_state = AsyncMock(return_value=None)
     state.set_state = AsyncMock()
@@ -50,10 +65,3 @@ def mock_state():
     state.get_data = AsyncMock(return_value={})
     state.clear = AsyncMock()
     return state
-
-
-@pytest.fixture(autouse=True)
-def reset_environment():
-    """Гарантирует, что get_pool замокан."""
-    with patch('bot.db.get_pool', new=AsyncMock()):
-        yield
