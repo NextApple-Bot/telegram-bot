@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -39,7 +40,7 @@ class Purchase(Base):
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('clients.id'), nullable=False)
     items_json = Column(Text)
-    total_amount = Column(Float)
+    total_amount = Column(Numeric(12,2))
     payment_details = Column(JSON)
     purchase_type = Column(String)
     created_at = Column(DateTime, server_default=func.now())
@@ -60,27 +61,24 @@ class Item(Base):
     category_id = Column(Integer, ForeignKey('categories.id'))
     is_booked = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
-    # Поля брони
-    booking_price = Column(Float)
-    booking_prepayment = Column(Float)
+    booking_price = Column(Numeric(12,2))
+    booking_prepayment = Column(Numeric(12,2))
     booking_platform = Column(String)
     booking_full_name = Column(String)
     booking_phone = Column(String)
     booking_payment_type = Column(String)
-    booking_bonus = Column(Float, nullable=True)
-    # Поля продажи
-    sale_price = Column(Float)
-    sale_prepayment = Column(Float)
+    booking_bonus = Column(Numeric(12,2))
+    sale_price = Column(Numeric(12,2))
+    sale_prepayment = Column(Numeric(12,2))
+    sale_payment_amount = Column(Numeric(12,2))
+    sale_bonus = Column(Numeric(12,2))
+    sale_change = Column(Numeric(12,2))
+    sale_change_type = Column(String)
     sale_payment_type = Column(String)
     sale_platform = Column(String)
     sale_full_name = Column(String)
     sale_phone = Column(String)
-    sale_payment_amount = Column(Float)
-    sale_bonus = Column(Float, nullable=True)
-    sale_change = Column(Float, nullable=True)
-    sale_change_type = Column(String, nullable=True)
     is_sold = Column(Boolean, default=False)
-
 
 Item.__table_args__ = (
     Index('idx_items_serial_unique', 'serial', unique=True, postgresql_where=Item.serial.isnot(None)),
@@ -92,12 +90,12 @@ class Sale(Base):
     id = Column(Integer, primary_key=True)
     item_id = Column(Integer)
     count = Column(Integer)
-    cash = Column(Float, default=0)
-    terminal = Column(Float, default=0)
-    qr = Column(Float, default=0)
-    transfer = Column(Float, default=0)
-    invoice = Column(Float, default=0)
-    installment = Column(Float, default=0)
+    cash = Column(Numeric(12,2), default=0)
+    terminal = Column(Numeric(12,2), default=0)
+    qr = Column(Numeric(12,2), default=0)
+    transfer = Column(Numeric(12,2), default=0)
+    invoice = Column(Numeric(12,2), default=0)
+    installment = Column(Numeric(12,2), default=0)
     is_accessory = Column(Boolean, default=False)
     message_id = Column(BigInteger, unique=True)
     sold_at = Column(DateTime, server_default=func.now())
@@ -106,12 +104,12 @@ class Sale(Base):
 class Preorder(Base):
     __tablename__ = 'preorders'
     id = Column(Integer, primary_key=True)
-    cash = Column(Float, default=0)
-    terminal = Column(Float, default=0)
-    qr = Column(Float, default=0)
-    transfer = Column(Float, default=0)
-    invoice = Column(Float, default=0)
-    installment = Column(Float, default=0)
+    cash = Column(Numeric(12,2), default=0)
+    terminal = Column(Numeric(12,2), default=0)
+    qr = Column(Numeric(12,2), default=0)
+    transfer = Column(Numeric(12,2), default=0)
+    invoice = Column(Numeric(12,2), default=0)
+    installment = Column(Numeric(12,2), default=0)
     created_at = Column(DateTime, server_default=func.now())
 
 
@@ -119,7 +117,7 @@ class Booking(Base):
     __tablename__ = 'bookings'
     id = Column(Integer, primary_key=True)
     item_id = Column(Integer)
-    total_amount = Column(Float)
+    total_amount = Column(Numeric(12,2))
     booked_at = Column(DateTime, server_default=func.now())
 
 
@@ -128,7 +126,7 @@ class DailyPayment(Base):
     id = Column(Integer, primary_key=True)
     type = Column(String, nullable=False)
     payment_type = Column(String, nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(12,2), nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     sale_message_id = Column(BigInteger)
 
