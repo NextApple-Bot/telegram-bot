@@ -128,11 +128,12 @@ class Application:
         if self._redis_client:
             await self._redis_client.aclose()
             logger.info("✅ Redis-клиент закрыт")
+        from bot.services.notifications import close_notification_bot
+        await close_notification_bot()
         from bot.db import dispose_engine
         await dispose_engine()
         logger.info("✅ Пул БД закрыт")
 
-    # HTTP-обработчики (теперь методы класса)
     async def webhook(self, request: Request) -> Response:
         if not self.bot or not self.dp:
             return Response(status_code=503)
@@ -190,8 +191,13 @@ def create_starlette_app(app_instance):
         starlette_app = SentryAsgiMiddleware(starlette_app)
 
     if app_instance.config.SECRET_KEY:
-        starlette_app.add_middleware(SessionMiddleware, secret_key=app_instance.config.SECRET_KEY)
-        logger.info("✅ SessionMiddleware добавлена")
+        starlette_app.add_middleware(
+            SessionMiddleware,
+            secret_key=app_instance.config.SECRET_KEY,
+            https_only=True,          # только для HTTPS
+            same_site="lax"
+        )
+        logger.info("✅ SessionMiddleware добавлена (secure cookie)")
     else:
         logger.warning("⚠️ SECRET_KEY не задан")
 
@@ -229,7 +235,7 @@ async def main_entry():
         host="0.0.0.0",
         port=port,
         log_level="info",
-        timeout_graceful_shutdown=30,
+        timeout_graceful_shutdown=60,   # увеличено с 30 до 60 секунд
         timeout_keep_alive=30
     )
     server = uvicorn.Server(config)
