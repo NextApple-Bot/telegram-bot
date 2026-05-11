@@ -9,9 +9,10 @@ from bot.services.cache import cache
 
 logger = logging.getLogger(__name__)
 
+
 class AssortmentService:
     CACHE_KEY = "assortment:all"
-    CACHE_TTL = 10  # секунд (оставлено как есть)
+    CACHE_TTL = 10  # секунд
 
     @classmethod
     async def invalidate_cache(cls):
@@ -43,10 +44,6 @@ class AssortmentService:
 
     @classmethod
     async def remove_by_serial(cls, serial: str, reason: str = 'manual', conn=None) -> int:
-        """
-        Удаляет товар по серийному номеру с блокировкой строки FOR UPDATE.
-        Если conn передан, используется эта же сессия, иначе создаётся новая.
-        """
         normalized = serial.strip().upper()
         if conn is not None:
             session = conn
@@ -62,7 +59,6 @@ class AssortmentService:
             stmt = select(Item).where(func.upper(Item.serial) == normalized).with_for_update()
             item = (await session.execute(stmt)).scalar_one_or_none()
             if item:
-                # Добавляем в архив
                 session.add(DeletedItem(
                     item_id=item.id,
                     text=item.text,
