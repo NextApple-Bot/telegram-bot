@@ -4,7 +4,7 @@ import os
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from bot.config import config  # <--- ИСПРАВЛЕНО
+from bot.config import config
 
 logger = logging.getLogger(__name__)
 
