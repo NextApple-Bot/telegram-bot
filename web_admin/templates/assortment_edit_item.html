@@ -16,6 +16,7 @@
                 <h5 class="mb-3">Данные бронирования</h5>
                 <div class="row g-3">
                     <div class="col-md-3"><label class="form-label">Стоимость *</label><input type="number" step="0.01" class="form-control" name="booking_price" id="booking_price" value="{{ item.booking_price or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Бонус (скидка)</label><input type="number" step="0.01" class="form-control" name="booking_bonus" id="booking_bonus" value="{{ item.booking_bonus or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="booking_prepayment" id="booking_prepayment" value="{{ item.booking_prepayment or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">Способ оплаты</label><select name="booking_payment_type" class="form-select"><option value="">Не указан</option><option value="cash" {% if item.booking_payment_type=='cash' %}selected{% endif %}>Наличные</option><option value="terminal" {% if item.booking_payment_type=='terminal' %}selected{% endif %}>Терминал</option><option value="qr" {% if item.booking_payment_type=='qr' %}selected{% endif %}>QR-код</option><option value="transfer" {% if item.booking_payment_type=='transfer' %}selected{% endif %}>Перевод</option><option value="invoice" {% if item.booking_payment_type=='invoice' %}selected{% endif %}>По счёту</option><option value="installment" {% if item.booking_payment_type=='installment' %}selected{% endif %}>Рассрочка</option></select></div>
                     <div class="col-md-3"><label class="form-label">Площадка</label><input type="text" class="form-control" name="booking_platform" id="booking_platform" value="{{ item.booking_platform or '' }}"></div>
@@ -29,7 +30,9 @@
                 <h5 class="mb-3">Данные продажи</h5>
                 <div class="row g-3">
                     <div class="col-md-3"><label class="form-label">Стоимость *</label><input type="number" step="0.01" class="form-control" name="sale_price" id="sale_price" value="{{ item.sale_price or '' }}"></div>
-                    <div class="col-md-3"><label class="form-label">П/О</label><input type="number" step="0.01" class="form-control" name="sale_prepayment" id="sale_prepayment" value="{{ item.sale_prepayment or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Бонус (скидка)</label><input type="number" step="0.01" class="form-control" name="sale_bonus" id="sale_bonus" value="{{ item.sale_bonus or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Сдача</label><input type="number" step="0.01" class="form-control" name="sale_change" id="sale_change" value="{{ item.sale_change or '' }}"></div>
+                    <div class="col-md-3"><label class="form-label">Способ сдачи</label><select name="sale_change_type" class="form-select"><option value="cash" {% if item.sale_change_type=='cash' %}selected{% endif %}>Наличными</option><option value="transfer" {% if item.sale_change_type=='transfer' %}selected{% endif %}>Перевод</option></select></div>
                     <div class="col-md-3"><label class="form-label">Оплата *</label><input type="number" step="0.01" class="form-control" name="sale_payment_amount" id="sale_payment_amount" value="{{ item.sale_payment_amount or '' }}"></div>
                     <div class="col-md-3"><label class="form-label">Способ оплаты</label><select name="sale_payment_type" class="form-select"><option value="cash" {% if item.sale_payment_type=='cash' %}selected{% endif %}>Наличные</option><option value="terminal" {% if item.sale_payment_type=='terminal' %}selected{% endif %}>Терминал</option><option value="qr" {% if item.sale_payment_type=='qr' %}selected{% endif %}>QR-код</option><option value="transfer" {% if item.sale_payment_type=='transfer' %}selected{% endif %}>Перевод</option><option value="invoice" {% if item.sale_payment_type=='invoice' %}selected{% endif %}>По счёту</option><option value="installment" {% if item.sale_payment_type=='installment' %}selected{% endif %}>Рассрочка</option><option value="paid" {% if item.sale_payment_type=='paid' %}selected{% endif %}>Оплачен</option></select></div>
                     <div class="col-md-4"><label class="form-label">Площадка</label><input type="text" class="form-control" name="sale_platform" id="sale_platform" value="{{ item.sale_platform or '' }}"></div>
@@ -55,8 +58,7 @@
     const saleDiv = document.getElementById('saleFields');
     const isSoldCheckbox = document.getElementById('is_sold');
 
-    // ID полей, которые нужно копировать из брони в продажу
-    const fieldsToCopy = [
+    const fieldsToCopyBookToSale = [
         { from: 'booking_platform', to: 'sale_platform' },
         { from: 'booking_full_name', to: 'sale_full_name' },
         { from: 'booking_phone', to: 'sale_phone' },
@@ -65,7 +67,7 @@
 
     function copyFieldsIfEmpty() {
         if (isSoldCheckbox.checked) {
-            fieldsToCopy.forEach(({ from, to }) => {
+            fieldsToCopyBookToSale.forEach(({ from, to }) => {
                 const fromEl = document.getElementById(from);
                 const toEl = document.getElementById(to);
                 if (fromEl && toEl && !toEl.value.trim()) {
@@ -87,7 +89,7 @@
         if (saleVisible) {
             isBookedCheckbox.checked = false;
             bookingDiv.style.display = 'none';
-            copyFieldsIfEmpty();   // переносим данные из брони
+            copyFieldsIfEmpty();
         }
     }
     isBookedCheckbox.addEventListener('change', updateVisibility);
@@ -104,7 +106,7 @@
         else value = value.replace(/-/g, '');
         input.value = value;
     }
-    const numberFields = ['booking_price', 'booking_prepayment', 'sale_price', 'sale_prepayment', 'sale_payment_amount'];
+    const numberFields = ['booking_price', 'booking_prepayment', 'sale_price', 'sale_prepayment', 'sale_payment_amount', 'sale_bonus', 'booking_bonus', 'sale_change'];
     numberFields.forEach(id => { const f = document.getElementById(id); if (f) f.addEventListener('input', cleanNumberInput); });
 
     const container = document.getElementById('accessories-container');
@@ -176,6 +178,9 @@
         if (isSold) {
             const salePrice = parseFloat(document.getElementById('sale_price').value) || 0;
             const salePayment = parseFloat(document.getElementById('sale_payment_amount').value) || 0;
+            const saleBonus = parseFloat(document.getElementById('sale_bonus').value) || 0;
+            const saleChange = parseFloat(document.getElementById('sale_change').value) || 0;
+
             if (salePrice <= 0) {
                 alert('Укажите стоимость продажи.');
                 document.getElementById('sale_price').focus();
@@ -185,6 +190,14 @@
                 alert('Укажите сумму оплаты (или выберите "Оплачен").');
                 document.getElementById('sale_payment_amount').focus();
                 return false;
+            }
+            // Автоматически вычисляем сдачу, если не заполнена
+            if (!saleChange && salePayment > 0) {
+                const total = salePrice - saleBonus;
+                const change = salePayment - total;
+                if (change > 0) {
+                    document.getElementById('sale_change').value = change.toFixed(2);
+                }
             }
         }
 
