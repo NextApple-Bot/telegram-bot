@@ -98,6 +98,10 @@ async def edit_item_submit(
                 if is_sold and is_booked:
                     raise HTTPException(status_code=400, detail="Снимите бронь перед продажей")
 
+                # Переменные для уведомлений (будут отправлены после коммита)
+                notify_booking = None
+                notify_cancel = None
+
                 if is_sold:
                     accessories = []
                     for name, acc_serial, price, pay_type in zip(
@@ -125,6 +129,7 @@ async def edit_item_submit(
                     )
                     if "error" in result:
                         raise HTTPException(status_code=400, detail=result["error"])
+                    # Уведомление отправляется внутри handle_sale_from_form после коммита, поэтому здесь ничего не делаем
                     await AssortmentService.invalidate_cache()
                     return RedirectResponse(url="/admin/assortment", status_code=303)
 
@@ -174,21 +179,20 @@ async def edit_item_submit(
                         )
                         session.add(payment)
 
-                    from .notifications import send_booking_notification
-                    asyncio.create_task(send_booking_notification(
-                        item_text=text,
-                        serial=serial.strip().upper() if serial else "без серийного номера",
-                        price=booking_price,
-                        bonus=booking_bonus,
-                        prepayment=booking_prepayment,
-                        platform=booking_platform,
-                        full_name=booking_full_name,
-                        phone=booking_phone,
-                        payment_type=booking_payment_type,
-                        birth_date=booking_birth_date,
-                        is_cancel=False
-                    ))
-                    logger.info(f"Бронь товара {item_id} успешно сохранена")
+                    # Сохраняем данные для уведомления (отправим после коммита)
+                    notify_booking = {
+                        "item_text": text,
+                        "serial": serial.strip().upper() if serial else "без серийного номера",
+                        "price": booking_price,
+                        "bonus": booking_bonus,
+                        "prepayment": booking_prepayment,
+                        "platform": booking_platform,
+                        "full_name": booking_full_name,
+                        "phone": booking_phone,
+                        "payment_type": booking_payment_type,
+                        "birth_date": booking_birth_date,
+                        "is_cancel": False
+                    }
                 else:
                     old.text = text
                     old.serial = serial.strip().upper() if serial else None
@@ -215,12 +219,20 @@ async def edit_item_submit(
                     session.add(old)
 
                     if old_is_booked and not is_booked:
-                        from .notifications import send_booking_notification
-                        asyncio.create_task(send_booking_notification(
-                            item_text=old_text,
-                            serial=old_serial,
-                            is_cancel=True
-                        ))
+                        notify_cancel = {
+                            "item_text": old_text,
+                            "serial": old_serial,
+                            "is_cancel": True
+                        }
+
+            # После успешного коммита отправляем уведомления
+            if notify_booking:
+                from .notifications import send_booking_notification
+                asyncio.create_task(send_booking_notification(**notify_booking))
+                logger.info(f"Бронь товара {item_id} успешно сохранена, уведомление отправлено")
+            if notify_cancel:
+                from .notifications import send_booking_notification
+                asyncio.create_task(send_booking_notification(**notify_cancel))
 
         except HTTPException:
             raise
@@ -272,6 +284,7 @@ async def add_item(
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
 
+    notify_data = None
     async_session = get_async_session_factory()
     async with async_session() as session, session.begin():
         new_item = Item(
@@ -298,19 +311,23 @@ async def add_item(
                 )
                 session.add(payment)
 
-            from .notifications import send_booking_notification
-            asyncio.create_task(send_booking_notification(
-                item_text=text,
-                serial=serial.strip().upper() if serial else "без серийного номера",
-                price=booking_price,
-                bonus=booking_bonus,
-                prepayment=booking_prepayment,
-                platform=booking_platform,
-                full_name=booking_full_name,
-                phone=booking_phone,
-                payment_type=booking_payment_type,
-                is_cancel=False
-            ))
+            notify_data = {
+                "item_text": text,
+                "serial": serial.strip().upper() if serial else "без серийного номера",
+                "price": booking_price,
+                "bonus": booking_bonus,
+                "prepayment": booking_prepayment,
+                "platform": booking_platform,
+                "full_name": booking_full_name,
+                "phone": booking_phone,
+                "payment_type": booking_payment_type,
+                "is_cancel": False
+            }
+
+    if notify_data:
+        from .notifications import send_booking_notification
+        asyncio.create_task(send_booking_notification(**notify_data))
+
     await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
