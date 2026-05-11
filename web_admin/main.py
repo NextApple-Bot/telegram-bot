@@ -1,8 +1,8 @@
-# Файл: web_admin/main.py
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
+from bot.middleware.rate_limit import RateLimitMiddleware
 from web_admin.auth import is_authenticated
 from web_admin.routes import auth, clients, dashboard, debug, purchases, sellers, sold, stats
 from web_admin.routes.assortment import manage as assortment_manage
@@ -10,6 +10,7 @@ from web_admin.routes.assortment import views as assortment_views
 
 app = FastAPI(title="Telegram Bot Admin Panel")
 app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(RateLimitMiddleware, calls=20, period=60)
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
