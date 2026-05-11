@@ -13,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class RedisCache:
-    """Обёртка над Redis для кэширования данных (ассортимент, топ-модели, статистика)."""
-
     def __init__(self):
         self._redis: redis.Redis | None = None
         self._enabled = bool(config.REDIS_URL)
@@ -61,7 +59,6 @@ class RedisCache:
         except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
             logger.error(f"Redis clear pattern error: {e}", exc_info=True)
 
-    # Блокировки
     async def lock(self, key: str, ttl: int = 60, value: str = "locked") -> bool:
         if not self._enabled or not self._redis:
             logger.warning("Redis не доступен, блокировка не работает — возможны гонки")
@@ -71,7 +68,7 @@ class RedisCache:
             return acquired is not None
         except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
             logger.error(f"Ошибка lock Redis: {e}", exc_info=True)
-            return True  # на ошибке лучше выполнить, чем заблокировать навсегда
+            return True
 
     async def unlock(self, key: str) -> None:
         if self._enabled and self._redis:
@@ -81,5 +78,4 @@ class RedisCache:
                 logger.error(f"Ошибка unlock Redis: {e}", exc_info=True)
 
 
-# Глобальный экземпляр
 cache = RedisCache()
