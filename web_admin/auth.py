@@ -2,7 +2,7 @@
 from passlib.context import CryptContext
 from starlette.requests import Request
 
-from bot import config
+from bot.config import config  # <--- ИСПРАВЛЕНО
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
