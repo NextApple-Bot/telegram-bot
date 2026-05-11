@@ -1,6 +1,7 @@
 import os
+from typing import List
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,13 +9,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
     )
 
-    # --- Основные токены и идентификаторы ---
     BOT_TOKEN: str
     ADMIN_IDS_STR: str = Field(default="", alias="ADMIN_ID")
-    ADMIN_IDS: list[int] = []
+    ADMIN_IDS: List[int] = []
 
     @field_validator("ADMIN_IDS", mode="before")
     @classmethod
@@ -42,25 +42,13 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = ""
 
+    @model_validator(mode="after")
+    def validate_secrets(self):
+        if not self.SECRET_KEY or len(self.SECRET_KEY) < 32:
+            raise ValueError("SECRET_KEY должен содержать не менее 32 символов")
+        if not self.ADMIN_PASSWORD and not self.ADMIN_PASSWORD_HASH:
+            raise ValueError("Должен быть задан ADMIN_PASSWORD или ADMIN_PASSWORD_HASH")
+        return self
 
-# Создаём экземпляр конфигурации (pydantic-settings автоматически загрузит .env)
+
 config = Settings()
-
-# Экспортируем атрибуты для обратной совместимости
-TOKEN = config.BOT_TOKEN
-ADMIN_IDS_STR = os.getenv("ADMIN_ID", "")
-ADMIN_IDS = config.ADMIN_IDS
-MAIN_GROUP_ID = config.MAIN_GROUP_ID
-THREAD_SALES = config.THREAD_SALES
-THREAD_ASSORTMENT = config.THREAD_ASSORTMENT
-THREAD_ARRIVAL = config.THREAD_ARRIVAL
-THREAD_PREORDER = config.THREAD_PREORDER
-THREAD_SERVICE = config.THREAD_SERVICE
-DATABASE_URL = config.DATABASE_URL
-RENDER_URL = config.RENDER_URL
-PORT = config.PORT
-PLAN_AMOUNT = config.PLAN_AMOUNT
-ADMIN_PASSWORD = config.ADMIN_PASSWORD
-ADMIN_PASSWORD_HASH = config.ADMIN_PASSWORD_HASH
-SECRET_KEY = config.SECRET_KEY
-REDIS_URL = config.REDIS_URL
