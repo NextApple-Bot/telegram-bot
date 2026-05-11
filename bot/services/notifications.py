@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from aiogram import Bot
 
@@ -6,8 +7,7 @@ from bot import config
 
 logger = logging.getLogger(__name__)
 
-# Глобальный экземпляр бота для уведомлений
-_notification_bot: Bot | None = None
+_notification_bot: Optional[Bot] = None
 
 
 def get_notification_bot() -> Bot:
@@ -29,9 +29,6 @@ def format_number(value: float) -> str:
         return ""
     return f"{value:,.0f}".replace(",", " ")
 
-
-# Ниже функции отправки уведомлений используют get_notification_bot() вместо локального Bot
-# и не закрывают сессию после отправки (глобальный бот живёт всё время)
 
 async def send_booking_notification(
     item_text: str,
@@ -134,7 +131,6 @@ async def send_sale_notification(
         else:
             lines.append("")
 
-        # Собираем платежи
         payments = {}
         if payment_type != "paid" and payment_amount and payment_amount > 0:
             payments[payment_type] = payments.get(payment_type, 0) + payment_amount
@@ -149,7 +145,6 @@ async def send_sale_notification(
             lines.append(f"П/О – {format_number(prepayment)}")
             lines.append("")
 
-        # Строки оплаты
         if payment_type == "paid":
             lines.append("Оплачен")
             lines.append("")
