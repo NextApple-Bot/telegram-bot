@@ -202,7 +202,9 @@
                     suggestionsDiv.style.display = 'block';
                     const hide = (e) => { if (!serialInput.contains(e.target) && !suggestionsDiv.contains(e.target)) { suggestionsDiv.style.display = 'none'; document.removeEventListener('click', hide); } };
                     document.addEventListener('click', hide);
-                } catch (err) { console.error(err); }
+                } catch (err) {
+                    console.error('Ошибка автопоиска аксессуара:', err);
+                }
             }, 300);
         });
         serialInput.addEventListener('blur', () => { setTimeout(() => { if (!suggestionsDiv.matches(':hover')) suggestionsDiv.style.display = 'none'; }, 100); });
