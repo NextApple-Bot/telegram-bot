@@ -1,10 +1,10 @@
 import os
 from unittest.mock import AsyncMock
-import pytest
+
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.testclient import TestClient
 from starlette.routing import Mount
+from starlette.testclient import TestClient
 
 os.environ["SECRET_KEY"] = "test_secret_key_for_admin_at_least_32_chars"
 os.environ["ADMIN_PASSWORD"] = "testpass"
@@ -18,6 +18,7 @@ os.environ["THREAD_PREORDER"] = "4"
 os.environ["DATABASE_URL"] = "postgresql://none/none"
 
 import bot.db  # noqa: E402
+
 bot.db.get_async_session_factory = AsyncMock
 
 from web_admin.main import app as admin_app  # noqa: E402
