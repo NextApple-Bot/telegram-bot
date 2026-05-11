@@ -59,7 +59,7 @@ class Application:
         from aiogram.fsm.storage.memory import MemoryStorage
         from aiogram.fsm.storage.redis import RedisStorage
 
-        from bot.config import config as bot_config
+        from bot.config import config as bot_config  # <--- ИСПРАВЛЕНО
         from bot.db import get_async_session_factory
         from bot.middleware.error_handler import ErrorHandlerMiddleware
 
