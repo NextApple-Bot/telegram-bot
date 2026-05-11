@@ -118,88 +118,37 @@ async def send_sale_notification(
         # Собираем платежи
         payments = {}
         if payment_type != "paid" and payment_amount and payment_amount > 0:
-            payments[payment_type] = payments.get(payment_type, 0) + payment_amount_amount
+            payments[payment_type] = payments.get(payment_type, 0) + payment_amount
 
-        if
+        if accessories:
+            for acc in accessories:
+                pay_type = acc.get('payment_type')
+                if pay_type and pay_type != "paid" and acc['price'] > 0:
+                    payments[pay_type] = payments.get(pay_type, 0) + acc['price']
 
-        if accessories accessories:
-            for:
-            for acc in acc in accessories accessories:
-                pay:
-                pay_type =_type = acc.get acc.get('payment('payment_type_type')
-                if')
-                if pay_type pay_type and pay and pay_type !=_type != "paid "paid" and" and acc[' acc['price']price'] >  > 00:
-                    payments:
-                    payments[pay[pay_type]_type] = payments = payments.get.get(p(pay_typeay_type, , 0)0) + acc + acc['price['price']
+        if prepayment and prepayment > 0:
+            lines.append(f"П/О – {format_number(prepayment)}")
+            lines.append("")
 
-       ']
-
-        if prep if prepayment andayment and prepayment prepayment >  > 00:
-            lines.append(f":
-            lines.append(fП"П/О/О – { – {format_numberformat_number(prepayment(prepayment)})}")
-            lines")
-            lines.append(".append("")
-
-       ")
-
-        # С # Строкитроки оплаты оплаты
-       
-        if payment if payment_type ==_type == "paid "paid":
-           ":
-            lines.append lines.append("О("Оплаченплачен")
-           ")
-            lines.append lines.append("("")
-        else")
+        # Строки оплаты
+        if payment_type == "paid":
+            lines.append("Оплачен")
+            lines.append("")
         else:
-           :
-            for pt for pt, amount, amount in payments in payments.items.items():
-                if():
-                if amount > 0 amount > 0:
-                   :
-                    line = line = f"{ f"{payment_typepayment_type_ru_ru.get(pt.get(pt,, pt pt)} –)} – {format {format_number(_number(amount)}amount)}"
-                   "
-                    if change if change is not is not None and None and change > change > 0 0 and pt and pt == change == change_type_type:
-                        change:
-                        change_str =_str = f" f" (с (сдача {'дача {'наличналичными'ными' if change if change_type ==_type == 'cash 'cash' else' else 'пере 'переводомводом'} -'} - {format {format_number(change)}_number(₽change)}₽)"
-                       )"
-                        line += line += change_str change_str
-                    lines.append
-                    lines.append(line(line)
-                    lines)
-                    lines.append(".append("")
+            for pt, amount in payments.items():
+                if amount > 0:
+                    line = f"{payment_type_ru.get(pt, pt)} – {format_number(amount)}"
+                    if change is not None and change > 0 and pt == change_type:
+                        change_str = f" (сдача {'наличными' if change_type == 'cash' else 'переводом'} - {format_number(change)}₽)"
+                        line += change_str
+                    lines.append(line)
+                    lines.append("")
 
-       ")
-
-        if lines if lines and and lines lines[-1[-1] ==] == "" "":
-            lines:
-            lines.pop.pop()
-        lines()
-        lines.append(".append("")
-
-       ")
-
-        total_p total_paid = (aid = (preprepaymentpayment or or 0 0) +) + sum(p sum(payments.valuesayments.values())
-       ())
-        total_price = price - (bonus or 0)
-        total = total_price  # общая стоимость товара
-        lines.append(f"Общая – {format_number(total)}")
-        lines.append("")
+        if lines and lines[-1] == "":
+            lines.pop()
         lines.append("")
 
-        if full_name:
-            lines.append(full_name)
-        if birth_date:
-            lines.append(birth_date)
-        if phone:
-            lines.append(phone)
-        lines.append("")
-        if platform:
-            lines.append(f"Площадка – {platform}")
-
-        message_text = "\n".join(lines)
-        await bot.send_message(
-            chat_id=config.MAIN total_price = price - (bonus or 0)
-        total = total_price  # общая стоимость товара
+        total = price - (bonus or 0)
         lines.append(f"Общая – {format_number(total)}")
         lines.append("")
         lines.append("")
@@ -217,18 +166,10 @@ async def send_sale_notification(
         message_text = "\n".join(lines)
         await bot.send_message(
             chat_id=config.MAIN_GROUP_ID,
-           _GROUP_ID,
-            text text=message=message_text,
-            message_thread_text,
-            message_id_thread_id=config.TH=config.THREAD_SREAD_SALESALES
-       
+            text=message_text,
+            message_thread_id=config.THREAD_SALES
         )
-        await )
-        await bot.session bot.session.close.close()
-        logger()
-        logger.info(f"✅.info(f"✅ Увед Уведомлениеомление о о продаже отправ продаже отправленолено:: {item {item_text_text}")
-}")
-    except    except Exception as Exception as e e:
-        logger:
-        logger.error(f.error(f""❌ О❌ Ошибкашибка при отправ при отправке уке уведомведомления оления о продаже продаже: {: {ee}")
-}")
+        await bot.session.close()
+        logger.info(f"✅ Уведомление о продаже отправлено: {item_text}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке уведомления о продаже: {e}")
