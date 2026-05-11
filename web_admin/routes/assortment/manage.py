@@ -3,7 +3,7 @@ import logging
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import select, func
 
 from bot.db import get_async_session_factory
 from bot.models import Category, DeletedItem, Item
@@ -48,6 +48,7 @@ async def edit_item_submit(
     is_booked: bool = Form(False),
     is_sold: bool = Form(False),
     booking_price: float | None = Form(None),
+    booking_bonus: float | None = Form(None),
     booking_prepayment: float | None = Form(None),
     booking_platform: str | None = Form(None),
     booking_full_name: str | None = Form(None),
@@ -55,6 +56,9 @@ async def edit_item_submit(
     booking_payment_type: str | None = Form(None),
     booking_birth_date: str | None = Form(None),
     sale_price: float | None = Form(None),
+    sale_bonus: float | None = Form(None),
+    sale_change: float | None = Form(None),
+    sale_change_type: str | None = Form(None),
     sale_prepayment: float | None = Form(None),
     sale_payment_amount: float | None = Form(None),
     sale_payment_type: str | None = Form(None),
@@ -114,6 +118,7 @@ async def edit_item_submit(
                         sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
                         sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
                         sale_birth_date=sale_birth_date,
+                        sale_bonus=sale_bonus, sale_change=sale_change, sale_change_type=sale_change_type,
                         accessories=accessories,
                         conn=session
                     )
@@ -140,12 +145,16 @@ async def edit_item_submit(
                     old.category_id = category_id
                     old.is_booked = True
                     old.booking_price = booking_price
+                    old.booking_bonus = booking_bonus
                     old.booking_prepayment = booking_prepayment
                     old.booking_platform = booking_platform
                     old.booking_full_name = booking_full_name
                     old.booking_phone = booking_phone
                     old.booking_payment_type = booking_payment_type
                     old.sale_price = None
+                    old.sale_bonus = None
+                    old.sale_change = None
+                    old.sale_change_type = None
                     old.sale_prepayment = None
                     old.sale_payment_type = None
                     old.sale_platform = None
@@ -169,6 +178,7 @@ async def edit_item_submit(
                         item_text=text,
                         serial=serial.strip().upper() if serial else "без серийного номера",
                         price=booking_price,
+                        bonus=booking_bonus,
                         prepayment=booking_prepayment,
                         platform=booking_platform,
                         full_name=booking_full_name,
@@ -184,12 +194,16 @@ async def edit_item_submit(
                     old.category_id = category_id
                     old.is_booked = False
                     old.booking_price = None
+                    old.booking_bonus = None
                     old.booking_prepayment = None
                     old.booking_platform = None
                     old.booking_full_name = None
                     old.booking_phone = None
                     old.booking_payment_type = None
                     old.sale_price = None
+                    old.sale_bonus = None
+                    old.sale_change = None
+                    old.sale_change_type = None
                     old.sale_prepayment = None
                     old.sale_payment_type = None
                     old.sale_platform = None
@@ -247,6 +261,7 @@ async def add_item(
     category_id: int = Form(...),
     is_booked: bool = Form(False),
     booking_price: float | None = Form(None),
+    booking_bonus: float | None = Form(None),
     booking_prepayment: float | None = Form(None),
     booking_platform: str | None = Form(None),
     booking_full_name: str | None = Form(None),
@@ -264,6 +279,7 @@ async def add_item(
             category_id=category_id,
             is_booked=is_booked,
             booking_price=booking_price,
+            booking_bonus=booking_bonus,
             booking_prepayment=booking_prepayment,
             booking_platform=booking_platform,
             booking_full_name=booking_full_name,
@@ -286,6 +302,7 @@ async def add_item(
                 item_text=text,
                 serial=serial.strip().upper() if serial else "без серийного номера",
                 price=booking_price,
+                bonus=booking_bonus,
                 prepayment=booking_prepayment,
                 platform=booking_platform,
                 full_name=booking_full_name,
