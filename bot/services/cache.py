@@ -7,7 +7,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from bot.config import config  # <--- ИСПРАВЛЕНО
+from bot.config import config
 
 logger = logging.getLogger(__name__)
 
