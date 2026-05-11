@@ -8,17 +8,14 @@ Create Date: 2026-05-11 20:00:00.000000
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers, used by Alembic.
 revision = '020'
-down_revision = '019'
+down_revision = '019'  # Или '018' – проверьте по alembic current
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     op.add_column('items', sa.Column('sale_bonus_reason', sa.String(), nullable=True))
     op.add_column('items', sa.Column('booking_bonus_reason', sa.String(), nullable=True))
-
 
 def downgrade() -> None:
     op.drop_column('items', 'sale_bonus_reason')
