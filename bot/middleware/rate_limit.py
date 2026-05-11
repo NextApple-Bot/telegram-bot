@@ -1,5 +1,6 @@
 import time
 from collections import defaultdict
+from typing import Dict, Tuple
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -12,7 +13,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.calls = calls
         self.period = period
-        self.requests: dict[tuple[str, str], list] = defaultdict(list)  # (ip, method+path)
+        self.requests: Dict[Tuple[str, str], list] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
         if not request.url.path.startswith("/admin"):
