@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-
 from alembic import command
 from alembic.config import Config
 
@@ -18,7 +17,7 @@ if not DATABASE_URL:
 
 alembic_ini_path = Path(__file__).parent / "alembic.ini"
 if not alembic_ini_path.exists():
-    print("❌ alembic.ini не найден", file=sys.stderr)
+    print(f"❌ alembic.ini не найден", file=sys.stderr)
     sys.exit(1)
 
 alembic_cfg = Config(str(alembic_ini_path))
