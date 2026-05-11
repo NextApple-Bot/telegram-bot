@@ -1,21 +1,23 @@
 import logging
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from bot.db import get_async_session_factory
 from bot.models import DeletedItem, Item
 from bot.services.cache import cache
+from bot.services.lock import redis_lock
 
 logger = logging.getLogger(__name__)
 
 class AssortmentService:
     CACHE_KEY = "assortment:all"
-    CACHE_TTL = 10
+    CACHE_TTL = 10  # секунд (оставлено как есть)
 
     @classmethod
     async def invalidate_cache(cls):
         await cache.delete(cls.CACHE_KEY)
-        logger.debug("Кэш инвалидирован")
+        logger.debug("Кэш ассортимента инвалидирован")
 
     @classmethod
     async def load_inventory(cls) -> list[dict[str, list[str]]]:
@@ -42,8 +44,10 @@ class AssortmentService:
 
     @classmethod
     async def remove_by_serial(cls, serial: str, reason: str = 'manual', conn=None) -> int:
-        """Удаляет товар по серийному номеру, создаёт запись в deleted_items.
-        Если conn передан, используется эта же сессия, иначе создаётся новая."""
+        """
+        Удаляет товар по серийному номеру с блокировкой строки FOR UPDATE.
+        Если conn передан, используется эта же сессия, иначе создаётся новая.
+        """
         normalized = serial.strip().upper()
         if conn is not None:
             session = conn
@@ -55,14 +59,19 @@ class AssortmentService:
         try:
             if own:
                 await session.begin()
-            deleted_row = (await session.execute(
-                select(Item).where(func.upper(Item.serial) == normalized)
-            )).scalar_one_or_none()
-            if deleted_row:
-                session.add(DeletedItem(item_id=deleted_row.id, text=deleted_row.text,
-                                        serial=deleted_row.serial, category_id=deleted_row.category_id,
-                                        reason=reason))
-                await session.delete(deleted_row)
+            # Блокируем строку для обновления
+            stmt = select(Item).where(func.upper(Item.serial) == normalized).with_for_update()
+            item = (await session.execute(stmt)).scalar_one_or_none()
+            if item:
+                # Добавляем в архив
+                session.add(DeletedItem(
+                    item_id=item.id,
+                    text=item.text,
+                    serial=item.serial,
+                    category_id=item.category_id,
+                    reason=reason
+                ))
+                await session.delete(item)
                 await cls.invalidate_cache()
                 if own:
                     await session.commit()
@@ -70,7 +79,7 @@ class AssortmentService:
             if own:
                 await session.commit()
             return 0
-        except Exception as e:
+        except SQLAlchemyError as e:
             if own:
                 await session.rollback()
             logger.error(f"Ошибка удаления по серийному номеру {serial}: {e}")
