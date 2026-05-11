@@ -3,10 +3,10 @@ import logging
 import uuid
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import select, func
 
 from bot.db import get_async_session_factory
-from bot.models import DailyPayment, DeletedItem, Item, Sale
+from bot.models import Item, DeletedItem, Sale, DailyPayment
 from bot.repositories.client import ClientRepository
 from bot.services.cache import cache
 
@@ -187,7 +187,8 @@ async def handle_sale_from_form(
                 bonus=sale_bonus,
                 change=sale_change,
                 change_type=sale_change_type,
-                accessories=processed_accessories
+                accessories=processed_accessories,
+                accessories_total=accessories_total
             ))
 
         finally:
