@@ -1,9 +1,9 @@
 import os
-import pytest
+
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.testclient import TestClient
 from starlette.routing import Mount
+from starlette.testclient import TestClient
 
 os.environ["SECRET_KEY"] = "test_secret_key_for_admin_at_least_32_chars"
 os.environ["ADMIN_PASSWORD"] = "testpass"
