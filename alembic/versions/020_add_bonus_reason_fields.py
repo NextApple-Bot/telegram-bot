@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '020'
-down_revision = '019'
+down_revision = '019'   # если последняя 018 – замените на '018'
 branch_labels = None
 depends_on = None
 
