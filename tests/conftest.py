@@ -1,9 +1,9 @@
 import os
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Отключаем uvloop глобально до любых импортов aiogram
 try:
     import uvloop
     uvloop.install = lambda: None
@@ -25,7 +25,6 @@ os.environ["ADMIN_PASSWORD"] = "testpass"
 
 
 class AsyncSessionMock:
-    """Асинхронный контекстный менеджер, который заменяет SQLAlchemy сессию."""
     def __init__(self):
         self.execute = AsyncMock(return_value=MagicMock(all=MagicMock(), scalar=MagicMock(), scalars=MagicMock()))
         self.commit = AsyncMock()
@@ -52,7 +51,6 @@ class SessionFactoryMock:
 
 @pytest.fixture(autouse=True)
 def mock_db_session():
-    """Подменяет get_async_session_factory на мок, возвращающий фабрику сессий."""
     with patch('bot.db.get_async_session_factory', return_value=SessionFactoryMock()):
         yield
 
