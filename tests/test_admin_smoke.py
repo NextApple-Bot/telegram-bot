@@ -20,7 +20,7 @@ os.environ["DATABASE_URL"] = "postgresql://none/none"
 import bot.db  # noqa: E402
 bot.db.get_async_session_factory = AsyncMock
 
-from web_admin.main import app as admin_app
+from web_admin.main import app as admin_app  # noqa: E402
 
 # Собираем главное Starlette‑приложение как в продакшене
 app = Starlette(
