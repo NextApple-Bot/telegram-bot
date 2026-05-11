@@ -194,7 +194,7 @@ def create_starlette_app(app_instance):
         starlette_app.add_middleware(
             SessionMiddleware,
             secret_key=app_instance.config.SECRET_KEY,
-            https_only=True,          # только для HTTPS
+            https_only=True,
             same_site="lax"
         )
         logger.info("✅ SessionMiddleware добавлена (secure cookie)")
@@ -230,15 +230,15 @@ async def main_entry():
 
     port = int(os.getenv("PORT", "8000"))
     logger.info(f"🚀 Запуск сервера на порту {port}")
-    config = uvicorn.Config(
+    uvicorn_config = uvicorn.Config(
         starlette_app,
         host="0.0.0.0",
         port=port,
         log_level="info",
-        timeout_graceful_shutdown=60,   # увеличено с 30 до 60 секунд
+        timeout_graceful_shutdown=60,
         timeout_keep_alive=30
     )
-    server = uvicorn.Server(config)
+    server = uvicorn.Server(uvicorn_config)
     await server.serve()
 
 
