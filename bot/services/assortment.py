@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class AssortmentService:
     CACHE_KEY = "assortment:all"
-    CACHE_TTL = 10  # секунд
+    CACHE_TTL = 10
 
     @classmethod
     async def invalidate_cache(cls):
@@ -55,7 +55,6 @@ class AssortmentService:
         try:
             if own:
                 await session.begin()
-            # Блокируем строку для обновления
             stmt = select(Item).where(func.upper(Item.serial) == normalized).with_for_update()
             item = (await session.execute(stmt)).scalar_one_or_none()
             if item:
