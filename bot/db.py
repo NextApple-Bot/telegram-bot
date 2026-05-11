@@ -1,66 +1,83 @@
 import logging
-import os
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
-from bot import config
+from bot.db import get_async_session_factory
+from bot.models import DeletedItem, Item
+from bot.services.cache import cache
 
 logger = logging.getLogger(__name__)
 
-_async_engine = None
-_async_session_factory = None
 
+class AssortmentService:
+    CACHE_KEY = "assortment:all"
+    CACHE_TTL = 10
 
-def get_async_session_factory():
-    global _async_engine, _async_session_factory
-    if _async_session_factory is None:
-        db_url = config.DATABASE_URL
-        if db_url.startswith("postgresql://"):
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        _async_engine = create_async_engine(
-            db_url,
-            echo=False,
-            pool_size=int(os.getenv("DB_POOL_MIN_SIZE", "1")),
-            max_overflow=int(os.getenv("DB_POOL_MAX_SIZE", "5")) - int(os.getenv("DB_POOL_MIN_SIZE", "1")),
-            pool_recycle=300,
-            connect_args={"ssl": False}
-        )
-        _async_session_factory = async_sessionmaker(
-            bind=_async_engine,
-            expire_on_commit=False
-        )
-        logger.info("✅ Фабрика асинхронных сессий SQLAlchemy создана")
-    return _async_session_factory
+    @classmethod
+    async def invalidate_cache(cls):
+        await cache.delete(cls.CACHE_KEY)
+        logger.debug("Кэш ассортимента инвалидирован")
 
+    @classmethod
+    async def load_inventory(cls) -> list[dict[str, list[str]]]:
+        try:
+            cached = await cache.get(cls.CACHE_KEY)
+            if cached is not None:
+                return cached
+        except Exception:
+            pass
 
-async def dispose_engine():
-    global _async_engine, _async_session_factory
-    if _async_engine:
-        await _async_engine.dispose()
-        _async_engine = None
-        _async_session_factory = None
-        logger.info("✅ Движок SQLAlchemy остановлен")
+        from bot.repositories import ItemRepository
+        categories = await ItemRepository.get_all_categories_with_items()
+        try:
+            await cache.set(cls.CACHE_KEY, categories, ttl=cls.CACHE_TTL)
+        except Exception:
+            pass
+        return categories
 
+    @classmethod
+    async def save_inventory(cls, categories: list[dict[str, list[str]]]):
+        from bot.repositories import ItemRepository
+        await ItemRepository.bulk_replace_assortment(categories)
+        await cls.invalidate_cache()
 
-async def check_db_health() -> bool:
-    try:
-        async_session = get_async_session_factory()
-        async with async_session() as session:
-            await session.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-async def check_redis_health() -> bool:
-    if not config.REDIS_URL:
-        return True
-    try:
-        import redis.asyncio as redis
-        r = redis.from_url(config.REDIS_URL, decode_responses=True)
-        await r.ping()
-        await r.aclose()
-        return True
-    except Exception:
-        return False
+    @classmethod
+    async def remove_by_serial(cls, serial: str, reason: str = 'manual', conn=None) -> int:
+        normalized = serial.strip().upper()
+        if conn is not None:
+            session = conn
+            own = False
+        else:
+            async_session = get_async_session_factory()
+            session = async_session()
+            own = True
+        try:
+            if own:
+                await session.begin()
+            stmt = select(Item).where(func.upper(Item.serial) == normalized).with_for_update()
+            item = (await session.execute(stmt)).scalar_one_or_none()
+            if item:
+                session.add(DeletedItem(
+                    item_id=item.id,
+                    text=item.text,
+                    serial=item.serial,
+                    category_id=item.category_id,
+                    reason=reason
+                ))
+                await session.delete(item)
+                await cls.invalidate_cache()
+                if own:
+                    await session.commit()
+                return 1
+            if own:
+                await session.commit()
+            return 0
+        except SQLAlchemyError as e:
+            if own:
+                await session.rollback()
+            logger.error(f"Ошибка удаления по серийному номеру {serial}: {e}")
+            return 0
+        finally:
+            if own:
+                await session.close()
