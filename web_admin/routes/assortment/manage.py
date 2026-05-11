@@ -50,6 +50,7 @@ async def edit_item_submit(
     is_sold: bool = Form(False),
     booking_price: float | None = Form(None),
     booking_bonus: float | None = Form(None),
+    booking_bonus_reason: str | None = Form(None),
     booking_prepayment: float | None = Form(None),
     booking_platform: str | None = Form(None),
     booking_full_name: str | None = Form(None),
@@ -58,6 +59,7 @@ async def edit_item_submit(
     booking_birth_date: str | None = Form(None),
     sale_price: float | None = Form(None),
     sale_bonus: float | None = Form(None),
+    sale_bonus_reason: str | None = Form(None),
     sale_change: float | None = Form(None),
     sale_change_type: str | None = Form(None),
     sale_prepayment: float | None = Form(None),
@@ -72,7 +74,7 @@ async def edit_item_submit(
     accessory_price: list[float] = Form([]),
     accessory_payment_type: list[str] = Form([]),
 ):
-    logger.info(f"🟢 edit_item_submit ВЫЗВАН для item_id={item_id}, is_sold={is_sold}, is_booked={is_booked}")
+    logger.info(f"edit_item_submit {item_id} is_sold={is_sold} is_booked={is_booked}")
 
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
@@ -98,7 +100,6 @@ async def edit_item_submit(
                 if is_sold and is_booked:
                     raise HTTPException(status_code=400, detail="Снимите бронь перед продажей")
 
-                # Переменные для уведомлений (будут отправлены после коммита)
                 notify_booking = None
                 notify_cancel = None
 
@@ -123,13 +124,13 @@ async def edit_item_submit(
                         sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
                         sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
                         sale_birth_date=sale_birth_date,
-                        sale_bonus=sale_bonus, sale_change=sale_change, sale_change_type=sale_change_type,
+                        sale_bonus=sale_bonus, sale_bonus_reason=sale_bonus_reason,
+                        sale_change=sale_change, sale_change_type=sale_change_type,
                         accessories=accessories,
                         conn=session
                     )
                     if "error" in result:
                         raise HTTPException(status_code=400, detail=result["error"])
-                    # Уведомление отправляется внутри handle_sale_from_form после коммита, поэтому здесь ничего не делаем
                     await AssortmentService.invalidate_cache()
                     return RedirectResponse(url="/admin/assortment", status_code=303)
 
@@ -152,6 +153,7 @@ async def edit_item_submit(
                     old.is_booked = True
                     old.booking_price = booking_price
                     old.booking_bonus = booking_bonus
+                    old.booking_bonus_reason = booking_bonus_reason
                     old.booking_prepayment = booking_prepayment
                     old.booking_platform = booking_platform
                     old.booking_full_name = booking_full_name
@@ -159,6 +161,7 @@ async def edit_item_submit(
                     old.booking_payment_type = booking_payment_type
                     old.sale_price = None
                     old.sale_bonus = None
+                    old.sale_bonus_reason = None
                     old.sale_change = None
                     old.sale_change_type = None
                     old.sale_prepayment = None
@@ -179,12 +182,12 @@ async def edit_item_submit(
                         )
                         session.add(payment)
 
-                    # Сохраняем данные для уведомления (отправим после коммита)
                     notify_booking = {
                         "item_text": text,
                         "serial": serial.strip().upper() if serial else "без серийного номера",
                         "price": booking_price,
                         "bonus": booking_bonus,
+                        "bonus_reason": booking_bonus_reason,
                         "prepayment": booking_prepayment,
                         "platform": booking_platform,
                         "full_name": booking_full_name,
@@ -200,6 +203,7 @@ async def edit_item_submit(
                     old.is_booked = False
                     old.booking_price = None
                     old.booking_bonus = None
+                    old.booking_bonus_reason = None
                     old.booking_prepayment = None
                     old.booking_platform = None
                     old.booking_full_name = None
@@ -207,6 +211,7 @@ async def edit_item_submit(
                     old.booking_payment_type = None
                     old.sale_price = None
                     old.sale_bonus = None
+                    old.sale_bonus_reason = None
                     old.sale_change = None
                     old.sale_change_type = None
                     old.sale_prepayment = None
@@ -225,11 +230,11 @@ async def edit_item_submit(
                             "is_cancel": True
                         }
 
-            # После успешного коммита отправляем уведомления
+            # Уведомления после коммита
             if notify_booking:
                 from .notifications import send_booking_notification
                 asyncio.create_task(send_booking_notification(**notify_booking))
-                logger.info(f"Бронь товара {item_id} успешно сохранена, уведомление отправлено")
+                logger.info(f"Бронь товара {item_id} сохранена, уведомление отправлено")
             if notify_cancel:
                 from .notifications import send_booking_notification
                 asyncio.create_task(send_booking_notification(**notify_cancel))
@@ -275,6 +280,7 @@ async def add_item(
     is_booked: bool = Form(False),
     booking_price: float | None = Form(None),
     booking_bonus: float | None = Form(None),
+    booking_bonus_reason: str | None = Form(None),
     booking_prepayment: float | None = Form(None),
     booking_platform: str | None = Form(None),
     booking_full_name: str | None = Form(None),
@@ -294,6 +300,7 @@ async def add_item(
             is_booked=is_booked,
             booking_price=booking_price,
             booking_bonus=booking_bonus,
+            booking_bonus_reason=booking_bonus_reason,
             booking_prepayment=booking_prepayment,
             booking_platform=booking_platform,
             booking_full_name=booking_full_name,
@@ -316,6 +323,7 @@ async def add_item(
                 "serial": serial.strip().upper() if serial else "без серийного номера",
                 "price": booking_price,
                 "bonus": booking_bonus,
+                "bonus_reason": booking_bonus_reason,
                 "prepayment": booking_prepayment,
                 "platform": booking_platform,
                 "full_name": booking_full_name,
