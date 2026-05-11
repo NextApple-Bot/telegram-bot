@@ -3,10 +3,11 @@ import logging
 import uuid
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import select, func
+from sqlalchemy.exc import SQLAlchemyError
 
 from bot.db import get_async_session_factory
-from bot.models import DailyPayment, DeletedItem, Item, Sale
+from bot.models import Item, DeletedItem, Sale, DailyPayment
 from bot.repositories.client import ClientRepository
 from bot.services.cache import cache
 
@@ -37,7 +38,7 @@ async def handle_sale_from_form(
     sale_bonus: float | None = None,
     sale_change: float | None = None,
     sale_change_type: str | None = None,
-    conn=None   # SQLAlchemy сессия
+    conn=None
 ):
     try:
         if not sale_price:
@@ -65,7 +66,6 @@ async def handle_sale_from_form(
             if own_session:
                 await session.begin()
 
-            # Клиент
             client_id = None
             phone = sale_phone.strip() if sale_phone else None
             if phone or sale_full_name:
@@ -77,7 +77,6 @@ async def handle_sale_from_form(
                     conn=session
                 )
 
-            # Аксессуары
             if accessories:
                 for acc in accessories:
                     acc_price = acc['price']
@@ -110,7 +109,6 @@ async def handle_sale_from_form(
                     if pay_type and pay_type != "paid" and acc_price > 0:
                         accessories_payments[pay_type] = accessories_payments.get(pay_type, 0) + acc_price
 
-            # Сбор платежей
             all_payments = dict(accessories_payments)
             if sale_payment_type != "paid" and sale_payment_amount > 0:
                 all_payments[sale_payment_type] = all_payments.get(sale_payment_type, 0) + sale_payment_amount
@@ -125,7 +123,6 @@ async def handle_sale_from_form(
                     )
                     session.add(payment)
 
-            # Покупка
             if client_id:
                 items_list = [{"item_text": text, "price": sale_price, "serial": serial}]
                 if processed_accessories:
@@ -141,7 +138,6 @@ async def handle_sale_from_form(
                     conn=session
                 )
 
-            # Удаление товара и запись в deleted_items
             old_item = await session.get(Item, item_id)
             if old_item:
                 deleted = DeletedItem(
@@ -155,7 +151,6 @@ async def handle_sale_from_form(
                 session.add(deleted)
                 await session.delete(old_item)
 
-            # Статистика продажи
             sale = Sale(
                 count=1,
                 cash=0,
@@ -172,7 +167,6 @@ async def handle_sale_from_form(
             if own_session:
                 await session.commit()
 
-            # Уведомление
             from .notifications import send_sale_notification
             asyncio.create_task(send_sale_notification(
                 item_text=text,
@@ -191,6 +185,16 @@ async def handle_sale_from_form(
                 accessories_total=accessories_total
             ))
 
+        except ValueError as e:
+            logger.warning(f"Некорректные данные продажи: {e}")
+            if own_session:
+                await session.rollback()
+            return {"error": str(e)}
+        except SQLAlchemyError as e:
+            logger.exception("Ошибка БД при продаже")
+            if own_session:
+                await session.rollback()
+            return {"error": "Ошибка базы данных"}
         finally:
             if own_session:
                 await session.close()
@@ -198,5 +202,5 @@ async def handle_sale_from_form(
         await cache.delete(f"dashboard:summary:{date.today().isoformat()}")
         return {"success": True}
     except Exception as e:
-        logger.exception("Ошибка в handle_sale_from_form")
+        logger.exception("Неожиданная ошибка в handle_sale_from_form")
         return {"error": str(e)}
