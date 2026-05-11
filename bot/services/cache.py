@@ -3,7 +3,9 @@ import logging
 from typing import Any
 
 import redis.asyncio as redis
-from redis.exceptions import RedisError, ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from bot import config
 
