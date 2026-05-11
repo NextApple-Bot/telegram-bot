@@ -60,12 +60,15 @@ class Item(Base):
     category_id = Column(Integer, ForeignKey('categories.id'))
     is_booked = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
+    # Поля брони
     booking_price = Column(Float)
     booking_prepayment = Column(Float)
     booking_platform = Column(String)
     booking_full_name = Column(String)
     booking_phone = Column(String)
     booking_payment_type = Column(String)
+    booking_bonus = Column(Float, nullable=True)
+    # Поля продажи
     sale_price = Column(Float)
     sale_prepayment = Column(Float)
     sale_payment_type = Column(String)
@@ -73,7 +76,11 @@ class Item(Base):
     sale_full_name = Column(String)
     sale_phone = Column(String)
     sale_payment_amount = Column(Float)
+    sale_bonus = Column(Float, nullable=True)
+    sale_change = Column(Float, nullable=True)
+    sale_change_type = Column(String, nullable=True)
     is_sold = Column(Boolean, default=False)
+
 
 Item.__table_args__ = (
     Index('idx_items_serial_unique', 'serial', unique=True, postgresql_where=Item.serial.isnot(None)),
