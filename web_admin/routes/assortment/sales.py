@@ -3,10 +3,10 @@ import logging
 import uuid
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import select, func
 
 from bot.db import get_async_session_factory
-from bot.models import DailyPayment, DeletedItem, Item, Sale
+from bot.models import Item, DeletedItem, Sale, DailyPayment
 from bot.repositories.client import ClientRepository
 from bot.services.cache import cache
 
@@ -34,6 +34,9 @@ async def handle_sale_from_form(
     sale_phone: str,
     accessories: list = None,
     sale_birth_date: str | None = None,
+    sale_bonus: float | None = None,
+    sale_change: float | None = None,
+    sale_change_type: str | None = None,
     conn=None   # SQLAlchemy сессия
 ):
     try:
@@ -181,6 +184,9 @@ async def handle_sale_from_form(
                 full_name=sale_full_name,
                 phone=sale_phone,
                 birth_date=sale_birth_date,
+                bonus=sale_bonus,
+                change=sale_change,
+                change_type=sale_change_type,
                 accessories=processed_accessories
             ))
 
