@@ -1,12 +1,13 @@
 import logging
+from typing import Optional
 
 from aiogram import Bot
 
-from bot import config
+from bot.config import config  # <--- ИСПРАВЛЕНО
 
 logger = logging.getLogger(__name__)
 
-_notification_bot: Bot | None = None
+_notification_bot: Optional[Bot] = None
 
 
 def get_notification_bot() -> Bot:
@@ -40,6 +41,7 @@ async def send_booking_notification(
     payment_type: str = None,
     birth_date: str = None,
     bonus: float = None,
+    bonus_reason: str = None,
     is_cancel: bool = False
 ):
     try:
@@ -50,7 +52,8 @@ async def send_booking_notification(
             lines = ["БРОНЬ:\n", f"{item_text}"]
             if price is not None:
                 if bonus:
-                    lines.append(f"Стоимость – {format_number(price)} (Скидка бонусы {format_number(bonus)})")
+                    reason_str = f" ({bonus_reason})" if bonus_reason else ""
+                    lines.append(f"Стоимость – {format_number(price)} (Скидка {format_number(bonus)}{reason_str})")
                 else:
                     lines.append(f"Стоимость – {format_number(price)}")
             lines.append("")
@@ -101,6 +104,7 @@ async def send_sale_notification(
     phone: str = None,
     birth_date: str = None,
     bonus: float = None,
+    bonus_reason: str = None,
     change: float = None,
     change_type: str = None,
     accessories: list = None,
@@ -116,7 +120,8 @@ async def send_sale_notification(
 
         lines = [item_text]
         if bonus:
-            lines.append(f"Стоимость – {format_number(price)} (Скидка бонусы {format_number(bonus)})")
+            reason_str = f" ({bonus_reason})" if bonus_reason else ""
+            lines.append(f"Стоимость – {format_number(price)} (Скидка {format_number(bonus)}{reason_str})")
         else:
             lines.append(f"Стоимость – {format_number(price)}")
         lines.append("")
