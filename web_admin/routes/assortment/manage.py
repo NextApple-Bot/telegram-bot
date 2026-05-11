@@ -3,7 +3,8 @@ import logging
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import select, func
+from sqlalchemy.exc import SQLAlchemyError
 
 from bot.db import get_async_session_factory
 from bot.models import Category, DeletedItem, Item
@@ -223,8 +224,8 @@ async def edit_item_submit(
 
         except HTTPException:
             raise
-        except Exception as e:
-            logger.exception(f"Ошибка редактирования товара {item_id}: {e}")
+        except SQLAlchemyError as e:
+            logger.exception(f"Ошибка БД при редактировании товара {item_id}: {e}")
             raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера") from e
 
     await AssortmentService.invalidate_cache()
