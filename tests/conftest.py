@@ -1,4 +1,5 @@
 import os
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -48,9 +49,20 @@ class SessionFactoryMock:
         return AsyncSessionMock()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def mock_db_session():
+    """Глобальный мок для предотвращения реальных подключений к БД."""
     with patch('bot.db.get_async_session_factory', return_value=SessionFactoryMock()):
+        yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_db_health():
+    """Мок healthcheck'ов, чтобы они не обращались к реальным сервисам."""
+    with patch('bot.db.check_db_health', new_callable=AsyncMock) as mock_health, \
+         patch('bot.db.check_redis_health', new_callable=AsyncMock) as mock_redis:
+        mock_health.return_value = True
+        mock_redis.return_value = True
         yield
 
 
