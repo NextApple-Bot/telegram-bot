@@ -1,3 +1,4 @@
+from decimal import Decimal
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Form, Request
