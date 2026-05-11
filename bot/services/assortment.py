@@ -6,7 +6,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from bot.db import get_async_session_factory
 from bot.models import DeletedItem, Item
 from bot.services.cache import cache
-from bot.services.lock import redis_lock
 
 logger = logging.getLogger(__name__)
 
