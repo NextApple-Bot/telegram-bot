@@ -1,9 +1,9 @@
-# Файл: bot/services/cache.py
 import json
 import logging
 from typing import Any
 
 import redis.asyncio as redis
+from redis.exceptions import RedisError, ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 
 from bot import config
 
@@ -23,62 +23,60 @@ class RedisCache:
             logger.warning("⚠️ REDIS_URL не задан, кэширование отключено")
 
     async def get(self, key: str) -> Any | None:
-        if not self._enabled:
+        if not self._enabled or not self._redis:
             return None
         try:
             data = await self._redis.get(key)
             if data:
                 return json.loads(data)
-        except Exception as e:
-            logger.error(f"Redis get error for key {key}: {e}")
+        except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
+            logger.error(f"Redis get error for key {key}: {e}", exc_info=True)
         return None
 
     async def set(self, key: str, value: Any, ttl: int = 60):
-        if not self._enabled:
+        if not self._enabled or not self._redis:
             return
         try:
             await self._redis.set(key, json.dumps(value, default=str), ex=ttl)
-        except Exception as e:
-            logger.error(f"Redis set error for key {key}: {e}")
+        except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
+            logger.error(f"Redis set error for key {key}: {e}", exc_info=True)
 
     async def delete(self, key: str):
-        if not self._enabled:
+        if not self._enabled or not self._redis:
             return
         try:
             await self._redis.delete(key)
-        except Exception as e:
-            logger.error(f"Redis delete error for key {key}: {e}")
+        except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
+            logger.error(f"Redis delete error for key {key}: {e}", exc_info=True)
 
     async def clear_pattern(self, pattern: str):
-        if not self._enabled:
+        if not self._enabled or not self._redis:
             return
         try:
             keys = await self._redis.keys(pattern)
             if keys:
                 await self._redis.delete(*keys)
-        except Exception as e:
-            logger.error(f"Redis clear pattern error: {e}")
+        except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
+            logger.error(f"Redis clear pattern error: {e}", exc_info=True)
 
-    # ---- НОВЫЕ МЕТОДЫ ДЛЯ БЛОКИРОВОК ----
+    # Блокировки
     async def lock(self, key: str, ttl: int = 60, value: str = "locked") -> bool:
-        """Пытается захватить блокировку. Возвращает True, если захватил."""
-        if not self._enabled:
-            # Если Redis нет, считаем, что блокировка всегда успешна (но с предупреждением)
+        if not self._enabled or not self._redis:
             logger.warning("Redis не доступен, блокировка не работает — возможны гонки")
             return True
         try:
             acquired = await self._redis.set(key, value, nx=True, ex=ttl)
             return acquired is not None
-        except Exception as e:
-            logger.error(f"Ошибка lock Redis: {e}")
+        except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
+            logger.error(f"Ошибка lock Redis: {e}", exc_info=True)
             return True  # на ошибке лучше выполнить, чем заблокировать навсегда
 
     async def unlock(self, key: str) -> None:
-        if self._enabled:
+        if self._enabled and self._redis:
             try:
                 await self._redis.delete(key)
-            except Exception as e:
-                logger.error(f"Ошибка unlock Redis: {e}")
+            except (RedisError, RedisConnectionError, RedisTimeoutError) as e:
+                logger.error(f"Ошибка unlock Redis: {e}", exc_info=True)
 
 
 # Глобальный экземпляр
