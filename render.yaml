@@ -5,6 +5,7 @@ services:
     repo: https://github.com/yourusername/telegram-bot
     plan: starter
     healthCheckPath: /health
+    preDeployCommand: "python run_migrations.py"
     envVars:
       - key: BOT_TOKEN
         sync: false
