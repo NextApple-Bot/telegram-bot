@@ -1,131 +1,36 @@
-from fastapi import APIRouter, Form, Query, Request
-from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
-from bot.db import get_async_session_factory  # <--- ПРАВИЛЬНО
-from bot.models import Client
-from bot.repositories import ClientRepository
-from web_admin.templates import templates
+from bot.repositories.client_repository import ClientRepository
+from web_admin.auth import is_authenticated
 
 router = APIRouter()
+templates = Jinja2Templates(directory="web_admin/templates")
 
 
-@router.get("/")
-async def list_clients(
-    request: Request,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=10, le=200),
-    search: str | None = Query(None),
-    date_from: str | None = Query(None),
-    date_to: str | None = Query(None),
-    sort_by: str = Query("id", pattern="^(id|full_name|phone|telegram_username|created_at)$"),
-    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
-):
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        offset = (page - 1) * per_page
-        base_query = select(Client)
-        count_query = select(func.count(Client.id))
+@router.get("/clients", response_class=HTMLResponse)
+async def clients_list(request: Request):
+    if not is_authenticated(request):
+        return RedirectResponse("/admin/auth/login")
 
-        if search:
-            base_query = base_query.where(
-                (Client.full_name.ilike(f"%{search}%")) |
-                (Client.phone.ilike(f"%{search}%")) |
-                (Client.telegram_username.ilike(f"%{search}%"))
-            )
-            count_query = count_query.where(
-                (Client.full_name.ilike(f"%{search}%")) |
-                (Client.phone.ilike(f"%{search}%")) |
-                (Client.telegram_username.ilike(f"%{search}%"))
-            )
-        if date_from:
-            base_query = base_query.where(Client.created_at >= date_from)
-            count_query = count_query.where(Client.created_at >= date_from)
-        if date_to:
-            base_query = base_query.where(Client.created_at <= date_to)
-            count_query = count_query.where(Client.created_at <= date_to)
+    clients = await ClientRepository.get_all_clients_for_export()
 
-        allowed_sort = {"id": Client.id, "full_name": Client.full_name, "phone": Client.phone,
-                        "telegram_username": Client.telegram_username, "created_at": Client.created_at}
-        sort_col = allowed_sort.get(sort_by, Client.id)
-        order_dir = sort_col.desc() if sort_order == "desc" else sort_col.asc()
-        base_query = base_query.order_by(order_dir).limit(per_page).offset(offset)
-
-        total = (await session.execute(count_query)).scalar()
-        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
-        clients = (await session.execute(base_query)).scalars().all()
-
-    return templates.TemplateResponse("clients.html", {
+    return templates.TemplateResponse("clients/list.html", {
         "request": request,
         "clients": clients,
-        "page": page,
-        "per_page": per_page,
-        "total": total,
-        "total_pages": total_pages,
-        "search": search,
-        "date_from": date_from,
-        "date_to": date_to,
-        "sort_by": sort_by,
-        "sort_order": sort_order,
+        "title": "Клиенты"
     })
 
 
-@router.get("/{client_id}")
-async def client_detail(request: Request, client_id: int):
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        client = await session.get(Client, client_id)
-        if not client:
-            return RedirectResponse(url="/admin/clients")
-        purchases = await ClientRepository.get_client_purchases(client_id)
-    return templates.TemplateResponse("client_detail.html", {
-        "request": request,
-        "client": client,
-        "purchases": purchases,
-    })
+@router.get("/clients/export")
+async def export_clients(request: Request):
+    if not is_authenticated(request):
+        return RedirectResponse("/admin/auth/login")
 
-
-@router.get("/{client_id}/edit")
-async def edit_client_form(request: Request, client_id: int):
-    async_session = get_async_session_factory()
-    async with async_session() as session:
-        client = await session.get(Client, client_id)
-        if not client:
-            return RedirectResponse(url="/admin/clients")
-    return templates.TemplateResponse("client_edit.html", {"request": request, "client": client})
-
-
-@router.post("/{client_id}/edit")
-async def edit_client_submit(
-    request: Request,
-    client_id: int,
-    full_name: str = Form(""),
-    phone: str = Form(""),
-    phones: str = Form(""),
-    telegram_username: str = Form(""),
-    social_network: str = Form(""),
-    referral_source: str = Form(""),
-):
-    async_session = get_async_session_factory()
-    async with async_session() as session, session.begin():
-        client = await session.get(Client, client_id)
-        if client:
-            client.full_name = full_name
-            client.phone = phone
-            client.phones = phones
-            client.telegram_username = telegram_username
-            client.social_network = social_network
-            client.referral_source = referral_source
-            client.updated_at = func.now()
-            session.add(client)
-    return RedirectResponse(url=f"/admin/clients/{client_id}", status_code=303)
-
-
-@router.post("/delete/{client_id}")
-async def delete_client(client_id: int):
-    async_session = get_async_session_factory()
-    async with async_session() as session, session.begin():
-        client = await session.get(Client, client_id)
-        if client:
-            await session.delete(client)
-    return RedirectResponse(url="/admin/clients", status_code=303)
+    file_path = await export_clients_csv()  # из service_commands
+    return FileResponse(
+        file_path,
+        media_type="text/csv",
+        filename=f"clients_{datetime.now().strftime('%Y%m%d')}.csv"
+    )
