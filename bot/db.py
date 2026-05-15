@@ -21,6 +21,15 @@ async def get_async_engine():
             )
     return _async_engine
 
+async def get_async_session_factory():
+    """Публичная функция для получения фабрики асинхронных сессий"""
+    await get_async_engine()
+    global _async_session_factory
+    if _async_session_factory is None:
+        engine = await get_async_engine()
+        _async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    return _async_session_factory
+
 async def init_db():
     engine = await get_async_engine()
     # ... alembic or metadata
