@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+"""
+Скрипт для применения миграций Alembic.
+Используется в start.sh и вручную.
+"""
+
 import os
 import sys
 from pathlib import Path
@@ -8,26 +13,29 @@ from dotenv import load_dotenv
 from alembic import command
 from alembic.config import Config
 
-sys.path.insert(0, str(Path(__file__).parent))
+# Добавляем корень проекта в PYTHONPATH
+BASE_DIR = Path(__file__).parent
+sys.path.insert(0, str(BASE_DIR))
+
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    print("❌ DATABASE_URL не задан", file=sys.stderr)
-    sys.exit(1)
+def run_migrations():
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        print("❌ Ошибка: DATABASE_URL не найден в .env", file=sys.stderr)
+        sys.exit(1)
 
-alembic_ini_path = Path(__file__).parent / "alembic.ini"
-if not alembic_ini_path.exists():
-    print("❌ alembic.ini не найден", file=sys.stderr)
-    sys.exit(1)
+    alembic_cfg = Config(str(BASE_DIR / "alembic.ini"))
+    alembic_cfg.set_main_option("sqlalchemy.url", database_url)
 
-alembic_cfg = Config(str(alembic_ini_path))
-alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
+    print("🔄 Применяем миграции Alembic...")
+    try:
+        command.upgrade(alembic_cfg, "head")
+        print("✅ Все миграции успешно применены!")
+    except Exception as e:
+        print(f"❌ Ошибка при применении миграций: {e}", file=sys.stderr)
+        sys.exit(1)
 
-print("🔄 Применяем миграции Alembic...")
-try:
-    command.upgrade(alembic_cfg, "head")
-    print("✅ Миграции успешно применены.")
-except Exception as e:
-    print(f"❌ Ошибка миграций: {e}", file=sys.stderr)
-    sys.exit(1)
+
+if __name__ == "__main__":
+    run_migrations()
