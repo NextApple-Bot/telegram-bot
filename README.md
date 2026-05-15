@@ -1,13 +1,19 @@
-# Telegram Bot для учёта продаж
+# Telegram Bot — Учёт продаж и ассортимента
 
-Бот автоматизирует учёт продаж, броней и предзаказов в Telegram-группах. Включает веб-админку на FastAPI.
+Production-ready Telegram-бот для управления ассортиментом, бронями и продажами + веб-админка.
 
-## 🚀 Быстрый старт
+## Основные возможности
+- Управление ассортиментом через Telegram
+- Бронирования и предзаказы
+- Статистика продаж
+- Web-админка (`/admin`)
+- Автоматические миграции, очистка, rate-limit
+- Docker + docker-compose
 
-### Локальный запуск через Docker Compose
+## Быстрый запуск
+
 ```bash
-git clone https://github.com/yourusername/telegram-bot.git
-cd telegram-bot
 cp .env.example .env
-# отредактируйте .env
-docker-compose up -d
+# Заполните .env
+
+docker-compose up -d --build
