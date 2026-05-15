@@ -6,8 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import settings
-from bot.db import get_async_session_factory, init_db, close_db
-from bot.redis_client import get_redis_client
+from bot.db import get_async_session_factory, init_db, close_db, get_redis_client
 
 # ... other imports
 
