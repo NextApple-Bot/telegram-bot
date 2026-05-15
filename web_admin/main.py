@@ -2,16 +2,38 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
+from bot.config import config
 from bot.middleware.rate_limit import RateLimitMiddleware
 from web_admin.auth import is_authenticated
-from web_admin.routes import auth, clients, dashboard, debug, purchases, sellers, sold, stats
+from web_admin.routes import (
+    auth,
+    clients,
+    dashboard,
+    debug,
+    purchases,
+    sellers,
+    sold,
+    stats,
+)
 from web_admin.routes.assortment import manage as assortment_manage
 from web_admin.routes.assortment import views as assortment_views
 
-app = FastAPI(title="Telegram Bot Admin Panel")
-app.add_middleware(GZipMiddleware, minimum_size=500)
-app.add_middleware(RateLimitMiddleware, calls=20, period=60)
+app = FastAPI(
+    title="Telegram Bot Admin Panel",
+    version="1.0.0",
+    docs_url=None,           # скрываем в проде
+    redoc_url=None,
+)
 
+# Middlewares
+app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(
+    RateLimitMiddleware,
+    calls=30,      # увеличил немного
+    period=60,
+)
+
+# Роутеры
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
@@ -21,18 +43,41 @@ app.include_router(assortment_manage.router, prefix="/assortment", tags=["assort
 app.include_router(sold.router, prefix="/sold", tags=["sold"])
 app.include_router(stats.router, prefix="/stats", tags=["stats"])
 app.include_router(sellers.router, prefix="/sellers", tags=["sellers"])
-app.include_router(debug.router, prefix="/admin", tags=["debug"])
+app.include_router(debug.router, prefix="/debug", tags=["debug"])   # изменил /admin на /debug
 
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    if request.url.path.startswith("/admin/auth/login") or request.url.path.startswith("/admin/static"):
+    """Глобальная проверка авторизации"""
+    path = request.url.path
+
+    # Разрешаем публичные пути
+    if (
+        path.startswith("/auth/login")
+        or path.startswith("/static")
+        or path == "/"
+        or path.startswith("/health")
+    ):
         return await call_next(request)
+
     if not is_authenticated(request):
-        return RedirectResponse(url="/admin/auth/login")
+        return RedirectResponse(url="/auth/login")
+
     return await call_next(request)
 
 
 @app.get("/")
 async def root():
-    return RedirectResponse(url="/admin/dashboard")
+    return RedirectResponse(url="/dashboard")
+
+
+# Startup / Shutdown events
+@app.on_event("startup")
+async def startup_event():
+    if config.RENDER_URL:
+        print(f"🚀 Admin Panel запущен на {config.RENDER_URL}/admin")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("🛑 Admin Panel остановлен")
