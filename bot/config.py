@@ -1,72 +1,58 @@
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import os
+from typing import List
 
 class Settings(BaseSettings):
-    """
-    Основные настройки бота.
-    Все переменные загружаются из .env + валидация.
-    """
-
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        env_ignore_empty=True,
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='ignore'
     )
 
-    # ==================== Telegram ====================
+    # Telegram
     BOT_TOKEN: str
+    ADMIN_IDS_STR: str = ''
 
-    ADMIN_IDS_STR: str = Field(default="", alias="ADMIN_ID")
-    ADMIN_IDS: list[int] = Field(default_factory=list)
-
-    MAIN_GROUP_ID: int
-    THREAD_SALES: int
-    THREAD_ASSORTMENT: int
-    THREAD_ARRIVAL: int
-    THREAD_PREORDER: int
-    THREAD_SERVICE: int = 0
-
-    # ==================== Web & Admin ====================
-    RENDER_URL: str = Field(default="", alias="RENDER_EXTERNAL_URL")
-    PORT: int = 8000
-
-    SECRET_KEY: str
-    ADMIN_PASSWORD_HASH: str   # только bcrypt-хэш!
-
-    # ==================== БД и Redis ====================
+    # Database
     DATABASE_URL: str
-    REDIS_URL: str = "redis://localhost:6379/0"
 
-    # ==================== Бизнес ====================
-    PLAN_AMOUNT: int = 600_000
+    # Redis
+    REDIS_URL: str = 'redis://localhost:6379/0'
 
-    # ==================== Валидаторы ====================
+    # Security
+    SECRET_KEY: str
+    ADMIN_PASSWORD: str = 'admin'
 
-    @field_validator("ADMIN_IDS", mode="before")
+    # Other
+    ENVIRONMENT: str = 'development'
+
+    @model_validator(mode='before')
     @classmethod
-    def parse_admin_ids(cls, v, info) -> list[int]:
-        raw = info.data.get("ADMIN_IDS_STR", "")
-        if not raw:
-            return []
-        try:
-            return [int(uid.strip()) for uid in raw.split(",") if uid.strip()]
-        except ValueError as e:
-            raise ValueError(f"Некорректные ADMIN_IDS: {raw}") from e
+    def parse_admin_ids(cls, data):
+        if isinstance(data, dict):
+            admin_str = data.get('ADMIN_IDS_STR', '')
+            if admin_str:
+                try:
+                    data['ADMIN_IDS'] = [int(x.strip()) for x in admin_str.split(',') if x.strip()]
+                except ValueError:
+                    data['ADMIN_IDS'] = []
+            else:
+                data['ADMIN_IDS'] = []
+        return data
 
-    @model_validator(mode="after")
-    def validate_secrets(self):
-        if len(self.SECRET_KEY) < 32:
-            raise ValueError("SECRET_KEY должен быть минимум 32 символа (рекомендуется 64+)")
+    @field_validator('SECRET_KEY')
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError('SECRET_KEY must be at least 32 characters long for security')
+        return v
 
-        if not self.ADMIN_PASSWORD_HASH or len(self.ADMIN_PASSWORD_HASH) < 20:
-            raise ValueError("ADMIN_PASSWORD_HASH обязателен и должен быть bcrypt-хэшем")
+    @field_validator('BOT_TOKEN')
+    @classmethod
+    def validate_bot_token(cls, v: str) -> str:
+        if not v or len(v) < 30:
+            raise ValueError('Invalid BOT_TOKEN')
+        return v
 
-        if len(self.BOT_TOKEN) < 40:
-            raise ValueError("BOT_TOKEN выглядит некорректно")
-
-        return self
-
-
-config = Settings()
+settings = Settings()
