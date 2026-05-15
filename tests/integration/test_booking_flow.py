@@ -27,7 +27,7 @@ iPad Pro 11 (IPAD789) - 80000₽
         extract_prepayments=AsyncMock(return_value={'cash': 20000.0}),
         parse_client_data=AsyncMock(return_value={'phones': ['+79123456789'], 'full_name': 'Петр Петров', 'main_phone': '+79123456789'}),
         ClientRepository=AsyncMock(get_or_create_client=AsyncMock(return_value=1)),
-        BookingService=AsyncMock(process_booking=AsyncMock(return_value={"success": True, "results": [{"status": "booked"}])),
+        BookingService=AsyncMock(process_booking=AsyncMock(return_value={"success": True, "results": [{"status": "booked"}]})),
         send_and_clean=AsyncMock()
     ):
         from bot.handlers.topics.preorder import handle_preorder
