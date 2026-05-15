@@ -1,7 +1,6 @@
 from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -12,29 +11,35 @@ class Settings(BaseSettings):
 
     # Telegram
     BOT_TOKEN: str
+    ADMIN_IDS: List[int] = []
     ADMIN_IDS_STR: str = ''
 
     # Database
     DATABASE_URL: str
+    DB_POOL_SIZE: int = 15
+    DB_POOL_MAX_OVERFLOW: int = 30
 
     # Redis
     REDIS_URL: str = 'redis://localhost:6379/0'
+    USE_REDIS_STORAGE: bool = True
 
-    # Security
+    # Web & Security
     SECRET_KEY: str
-    ADMIN_PASSWORD: str = 'admin'
+    ADMIN_PASSWORD_HASH: Optional[str] = None
+    WEBHOOK_URL: Optional[str] = None
 
-    # Other
+    # Monitoring
+    SENTRY_DSN: Optional[str] = None
     ENVIRONMENT: str = 'development'
 
     @model_validator(mode='before')
     @classmethod
     def parse_admin_ids(cls, data):
         if isinstance(data, dict):
-            admin_str = data.get('ADMIN_IDS_STR', '')
+            admin_str = data.get('ADMIN_IDS_STR', '') or data.get('ADMIN_ID', '')
             if admin_str:
                 try:
-                    data['ADMIN_IDS'] = [int(x.strip()) for x in admin_str.split(',') if x.strip()]
+                    data['ADMIN_IDS'] = [int(x.strip()) for x in str(admin_str).split(',') if x.strip()]
                 except ValueError:
                     data['ADMIN_IDS'] = []
             else:
