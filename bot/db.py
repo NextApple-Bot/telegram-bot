@@ -1,6 +1,4 @@
 import logging
-import os
-from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
@@ -16,18 +14,17 @@ _async_session_factory = None
 def get_async_engine():
     global _async_engine
     if _async_engine is None:
-        db_url = config.DATABASE_URL
-        if db_url.startswith("postgresql://"):
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        url = config.DATABASE_URL
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
         _async_engine = create_async_engine(
-            db_url,
+            url,
             echo=False,
-            pool_size=10,
-            max_overflow=20,
-            pool_pre_ping=True,           # важно для долгоживущих соединений
+            pool_size=15,
+            max_overflow=25,
+            pool_pre_ping=True,
             pool_recycle=300,
-            connect_args={"ssl": False if "localhost" in db_url else True},
         )
         logger.info("✅ Async engine создан")
     return _async_engine
@@ -44,30 +41,21 @@ def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
     return _async_session_factory
 
 
-@asynccontextmanager
-async def get_session() -> AsyncSession:
-    """Удобный контекстный менеджер"""
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        yield session
-
-
 async def dispose_engine():
     global _async_engine, _async_session_factory
     if _async_engine:
         await _async_engine.dispose()
-        _async_engine = None
-        _async_session_factory = None
-        logger.info("✅ SQLAlchemy engine disposed")
+        _async_engine = _async_session_factory = None
+        logger.info("✅ Engine disposed")
 
 
 async def check_db_health() -> bool:
     try:
-        async with get_session() as session:
+        async with get_async_session_factory()() as session:
             await session.execute(text("SELECT 1"))
         return True
     except Exception as e:
-        logger.error(f"Database healthcheck failed: {e}")
+        logger.error(f"DB healthcheck failed: {e}")
         return False
 
 
