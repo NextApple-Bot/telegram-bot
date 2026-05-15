@@ -21,17 +21,13 @@ from web_admin.routes.assortment import views as assortment_views
 app = FastAPI(
     title="Telegram Bot Admin Panel",
     version="1.0.0",
-    docs_url=None,           # скрываем в проде
+    docs_url=None,
     redoc_url=None,
 )
 
 # Middlewares
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.add_middleware(
-    RateLimitMiddleware,
-    calls=30,      # увеличил немного
-    period=60,
-)
+app.add_middleware(RateLimitMiddleware, calls=30, period=60)
 
 # Роутеры
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -43,15 +39,13 @@ app.include_router(assortment_manage.router, prefix="/assortment", tags=["assort
 app.include_router(sold.router, prefix="/sold", tags=["sold"])
 app.include_router(stats.router, prefix="/stats", tags=["stats"])
 app.include_router(sellers.router, prefix="/sellers", tags=["sellers"])
-app.include_router(debug.router, prefix="/debug", tags=["debug"])   # изменил /admin на /debug
+app.include_router(debug.router, prefix="/debug", tags=["debug"])
 
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """Глобальная проверка авторизации"""
     path = request.url.path
 
-    # Разрешаем публичные пути
     if (
         path.startswith("/auth/login")
         or path.startswith("/static")
@@ -71,11 +65,10 @@ async def root():
     return RedirectResponse(url="/dashboard")
 
 
-# Startup / Shutdown events
 @app.on_event("startup")
 async def startup_event():
     if config.RENDER_URL:
-        print(f"🚀 Admin Panel запущен на {config.RENDER_URL}/admin")
+        print(f"🚀 Admin Panel доступен по {config.RENDER_URL}/admin")
 
 
 @app.on_event("shutdown")
