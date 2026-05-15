@@ -7,12 +7,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: botuser
-      POSTGRES_PASSWORD: botpass
+      POSTGRES_PASSWORD: botpass123
       POSTGRES_DB: botdb
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U botuser -d botdb"]
       interval: 10s
@@ -26,7 +26,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redisdata:/data
+      - redis_data:/data
     command: redis-server --appendonly yes --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -54,5 +54,5 @@ services:
       - PYTHONUNBUFFERED=1
 
 volumes:
-  pgdata:
-  redisdata:
+  postgres_data:
+  redis_data:
