@@ -1,8 +1,8 @@
-version: '3.8'
+version: '3.9'
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:16-alpine
     container_name: telegram_bot_postgres
     restart: unless-stopped
     environment:
@@ -27,7 +27,7 @@ services:
       - "6379:6379"
     volumes:
       - redisdata:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -50,6 +50,8 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./alembic/versions:/app/alembic/versions
+    environment:
+      - PYTHONUNBUFFERED=1
 
 volumes:
   pgdata:
