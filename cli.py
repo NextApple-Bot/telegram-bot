@@ -1,49 +1,55 @@
 #!/usr/bin/env python
-# Файл: cli.py (переименован из manage.py для избежания конфликта с web_admin/routes/assortment/manage.py)
+"""
+CLI утилита для управления ботом (миграции, очистка и т.д.).
+"""
+
 import asyncio
+import logging
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-# Добавляем корень проекта в sys.path для импорта bot
+# Добавляем корень проекта
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
 
 from bot.background import cleanup_old_records, cleanup_sold_periodically
-from bot.db import close_pool
+from bot.db import dispose_engine
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 
 def run_migrations():
-    """Запускает alembic upgrade head."""
-    # Проверяем наличие DATABASE_URL
+    """Запускает Alembic миграции."""
     if not os.getenv("DATABASE_URL"):
-        print("❌ DATABASE_URL не задан в окружении или .env файле.")
+        print("❌ DATABASE_URL не задан в .env")
         sys.exit(1)
-    print("🔄 Запуск миграций...")
-    result = subprocess.run(["alembic", "upgrade", "head"])
-    if result.returncode == 0:
-        print("✅ Миграции успешно выполнены.")
-    else:
-        print("❌ Ошибка при выполнении миграций.")
-        sys.exit(result.returncode)
+
+    print("🔄 Применяем миграции...")
+    try:
+        result = subprocess.run(["alembic", "upgrade", "head"], check=True)
+        print("✅ Миграции успешно применены.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Ошибка миграций: {e}")
+        sys.exit(1)
 
 
 async def run_cleanup_async():
-    """Асинхронный запуск очистки старых записей и проданных товаров."""
+    """Асинхронная очистка."""
     print("🔄 Запуск очистки старых записей...")
     await cleanup_old_records()
+
     print("🔄 Запуск очистки проданных товаров...")
     await cleanup_sold_periodically()
-    await close_pool()
+
+    await dispose_engine()
     print("✅ Очистка завершена.")
 
 
 def run_cleanup():
-    """Запускает очистку (синхронная обёртка)."""
     asyncio.run(run_cleanup_async())
 
 
@@ -51,7 +57,7 @@ def show_help():
     print("Usage: python cli.py [command]")
     print("Commands:")
     print("  migrate   - Run database migrations")
-    print("  cleanup   - Run cleanup of old records (processed_messages, daily_payments, sold items)")
+    print("  cleanup   - Run cleanup of old records")
     print("  help      - Show this help")
 
 
@@ -60,10 +66,14 @@ if __name__ == "__main__":
         show_help()
         sys.exit(1)
 
-    command = sys.argv[1]
+    command = sys.argv[1].lower()
     if command == "migrate":
         run_migrations()
     elif command == "cleanup":
         run_cleanup()
-    else:
+    elif command in ("help", "--help", "-h"):
         show_help()
+    else:
+        print(f"❌ Неизвестная команда: {command}")
+        show_help()
+        sys.exit(1)
