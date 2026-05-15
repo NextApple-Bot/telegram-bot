@@ -1,4 +1,4 @@
 # bot/__init__.py
-from .config import config
+from .config import settings
 
-__all__ = ['config']
+__all__ = ['settings']
