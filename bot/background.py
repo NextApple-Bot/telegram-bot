@@ -2,77 +2,60 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import text
-
 from bot.config import config
 from bot.db import get_async_session_factory
-from bot.services.cache import cache   # предполагаю, что у вас есть
 
 logger = logging.getLogger(__name__)
 
-CLEANUP_LOCK_KEY = "background:cleanup_old_records:lock"
-CLEANUP_SOLD_LOCK_KEY = "background:cleanup_sold:lock"
-LOCK_TTL = 86400 * 2  # 2 дня
-
 
 async def cleanup_old_records():
+    """Очистка старых записей (раз в сутки)."""
     try:
         async with get_async_session_factory()() as session:
             async with session.begin():
-                r1 = await session.execute(
-                    text("DELETE FROM processed_messages WHERE processed_at < NOW() - INTERVAL '30 days'")
-                )
-                r2 = await session.execute(
-                    text("DELETE FROM daily_payments WHERE created_at < NOW() - INTERVAL '180 days'")
-                )
-                logger.info(f"Очистка старых записей: processed_messages={r1.rowcount}, daily_payments={r2.rowcount}")
+                # Удаляем обработанные сообщения старше 30 дней
+                await session.execute("""
+                    DELETE FROM processed_messages 
+                    WHERE processed_at < NOW() - INTERVAL '30 days'
+                """)
+                # Удаляем старые ежедневные платежи
+                await session.execute("""
+                    DELETE FROM daily_payments 
+                    WHERE created_at < NOW() - INTERVAL '180 days'
+                """)
+                logger.info("✅ Выполнена очистка старых записей")
     except Exception as e:
         logger.exception(f"Ошибка очистки старых записей: {e}")
 
 
-async def cleanup_sold_periodically():
+async def cleanup_sold_items():
+    """Очистка проданных товаров старше 7 дней."""
     try:
         cutoff = datetime.now() - timedelta(days=7)
         async with get_async_session_factory()() as session:
             async with session.begin():
-                r = await session.execute(
-                    text("DELETE FROM deleted_items WHERE reason = 'sale_from_admin' AND deleted_at < :cutoff"),
-                    {"cutoff": cutoff}
-                )
-                logger.info(f"Очистка проданных: удалено {r.rowcount} записей")
+                result = await session.execute("""
+                    DELETE FROM deleted_items 
+                    WHERE reason = 'sale_from_admin' 
+                    AND deleted_at < :cutoff
+                """, {"cutoff": cutoff})
+                logger.info(f"✅ Очищено {result.rowcount} проданных товаров")
     except Exception as e:
-        logger.exception(f"Ошибка очистки проданных: {e}")
-
-
-async def run_with_lock(lock_key: str, task_func, ttl: int = LOCK_TTL):
-    """Выполняет задачу с распределённой блокировкой через Redis"""
-    if not config.REDIS_URL:
-        await task_func()
-        return
-
-    acquired = await cache.lock(lock_key, ttl=ttl)
-    if acquired:
-        try:
-            await task_func()
-        finally:
-            await cache.unlock(lock_key)
-    else:
-        logger.debug(f"Задача {lock_key} уже выполняется в другом экземпляре")
-
-
-async def background_cleanup_loop():
-    while True:
-        await asyncio.sleep(86400)  # раз в сутки
-        await run_with_lock(CLEANUP_LOCK_KEY, cleanup_old_records)
-
-
-async def background_sold_cleanup_loop():
-    while True:
-        await asyncio.sleep(86400)
-        await run_with_lock(CLEANUP_SOLD_LOCK_KEY, cleanup_sold_periodically)
+        logger.exception(f"Ошибка очистки проданных товаров: {e}")
 
 
 async def start_background_tasks(bot, dp):
-    asyncio.create_task(background_cleanup_loop())
-    asyncio.create_task(background_sold_cleanup_loop())
-    logger.info("✅ Фоновые задачи запущены")
+    """Запуск всех фоновых задач."""
+    logger.info("🚀 Запуск фоновых задач...")
+
+    # Задача 1: Ежедневная очистка
+    async def daily_cleanup():
+        while True:
+            await asyncio.sleep(86400)  # 24 часа
+            await cleanup_old_records()
+            await cleanup_sold_items()
+
+    # Запускаем в фоне
+    asyncio.create_task(daily_cleanup())
+
+    logger.info("✅ Фоновые задачи успешно запущены")
