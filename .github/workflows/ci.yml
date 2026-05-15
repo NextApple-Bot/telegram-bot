@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   lint-and-test:
@@ -16,9 +17,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: testuser        # ← изменено
-          POSTGRES_PASSWORD: testpass    # ← изменено
-          POSTGRES_DB: testdb            # ← изменено
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
         ports:
           - 5432:5432
         options: >-
@@ -54,28 +55,27 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
-      # Удаляем uvloop, потому что он конфликтует с pytest-asyncio
       - name: Remove uvloop
         run: pip uninstall -y uvloop || true
 
-      - name: Run Ruff auto-fix (only on push)
+      # === ИСПРАВЛЕННЫЙ АВТОФИКС RUFF ===
+      - name: Run Ruff auto-fix
         if: github.event_name == 'push'
         run: ruff check . --fix
 
-      - name: Commit and push auto-fixes
+      - name: Create Pull Request with auto-fixes (if any)
         if: github.event_name == 'push'
-        run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --quiet --staged; then
-            echo "No changes to commit."
-          else
-            git commit -m "🤖 Автоисправление Ruff"
-            git pull --rebase origin ${{ github.ref_name }}
-            git push origin HEAD:${{ github.ref_name }}
-          fi
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "🤖 Автоисправление Ruff"
+          title: "chore: автофикс Ruff"
+          body: "Автоматические исправления стиля кода от Ruff."
+          branch: "ruff-auto-fix/${{ github.ref_name }}"
+          delete-branch: true
+          base: ${{ github.ref_name }}
 
+      # === ПРОВЕРКА (всегда) ===
       - name: Lint with Ruff (check only)
         run: ruff check . --output-format=github
 
@@ -109,7 +109,7 @@ jobs:
         run: |
           pytest tests/ -v --cov=bot --cov=web_admin --cov-report=xml --cov-fail-under=60
 
-      - name: Upload coverage to Codecov (optional)
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
