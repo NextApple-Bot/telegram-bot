@@ -1,17 +1,14 @@
-# Файл: web_admin/auth.py
 from passlib.context import CryptContext
 from starlette.requests import Request
 
-from bot.config import config  # <--- ИСПРАВЛЕНО
+from bot.config import config
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str) -> bool:
-    if config.ADMIN_PASSWORD and plain_password == config.ADMIN_PASSWORD:
-        return True
-    if config.ADMIN_PASSWORD_HASH:
-        return pwd_context.verify(plain_password, config.ADMIN_PASSWORD_HASH)
-    return False
+    if not config.ADMIN_PASSWORD_HASH:
+        return False
+    return pwd_context.verify(plain_password, config.ADMIN_PASSWORD_HASH)
 
 def is_authenticated(request: Request) -> bool:
     return request.session.get("authenticated", False)
