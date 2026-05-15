@@ -10,7 +10,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from bot.models import Base  # ← Импортируем все модели
+from bot.models import Base
 
 # ====================== Настройка ======================
 BASE_DIR = Path(__file__).parent.parent
@@ -28,7 +28,11 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_url():
-    return os.getenv("DATABASE_URL")
+    url = os.getenv("DATABASE_URL")
+    # Force asyncpg driver
+    if url and url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
 
 # ====================== Асинхронный контекст ======================
 async def run_migrations_online():
@@ -45,7 +49,6 @@ async def run_migrations_online():
 
     await connectable.dispose()
 
-
 def do_run_migrations(connection):
     context.configure(
         connection=connection,
@@ -56,7 +59,6 @@ def do_run_migrations(connection):
 
     with context.begin_transaction():
         context.run_migrations()
-
 
 def run_migrations_offline():
     url = get_url()
@@ -69,7 +71,6 @@ def run_migrations_offline():
 
     with context.begin_transaction():
         context.run_migrations()
-
 
 if context.is_offline_mode():
     run_migrations_offline()
