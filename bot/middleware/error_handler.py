@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class ErrorHandlerMiddleware(BaseMiddleware):
-    """Middleware, который перехватывает исключения в хендлерах и логирует их."""
+    """Перехватывает все ошибки в хендлерах и уведомляет админов."""
 
     async def __call__(
         self,
@@ -22,16 +22,29 @@ class ErrorHandlerMiddleware(BaseMiddleware):
         try:
             return await handler(event, data)
         except Exception as e:
-            logger.error(f"❌ Необработанное исключение при обработке {type(event).__name__}: {e}\n{traceback.format_exc()}")
             user: User | None = data.get("event_from_user")
+            event_type = type(event).__name__
+
+            logger.error(
+                f"❌ Необработанное исключение в {event_type}\n"
+                f"Пользователь: {user.id if user else 'Unknown'} {user.full_name if user else ''}\n"
+                f"{traceback.format_exc()}"
+            )
+
+            # Асинхронное уведомление (не блокируем)
             asyncio.create_task(self._notify_admins(e, user, event))
-            return None
+            return None   # продолжаем работу бота
 
     async def _notify_admins(self, exception: Exception, user: User | None, event: TelegramObject):
         try:
-            from telegram_alerter import send_alert
+            from telegram_alerter import send_alert   # ваш существующий алертер
+
             user_info = f" от {user.full_name} (@{user.username})" if user else ""
-            msg = f"🚨 Ошибка в боте{user_info}\n{type(exception).__name__}: {exception}"
+            msg = (
+                f"🚨 Критическая ошибка в боте{user_info}\n"
+                f"Тип: {type(exception).__name__}\n"
+                f"Сообщение: {exception}"
+            )
             await send_alert(msg, is_critical=True)
         except Exception as notify_err:
-            logger.error(f"Не удалось отправить алерт: {notify_err}")
+            logger.error(f"Не удалось отправить алерт админам: {notify_err}")
