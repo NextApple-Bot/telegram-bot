@@ -13,11 +13,13 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     ADMIN_IDS: List[int] = []
     ADMIN_IDS_STR: str = ''
+    MAIN_GROUP_ID: int | None = None
 
     # Database
     DATABASE_URL: str
-    DB_POOL_SIZE: int = 15
-    DB_POOL_MAX_OVERFLOW: int = 30
+    DB_POOL_SIZE: int = 20
+    DB_POOL_MAX_OVERFLOW: int = 10
+    DEBUG: bool = False
 
     # Redis
     REDIS_URL: str = 'redis://localhost:6379/0'
@@ -26,11 +28,14 @@ class Settings(BaseSettings):
     # Web & Security
     SECRET_KEY: str
     ADMIN_PASSWORD_HASH: Optional[str] = None
-    WEBHOOK_URL: Optional[str] = None
+    RENDER_URL: str = ''
 
     # Monitoring
     SENTRY_DSN: Optional[str] = None
-    ENVIRONMENT: str = 'development'
+    ENVIRONMENT: str = 'production'
+
+    # Business
+    PLAN_AMOUNT: int = 600000
 
     @model_validator(mode='before')
     @classmethod
