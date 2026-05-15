@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import getpass
+
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
