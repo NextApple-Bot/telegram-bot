@@ -1,76 +1,52 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from bot.config import config
-from bot.middleware.rate_limit import RateLimitMiddleware
+from bot.middleware.rate_limit import rate_limit
 from web_admin.auth import is_authenticated
-from web_admin.routes import (
-    auth,
-    clients,
-    dashboard,
-    debug,
-    purchases,
-    sellers,
-    sold,
-    stats,
-)
-from web_admin.routes.assortment import manage as assortment_manage
-from web_admin.routes.assortment import views as assortment_views
+from web_admin.routes import auth, clients, dashboard, purchases, assortment
 
 app = FastAPI(
-    title="Telegram Bot Admin Panel",
+    title="Bot Admin Panel",
     version="1.0.0",
     docs_url=None,
     redoc_url=None,
 )
 
+# Static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Middlewares
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.add_middleware(RateLimitMiddleware, calls=30, period=60)
+app.add_middleware(rate_limit.__class__, calls=40, period=60)   # rate limit для админки
 
 # Роутеры
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(purchases.router, prefix="/purchases", tags=["purchases"])
-app.include_router(assortment_views.router, prefix="/assortment", tags=["assortment"])
-app.include_router(assortment_manage.router, prefix="/assortment", tags=["assortment_manage"])
-app.include_router(sold.router, prefix="/sold", tags=["sold"])
-app.include_router(stats.router, prefix="/stats", tags=["stats"])
-app.include_router(sellers.router, prefix="/sellers", tags=["sellers"])
-app.include_router(debug.router, prefix="/debug", tags=["debug"])
+app.include_router(assortment.router, prefix="/assortment", tags=["assortment"])
 
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-
-    if (
-        path.startswith("/auth/login")
-        or path.startswith("/static")
-        or path == "/"
-        or path.startswith("/health")
-    ):
+    if path.startswith(("/auth/login", "/static", "/health")) or path == "/":
         return await call_next(request)
 
     if not is_authenticated(request):
-        return RedirectResponse(url="/auth/login")
+        return RedirectResponse(url="/admin/auth/login")
 
     return await call_next(request)
 
 
 @app.get("/")
 async def root():
-    return RedirectResponse(url="/dashboard")
+    return RedirectResponse(url="/admin/dashboard")
 
 
 @app.on_event("startup")
-async def startup_event():
-    if config.RENDER_URL:
-        print(f"🚀 Admin Panel доступен по {config.RENDER_URL}/admin")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    print("🛑 Admin Panel остановлен")
+async def startup():
+    print(f"🚀 Admin Panel запущен → {config.RENDER_URL}/admin")
