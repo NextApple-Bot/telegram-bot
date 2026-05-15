@@ -1,11 +1,11 @@
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pytest import MonkeyPatch
 
 
-@pytest.fixture(scope="session", autouse=True)
-def set_test_environment(monkeypatch: MonkeyPatch):
+@pytest.fixture(scope="function", autouse=True)   # <--- ИСПРАВЛЕНО: session -> function
+def set_test_environment(monkeypatch: pytest.MonkeyPatch):
     """Чистая настройка тестового окружения."""
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/testdb")
     monkeypatch.setenv("REDIS_URL", "")
