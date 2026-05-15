@@ -2,16 +2,13 @@ import asyncio
 import logging
 import os
 import signal
-import sys
-import traceback
 
 import uvicorn
 from prometheus_fastapi_instrumentator import Instrumentator
-from sqlalchemy import text
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
 
 # ==================== Sentry ====================
@@ -66,7 +63,7 @@ class Application:
         from aiogram.fsm.storage.redis import RedisStorage
 
         from bot.config import config as bot_config
-        from bot.db import get_async_session_factory, check_db_health
+        from bot.db import check_db_health
         from bot.middleware.error_handler import ErrorHandlerMiddleware
 
         self.config = bot_config
@@ -167,7 +164,6 @@ class Application:
         return PlainTextResponse("OK" if ok else "FAIL", status_code=200 if ok else 503)
 
     async def health_detailed(self, _: Request) -> Response:
-        from bot.db import check_db_health, check_redis_health
         # ... (оставил вашу реализацию, она хорошая)
         ...
 
