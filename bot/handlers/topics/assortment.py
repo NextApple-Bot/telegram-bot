@@ -1,15 +1,14 @@
 import logging
-from io import BytesIO
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.types.input_file import BufferedInputFile
 
 from bot import config
 from bot.handlers.states import AssortmentConfirmState
 from bot.services.assortment import AssortmentService
-from bot.utils.sort import sort_assortment_to_categories, build_output_text
+from bot.utils.sort import build_output_text, sort_assortment_to_categories
 
 logger = logging.getLogger(__name__)
 router = Router()

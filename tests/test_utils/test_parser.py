@@ -1,4 +1,3 @@
-import pytest
 
 from bot.services.payment_parser import extract_payment_amounts, extract_prepayments
 from bot.utils.parser import parse_birth_date, parse_client_data
