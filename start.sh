@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 echo "🚀 Starting Telegram Bot..."
 
-# Run migrations
-python run_migrations.py || echo "Migrations skipped or already up to date"
+echo "🔄 Применяем миграции Alembic..."
+alembic upgrade head || echo "Миграции пропущены или уже актуальны"
 
-# Start the bot
+echo "🤖 Запускаем бота..."
 exec python main.py
