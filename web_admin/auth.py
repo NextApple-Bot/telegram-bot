@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from passlib.context import CryptContext
 from starlette.requests import Request
 
@@ -7,7 +8,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def verify_password(plain_password: str) -> bool:
-    """Проверяет пароль против bcrypt-хэша из настроек."""
+    """Проверяет пароль."""
     if not config.ADMIN_PASSWORD_HASH:
         return False
     try:
@@ -17,19 +18,34 @@ def verify_password(plain_password: str) -> bool:
 
 
 def is_authenticated(request: Request) -> bool:
-    """Проверяет, авторизован ли пользователь в сессии."""
-    return request.session.get("authenticated", False)
+    """Проверяет авторизацию по сессии."""
+    if not request.session.get("authenticated"):
+        return False
+
+    # Авто-выход через 7 дней
+    login_time_str = request.session.get("login_time")
+    if login_time_str:
+        try:
+            login_time = datetime.fromisoformat(login_time_str)
+            if datetime.utcnow() - login_time > timedelta(days=7):
+                request.session.clear()
+                return False
+        except Exception:
+            request.session.clear()
+            return False
+
+    return True
 
 
-def login(request: Request, password: str) -> bool:
-    """Выполняет вход и устанавливает сессию."""
+def login_user(request: Request, password: str) -> bool:
+    """Выполняет вход."""
     if verify_password(password):
         request.session["authenticated"] = True
-        request.session["login_time"] = str(__import__("datetime").datetime.utcnow())
+        request.session["login_time"] = datetime.utcnow().isoformat()
         return True
     return False
 
 
-def logout(request: Request) -> None:
+def logout_user(request: Request):
     """Выход из системы."""
     request.session.clear()
