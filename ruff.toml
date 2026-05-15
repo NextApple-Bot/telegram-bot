@@ -1,4 +1,4 @@
-target-version = "py311"
+target-version = "py312"
 
 exclude = [
     ".git",
@@ -7,15 +7,20 @@ exclude = [
     "__pycache__",
     "alembic/versions",
     "tests/__pycache__",
+    "tmp",
+    "topics",
 ]
 
 line-length = 100
 
 [lint]
-select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "TCH"]
-ignore = ["E501", "B008", "SIM105", "RUF001", "RUF002", "RUF003"]
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "TCH", "RUF", "PL"]
+ignore = ["E501", "B008", "SIM105", "RUF001", "RUF002", "RUF003", "PLR2004"]
 fixable = ["ALL"]
 unfixable = []
 
 [lint.isort]
 known-first-party = ["bot", "web_admin"]
+
+[lint.pylint]
+max-args = 7
