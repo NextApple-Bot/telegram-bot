@@ -24,10 +24,10 @@ if not alembic_ini_path.exists():
 alembic_cfg = Config(str(alembic_ini_path))
 alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
 
-print("🔄 Запуск миграций...")
+print("🔄 Применяем миграции Alembic...")
 try:
     command.upgrade(alembic_cfg, "head")
-    print("✅ Миграции выполнены.")
+    print("✅ Миграции успешно применены.")
 except Exception as e:
-    print(f"❌ Ошибка: {e}", file=sys.stderr)
+    print(f"❌ Ошибка миграций: {e}", file=sys.stderr)
     sys.exit(1)
