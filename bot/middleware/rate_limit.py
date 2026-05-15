@@ -1,31 +1,65 @@
+import logging
 import time
 from collections import defaultdict
+from typing import Callable, Awaitable, Any
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+from aiogram import BaseMiddleware
+from aiogram.types import TelegramObject
+
+from bot.config import config
+
+logger = logging.getLogger(__name__)
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Простой in-memory rate limiter для админки."""
-    def __init__(self, app, calls: int = 10, period: int = 60):
-        super().__init__(app)
-        self.calls = calls
-        self.period = period
-        self.requests: dict[tuple[str, str], list] = defaultdict(list)
+class RateLimitMiddleware(BaseMiddleware):
+    """
+    Простой in-memory rate limiter для Telegram-бота.
+    Защищает от спама и DDoS-атак.
+    """
 
-    async def dispatch(self, request: Request, call_next):
-        if not request.url.path.startswith("/admin"):
-            return await call_next(request)
+    def __init__(self, calls: int = 20, period: int = 60):
+        self.calls = calls          # сколько запросов разрешено
+        self.period = period        # за сколько секунд
+        self.storage: defaultdict = defaultdict(list)  # user_id -> [timestamps]
 
-        client_ip = request.client.host if request.client else "unknown"
-        key = (client_ip, request.method + request.url.path)
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        user = data.get("event_from_user")
+        if not user:
+            return await handler(event, data)
 
+        user_id = user.id
         now = time.time()
-        self.requests[key] = [t for t in self.requests[key] if now - t < self.period]
 
-        if len(self.requests[key]) >= self.calls:
-            return JSONResponse({"error": "Too many requests"}, status_code=429)
+        # Очищаем старые записи
+        self.storage[user_id] = [t for t in self.storage[user_id] if now - t < self.period]
 
-        self.requests[key].append(now)
-        return await call_next(request)
+        # Проверяем лимит
+        if len(self.storage[user_id]) >= self.calls:
+            logger.warning(f"Rate limit exceeded for user {user_id}")
+            # Можно отправить сообщение пользователю
+            try:
+                bot = data.get("bot")
+                if bot:
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text="⏳ Слишком много запросов. Подождите немного.",
+                        message_thread_id=getattr(event, "message_thread_id", None)
+                    )
+            except Exception:
+                pass  # не ломаем обработку
+
+            return  # блокируем дальнейшую обработку
+
+        # Добавляем текущий timestamp
+        self.storage[user_id].append(now)
+
+        return await handler(event, data)
+
+
+# ==================== Глобальный экземпляр ====================
+rate_limit = RateLimitMiddleware(calls=25, period=60)
