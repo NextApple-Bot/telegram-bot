@@ -1,29 +1,41 @@
 import asyncio
+import logging
 import os
 
 from aiogram import Bot
 
+from bot.config import config
 
-async def send_alert(message: str):
-    """Отправляет критическое сообщение админам в Telegram."""
-    bot_token = os.getenv("BOT_TOKEN")
-    admin_ids_str = os.getenv("ADMIN_ID", "")
-    if not bot_token or not admin_ids_str:
-        print("❌ Не могу отправить алерт: нет токена или админов")
+logger = logging.getLogger(__name__)
+
+
+async def send_alert(message: str, is_critical: bool = False):
+    """
+    Отправляет алерт всем администраторам.
+    """
+    if not config.BOT_TOKEN or not config.ADMIN_IDS:
+        logger.error("❌ Не могу отправить алерт: BOT_TOKEN или ADMIN_IDS не настроены")
         return
 
-    admin_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
-    bot = Bot(token=bot_token)
+    prefix = "🚨 КРИТИЧЕСКАЯ ОШИБКА" if is_critical else "⚠️ Уведомление"
+    full_message = f"{prefix}\n\n{message}"
 
-    for admin_id in admin_ids:
+    bot = Bot(token=config.BOT_TOKEN)
+
+    for admin_id in config.ADMIN_IDS:
         try:
-            await bot.send_message(chat_id=admin_id, text=f"🚨 {message}")
+            await bot.send_message(
+                chat_id=admin_id,
+                text=full_message,
+                parse_mode="HTML"
+            )
+            logger.info(f"✅ Алерт отправлен админу {admin_id}")
         except Exception as e:
-            print(f"❌ Ошибка отправки алерта админу {admin_id}: {e}")
+            logger.error(f"❌ Не удалось отправить алерт админу {admin_id}: {e}")
 
     await bot.session.close()
 
 
+# Для теста
 if __name__ == "__main__":
-    # Пример использования
     asyncio.run(send_alert("Тестовый алерт из telegram_alerter.py"))
