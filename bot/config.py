@@ -1,68 +1,61 @@
-from pydantic import BaseModel, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List, Optional
+from pydantic import Field
+from typing import Optional, List
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file='.env',
-        env_file_encoding='utf-8',
-        extra='ignore'
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
     )
 
-    # Telegram
+    # ==================== Основные настройки ====================
     BOT_TOKEN: str
-    ADMIN_IDS: List[int] = []
-    ADMIN_IDS_STR: str = ''
-    MAIN_GROUP_ID: int | None = None
+    BOT_NAME: str = "NextApple Bot"
+    BOT_USERNAME: str = "nextapple_bot"
 
-    # Database
+    # ==================== База данных ====================
     DATABASE_URL: str
-    DB_POOL_SIZE: int = 20
-    DB_POOL_MAX_OVERFLOW: int = 10
-    DEBUG: bool = False
+    REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Redis
-    REDIS_URL: str = 'redis://localhost:6379/0'
-    USE_REDIS_STORAGE: bool = True
+    # ==================== Webhook ====================
+    WEBHOOK_BASE_URL: str
+    WEBHOOK_PATH: str = "/webhook"
+    WEBHOOK_SECRET: Optional[str] = None
 
-    # Web & Security
-    SECRET_KEY: str
-    ADMIN_PASSWORD_HASH: Optional[str] = None
-    RENDER_URL: str = ''
+    # ==================== Админ-панель ====================
+    ADMIN_USERNAME: str
+    ADMIN_PASSWORD: str
 
-    # Monitoring
+    # ==================== Другие настройки ====================
+    ENVIRONMENT: str = Field(default="development", alias="ENV")
+    LOG_LEVEL: str = "INFO"
     SENTRY_DSN: Optional[str] = None
-    ENVIRONMENT: str = 'production'
+    PROMETHEUS_ENABLED: bool = True
 
-    # Business
-    PLAN_AMOUNT: int = 600000
+    # ==================== Telegram Topics ====================
+    TOPICS_ENABLED: bool = True
+    SALE_TOPIC_ID: Optional[int] = None
+    SUPPORT_TOPIC_ID: Optional[int] = None
 
-    @model_validator(mode='before')
-    @classmethod
-    def parse_admin_ids(cls, data):
-        if isinstance(data, dict):
-            admin_str = data.get('ADMIN_IDS_STR', '') or data.get('ADMIN_ID', '')
-            if admin_str:
-                try:
-                    data['ADMIN_IDS'] = [int(x.strip()) for x in str(admin_str).split(',') if x.strip()]
-                except ValueError:
-                    data['ADMIN_IDS'] = []
-            else:
-                data['ADMIN_IDS'] = []
-        return data
+    # ==================== Пути ====================
+    STATIC_DIR: str = "static"
+    TEMPLATES_DIR: str = "web_admin/templates"
 
-    @field_validator('SECRET_KEY')
-    @classmethod
-    def validate_secret_key(cls, v: str) -> str:
-        if len(v) < 32:
-            raise ValueError('SECRET_KEY must be at least 32 characters long for security')
-        return v
+    # ==================== Безопасность ====================
+    SECRET_KEY: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
 
-    @field_validator('BOT_TOKEN')
-    @classmethod
-    def validate_bot_token(cls, v: str) -> str:
-        if not v or len(v) < 30:
-            raise ValueError('Invalid BOT_TOKEN')
-        return v
+    @property
+    def WEBHOOK_URL(self) -> str:
+        return f"{self.WEBHOOK_BASE_URL}{self.WEBHOOK_PATH}"
 
+
+# ←←←←←←←←←←←←←←←←←←← ИСПРАВЛЕНИЕ ЗДЕСЬ ←←←←←←←←←←←←←←←←←←←
 settings = Settings()
+
+# Добавлено для совместимости с main.py (было ImportError)
+config = settings
+# ========================================================
