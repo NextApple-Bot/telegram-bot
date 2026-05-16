@@ -15,10 +15,12 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     ADMIN_IDS_STR: str = ''
 
-    # Telegram Groups / Topics (добавлено)
+    # Telegram Groups / Topics
     MAIN_GROUP_ID: Optional[int] = None
     THREAD_ASSORTMENT: Optional[int] = None
     THREAD_ARRIVAL: Optional[int] = None
+    THREAD_PREORDER: Optional[int] = None
+    THREAD_DEPARTURE: Optional[int] = None
 
     # Database
     DATABASE_URL: str
