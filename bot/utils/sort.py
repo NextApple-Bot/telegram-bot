@@ -1,6 +1,20 @@
 import re
 from typing import Dict, List, Any
 
+
+def normalize_name(name: str) -> str:
+    """Нормализация названия (нижний регистр + удаление лишних пробелов)."""
+    return " ".join(name.lower().split())
+
+
+def extract_base_name(text: str) -> str:
+    """Извлекает базовое название товара (до первой скобки или спецсимвола)."""
+    match = re.match(r'^([^(]+)', text.strip())
+    if match:
+        return match.group(1).strip()
+    return text.strip()
+
+
 def detect_sim_type(text: str) -> str:
     """Определяет тип SIM-карты по тексту товара."""
     text_lower = text.lower()
@@ -26,7 +40,7 @@ def build_output_text(categories: List[Dict[str, Any]]) -> str:
     Формирует красивый текстовый вывод ассортимента для отправки в .txt файл.
     """
     lines = []
-    lines.append("\ud83d\udce6 ТЕКУЩИЙ АССОРТИМЕНТ")
+    lines.append("📦 ТЕКУЩИЙ АССОРТИМЕНТ")
     lines.append("=" * 50)
     lines.append(f"Дата выгрузки: {__import__('datetime').datetime.now().strftime('%d.%m.%Y %H:%M')}\n")
 
@@ -39,7 +53,7 @@ def build_output_text(categories: List[Dict[str, Any]]) -> str:
         if not items:
             continue
 
-        lines.append(f"\n\ud83d\udd39 {cat_name} ({len(items)} шт.)")
+        lines.append(f"\n🔹 {cat_name} ({len(items)} шт.)")
         lines.append("-" * 40)
 
         for item in items:
@@ -144,17 +158,3 @@ def sort_assortment_to_categories(content: str) -> List[Dict[str, Any]]:
             
             # Пытаемся извлечь серийный номер
             serial_match = re.search(r'\(SN?[:\s-]*([A-Za-z0-9-]+)\)', line, re.IGNORECASE)
-            if serial_match:
-                item["serial"] = serial_match.group(1)
-            
-            current_items.append(item)
-
-    # Добавляем последнюю категорию
-    if current_category and current_items:
-        categories.append({
-            "name": current_category,
-            "header": current_category,
-            "items": current_items
-        })
-
-    return categories
