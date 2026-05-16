@@ -40,10 +40,10 @@ def link(text: str, url: str) -> str:
 
 def escape_for_html(text: str) -> str:
     """Экранирование HTML-символов."""
-    return (text.replace("&", "&")
-            .replace("<", "<")
-            .replace(">", ">")
-            .replace('"', """))
+    return (text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;"))
 
 
 def format_price_html(price: int) -> str:
