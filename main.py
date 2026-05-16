@@ -2,52 +2,21 @@ import asyncio
 import logging
 import os
 import signal
-import sys
-import time
-import traceback
 
 import uvicorn
 from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy import text
 from starlette.applications import Starlette
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
 
-# ==================== Sentry ====================
-SENTRY_DSN = os.getenv("SENTRY_DSN")
-if SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
-    from sentry_sdk.integrations.starlette import StarletteIntegration
-
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        traces_sample_rate=0.3,
-        environment=os.getenv("ENVIRONMENT", "production"),
-        integrations=[StarletteIntegration(), FastApiIntegration()],
-    )
-    logging.info("✅ Sentry инициализирован")
-else:
-    logging.info("ℹ️ Sentry отключён")
-
 # ==================== Logging ====================
-if os.getenv("LOG_FORMAT", "text").lower() == "json":
-    from pythonjsonlogger import jsonlogger
-    handler = logging.StreamHandler()
-    formatter = jsonlogger.JsonFormatter(
-        '%(asctime)s %(name)s %(levelname)s %(message)s %(pathname)s %(lineno)d'
-    )
-    handler.setFormatter(formatter)
-    logging.getLogger().handlers = [handler]
-    logging.getLogger().setLevel(logging.INFO)
-else:
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -65,16 +34,20 @@ class Application:
         from aiogram.fsm.storage.redis import RedisStorage
 
         from bot.config import config as bot_config
-        from bot.db import get_async_session_factory, check_db_health   # ← исправлено
+        from bot.db import get_async_session_factory, init_db, close_db   # ← исправлено
 
         self.config = bot_config
         logger.info("✅ Конфигурация загружена")
+
+        # Инициализация БД
+        await init_db()
+        logger.info("✅ База данных инициализирована")
 
         self.bot = Bot(token=bot_config.BOT_TOKEN, parse_mode="HTML")
         logger.info("✅ Bot создан")
 
         # Storage
-        if bot_config.REDIS_URL:
+        if bot_config.REDIS_URL and "redis" in bot_config.REDIS_URL:
             self._redis_client = redis.from_url(bot_config.REDIS_URL, decode_responses=True)
             storage = RedisStorage(redis=self._redis_client)
             logger.info("✅ RedisStorage")
@@ -83,30 +56,30 @@ class Application:
             logger.warning("⚠️ MemoryStorage (dev)")
 
         self.dp = Dispatcher(storage=storage)
+
+        # Middleware
         from bot.middleware.error_handler import ErrorHandlerMiddleware
         self.dp.update.middleware(ErrorHandlerMiddleware())
 
+        # Handlers
         from bot.handlers import router
         self.dp.include_router(router)
-
-        # DB check
-        if not await check_db_health():
-            logger.error("❌ База данных недоступна")
-            raise RuntimeError("Database unavailable")
 
         # Background tasks
         from bot.background import start_background_tasks
         asyncio.create_task(start_background_tasks(self.bot, self.dp))
 
         await self._setup_webhook()
+        logger.info("✅ Бот полностью инициализирован")
         return self
 
     async def _setup_webhook(self, max_retries: int = 5):
-        if not self.config.RENDER_URL:
-            logger.warning("RENDER_URL не задан → webhook пропущен (локальный режим)")
+        if not getattr(self.config, 'RENDER_URL', None) and not getattr(self.config, 'WEBHOOK_BASE_URL', None):
+            logger.warning("RENDER_URL / WEBHOOK_BASE_URL не задан → webhook пропущен")
             return
 
-        webhook_url = f"{self.config.RENDER_URL.rstrip('/')}/webhook"
+        base_url = getattr(self.config, 'RENDER_URL', None) or getattr(self.config, 'WEBHOOK_BASE_URL', '')
+        webhook_url = f"{base_url.rstrip('/')}/webhook"
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -115,18 +88,16 @@ class Application:
                 await self.bot.set_webhook(
                     url=webhook_url,
                     allowed_updates=allowed,
-                    secret_token=self.config.SECRET_KEY[:32] if self.config.SECRET_KEY else None
+                    secret_token=self.config.SECRET_KEY[:32] if getattr(self.config, 'SECRET_KEY', None) else None
                 )
                 logger.info(f"✅ Webhook установлен: {webhook_url}")
                 return
             except Exception as e:
-                logger.warning(f"Попытка {attempt}/{max_retries}: {e}")
+                logger.warning(f"Webhook attempt {attempt}/{max_retries} failed: {e}")
                 await asyncio.sleep(3 * attempt)
 
-        logger.error("❌ Не удалось установить webhook")
-
     async def shutdown(self):
-        logger.info("🛑 Завершение...")
+        logger.info("🛑 Завершение приложения...")
         if self.bot:
             try:
                 await self.bot.delete_webhook()
@@ -142,38 +113,54 @@ class Application:
 
         logger.info("✅ Приложение остановлено")
 
-    # ... (webhook, health и т.д. — можешь оставить как было)
+    async def webhook(self, request: Request) -> Response:
+        if not self.bot or not self.dp:
+            return Response(status_code=503)
+        try:
+            from aiogram.types import Update
+            update = Update.model_validate(await request.json())
+            await self.dp.feed_update(self.bot, update)
+            return Response(status_code=200)
+        except Exception as e:
+            logger.exception("Ошибка в webhook")
+            return Response(status_code=500)
+
+    async def health(self, _: Request) -> Response:
+        """Простой healthcheck"""
+        try:
+            from bot.db import get_async_session_factory
+            session_factory = await get_async_session_factory()
+            async with session_factory() as session:
+                await session.execute(text("SELECT 1"))
+            return PlainTextResponse("OK", status_code=200)
+        except Exception:
+            return PlainTextResponse("FAIL", status_code=503)
 
 
 def create_starlette_app(app_instance: Application):
     routes = [
         Route("/webhook", app_instance.webhook, methods=["POST"]),
         Route("/health", app_instance.health, methods=["GET"]),
-        Route("/health/detailed", app_instance.health_detailed, methods=["GET"]),
     ]
 
     starlette_app = Starlette(routes=routes)
     Instrumentator().instrument(starlette_app).expose(starlette_app, endpoint="/metrics")
 
-    if SENTRY_DSN:
-        starlette_app = SentryAsgiMiddleware(starlette_app)
-
-    if app_instance.config.SECRET_KEY:
+    if getattr(app_instance.config, 'SECRET_KEY', None):
         starlette_app.add_middleware(
             SessionMiddleware,
             secret_key=app_instance.config.SECRET_KEY,
             https_only=True,
             same_site="lax",
-            max_age=60 * 60 * 24 * 7,
         )
 
-    # Монтируем админку
+    # Админка
     try:
         from web_admin.main import app as admin_app
         starlette_app.mount("/admin", admin_app)
-        logger.info("✅ Админка подключена на /admin")
+        logger.info("✅ Админ-панель подключена")
     except Exception as e:
-        logger.error(f"Не удалось подключить админку: {e}")
+        logger.warning(f"Админка не подключена: {e}")
 
     return starlette_app
 
