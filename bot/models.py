@@ -152,3 +152,15 @@ class DailyPayment(Base):
 
     def __repr__(self):
         return f"<DailyPayment {self.id}>"
+
+
+class ProcessedMessage(Base):
+    __tablename__ = "processed_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    processed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f"<ProcessedMessage {self.chat_id}:{self.message_id}>"
