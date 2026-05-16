@@ -1,4 +1,4 @@
 # web_admin/routes/assortment/__init__.py
-from . import manage
+from .manage import router
 
-__all__ = ["manage"]
+__all__ = ["router"]
