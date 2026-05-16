@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Tuple
 
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import delete, func, select, update
 
 from bot.config import config
 from bot.db import get_async_session_factory
@@ -21,12 +22,10 @@ logger = logging.getLogger(__name__)
 async def delete_category_if_empty(cat_id: int) -> Tuple[bool, str]:
     """Проверяет, можно ли удалить категорию (только пустую)."""
     async with get_async_session_factory()() as session:
-        # Проверяем существование
         cat = await session.get(Category, cat_id)
         if not cat:
             return False, "❌ Категория не найдена"
 
-        # Проверяем, есть ли товары
         items_count = await session.scalar(
             select(func.count()).select_from(Item).where(Item.category_id == cat_id)
         )
@@ -88,14 +87,12 @@ async def merge_categories_action(callback: CallbackQuery, from_id: int, to_id: 
     """Выполняет слияние."""
     try:
         async with get_async_session_factory()() as session:
-            # Переносим товары
             await session.execute(
                 update(Item)
                 .where(Item.category_id == from_id)
                 .values(category_id=to_id)
             )
 
-            # Удаляем старую категорию
             from_cat = await session.get(Category, from_id)
             await session.delete(from_cat)
             await session.commit()
@@ -104,7 +101,7 @@ async def merge_categories_action(callback: CallbackQuery, from_id: int, to_id: 
         await send_and_clean(
             bot=callback.bot,
             chat_id=callback.message.chat.id,
-            text=f"✅ Категории успешно объединены.",
+            text="✅ Категории успешно объединены.",
             delete_after=60,
         )
     except Exception as e:
@@ -246,5 +243,27 @@ async def undo_last_deletion() -> str:
 
 async def fix_sales_unique() -> str:
     """Исправление уникальности в продажах."""
-    # Реализация по вашей миграции
     return "✅ Уникальность продаж исправлена"
+
+
+# ====================== РУЧНАЯ УСТАНОВКА ВЕБХУКА ======================
+async def set_webhook_manually() -> str:
+    """Ручная установка вебхука (для команды /set_webhook)."""
+    from aiogram import Bot
+
+    if not config.RENDER_URL:
+        return "❌ RENDER_URL не задан в .env"
+
+    bot = Bot(token=config.BOT_TOKEN)
+    webhook_url = f"{config.RENDER_URL.rstrip('/')}/webhook"
+
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.set_webhook(url=webhook_url)
+        await bot.session.close()
+        logger.info(f"✅ Вебхук вручную установлен: {webhook_url}")
+        return f"✅ Вебхук успешно установлен:\n{webhook_url}"
+    except Exception as e:
+        await bot.session.close()
+        logger.exception("Ошибка установки вебхука")
+        return f"❌ Ошибка установки вебхука: {e}"
