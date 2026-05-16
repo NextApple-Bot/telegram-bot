@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     THREAD_ASSORTMENT: Optional[int] = None
     THREAD_ARRIVAL: Optional[int] = None
     THREAD_PREORDER: Optional[int] = None
+    THREAD_SALES: Optional[int] = None
     THREAD_DEPARTURE: Optional[int] = None
+    THREAD_SERVICE: Optional[int] = None
 
     # Database
     DATABASE_URL: str
