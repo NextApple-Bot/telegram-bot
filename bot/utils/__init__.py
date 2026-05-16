@@ -1,4 +1,4 @@
-from .markdown import escape_markdown
+from .markdown import escape_markdown_v1 as escape_markdown
 from .parser import extract_payment_amounts, parse_client_data
 from .sort import (
     build_output_text,
