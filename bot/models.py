@@ -88,3 +88,67 @@ class DeletedItem(Base):
 
     def __repr__(self):
         return f"<DeletedItem {self.id}: {self.text[:50]}>"
+
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    count: Mapped[int] = mapped_column(Integer, default=1)
+    cash: Mapped[float] = mapped_column(default=0)
+    terminal: Mapped[float] = mapped_column(default=0)
+    qr: Mapped[float] = mapped_column(default=0)
+    transfer: Mapped[float] = mapped_column(default=0)
+    invoice: Mapped[float] = mapped_column(default=0)
+    installment: Mapped[float] = mapped_column(default=0)
+    is_accessory: Mapped[bool] = mapped_column(Boolean, default=False)
+    message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sold_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f"<Sale {self.id}>"
+
+
+class Preorder(Base):
+    __tablename__ = "preorders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cash: Mapped[float] = mapped_column(default=0)
+    terminal: Mapped[float] = mapped_column(default=0)
+    qr: Mapped[float] = mapped_column(default=0)
+    transfer: Mapped[float] = mapped_column(default=0)
+    invoice: Mapped[float] = mapped_column(default=0)
+    installment: Mapped[float] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f"<Preorder {self.id}>"
+
+
+class Booking(Base):
+    __tablename__ = "bookings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_amount: Mapped[float] = mapped_column(default=0)
+    booked_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f"<Booking {self.id}>"
+
+
+class DailyPayment(Base):
+    __tablename__ = "daily_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cash: Mapped[float] = mapped_column(default=0)
+    terminal: Mapped[float] = mapped_column(default=0)
+    qr: Mapped[float] = mapped_column(default=0)
+    transfer: Mapped[float] = mapped_column(default=0)
+    invoice: Mapped[float] = mapped_column(default=0)
+    installment: Mapped[float] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f"<DailyPayment {self.id}>"
