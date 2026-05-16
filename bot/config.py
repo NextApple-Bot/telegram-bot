@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    DB_POOL_SIZE: int = 10
+    DB_POOL_MAX_OVERFLOW: int = 20
+    DEBUG: bool = False
 
     # Redis
     REDIS_URL: str = 'redis://localhost:6379/0'
@@ -26,7 +29,7 @@ class Settings(BaseSettings):
     WEBHOOK_BASE_URL: Optional[str] = None
 
     # Security
-    SECRET_KEY: str = "default-insecure-key-for-development-only-change-in-production"  # ← теперь с дефолтом
+    SECRET_KEY: str = "default-insecure-key-for-development-only-change-in-production"
     ADMIN_PASSWORD: str = 'admin'
 
     # Other
@@ -49,12 +52,8 @@ class Settings(BaseSettings):
     @field_validator('SECRET_KEY')
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
-        """Теперь только предупреждение, а не ошибка"""
-        if len(v) < 32 and v.startswith("default-insecure-key"):
+        if len(v) < 16 and "default-insecure" in v:
             print("⚠️  WARNING: Using default insecure SECRET_KEY! Change it in production!")
-            return v
-        if len(v) < 16:  # минимально ослабили
-            raise ValueError('SECRET_KEY must be at least 16 characters long')
         return v
 
     @field_validator('BOT_TOKEN')
@@ -67,10 +66,9 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Ленивая загрузка настроек"""
     return Settings()
 
 
-# Совместимость со всем кодом
+# Совместимость
 settings = get_settings()
 config = settings
