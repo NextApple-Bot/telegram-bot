@@ -43,15 +43,15 @@ def build_output_text(categories: List[Dict[str, Any]]) -> str:
         lines.append("-" * 40)
 
         for item in items:
-            price_str = f"{item['price']:,} ₽".replace(",", " ") if item.get('price') else "\u2014"
-            status = "\ud83d\udd12 ЗАБРОНИРОВАНО" if item.get("is_booked") else "\u2705 В наличии"
+            price_str = f"{item['price']:,} ₽".replace(",", " ") if item.get('price') else "—"
+            status = "🔒 ЗАБРОНИРОВАНО" if item.get("is_booked") else "✅ В наличии"
             
             booking_info = f" | {item['booking_info']}" if item.get("booking_info") else ""
             serial = f" | S/N: {item['serial']}" if item.get("serial") else ""
 
             line = f"• {item['text']}"
-            if price_str != "\u2014":
-                line += f" \u2014 {price_str}"
+            if price_str != "—":
+                line += f" — {price_str}"
             line += f"  {status}{booking_info}{serial}"
             lines.append(line)
 
@@ -119,7 +119,8 @@ def sort_assortment_to_categories(content: str) -> List[Dict[str, Any]]:
             continue
 
         # Если строка похожа на название категории (заканчивается на :)
-        if line.endswith(':') and not any(c.isdigit() for c in line.split('(')[0] if '(' in line else line):
+        part = line.split('(')[0] if '(' in line else line
+        if line.endswith(':') and not any(c.isdigit() for c in part):
             if current_category and current_items:
                 categories.append({
                     "name": current_category,
