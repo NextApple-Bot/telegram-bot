@@ -104,3 +104,14 @@ async def check_db_health() -> dict:
         logger.error(f"Redis health check failed: {e}")
 
     return result
+
+
+async def check_redis_health() -> dict:
+    """Проверка здоровья Redis."""
+    try:
+        redis_client = get_redis_client()
+        await redis_client.ping()
+        return {"status": "OK", "details": "Redis is healthy"}
+    except Exception as e:
+        logger.error(f"Redis health check failed: {e}")
+        return {"status": "ERROR", "details": str(e)}
