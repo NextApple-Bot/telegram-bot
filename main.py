@@ -18,39 +18,29 @@ from utils.logger import setup_logging
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan manager для FastAPI + aiogram"""
-    # При старте
     await init_db()
     setup_logging()
     
     logger = logging.getLogger(__name__)
     logger.info("🚀 Запускаем Telegram Bot...")
 
-    # Инициализация бота
     session = AiohttpSession()
     bot = Bot(token=bot_config.BOT_TOKEN, session=session)
     
-    # Настройка middleware и handlers
     setup_middleware(bot)
     setup_handlers(bot)
-
-    # Запуск background задач
     await start_background_tasks(bot)
 
     yield
 
-    # При выключении
     await bot.session.close()
     logger.info("🛑 Бот остановлен.")
 
 
-# Создаём FastAPI приложение
 app = FastAPI(lifespan=lifespan, title=bot_config.BOT_NAME)
 
-# Подключаем админ-панель
 app.mount("/admin", admin_app)
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -61,10 +51,8 @@ app.add_middleware(
 
 
 async def main_entry():
-    """Точка входа"""
     try:
-        await app.initialize()   # ← здесь была ошибка
-        # Запуск веб-сервера (uvicorn запускается Render'ом)
+        await app.initialize()
         logger = logging.getLogger(__name__)
         logger.info("✅ Бот успешно инициализирован")
     except Exception as e:
