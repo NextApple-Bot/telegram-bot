@@ -1,67 +1,72 @@
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
-from typing import Optional
 from functools import lru_cache
+from typing import Optional, List
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=True,
-        extra="ignore",
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='ignore'
     )
 
-    # ==================== Основные настройки ====================
+    # Telegram
     BOT_TOKEN: str
-    BOT_NAME: str = "NextApple Bot"
-    BOT_USERNAME: str = "nextapple_bot"
+    ADMIN_IDS_STR: str = ''
 
-    # ==================== База данных ====================
+    # Database
     DATABASE_URL: str
-    REDIS_URL: str = "redis://localhost:6379/0"
 
-    # ==================== Webhook ====================
-    WEBHOOK_BASE_URL: Optional[str] = None          # ← сделано optional временно
-    WEBHOOK_PATH: str = "/webhook"
-    WEBHOOK_SECRET: Optional[str] = None
+    # Redis
+    REDIS_URL: str = 'redis://localhost:6379/0'
 
-    # ==================== Админ-панель ====================
-    ADMIN_USERNAME: Optional[str] = None            # ← сделано optional временно
-    ADMIN_PASSWORD: str
+    # Webhook / Render (важно для продакшена)
+    RENDER_URL: Optional[str] = None
+    WEBHOOK_BASE_URL: Optional[str] = None
 
-    # ==================== Другие настройки ====================
-    ENVIRONMENT: str = Field(default="development", alias="ENV")
-    LOG_LEVEL: str = "INFO"
-    SENTRY_DSN: Optional[str] = None
-    PROMETHEUS_ENABLED: bool = True
-
-    # ==================== Telegram Topics ====================
-    TOPICS_ENABLED: bool = True
-    SALE_TOPIC_ID: Optional[int] = None
-    SUPPORT_TOPIC_ID: Optional[int] = None
-
-    # ==================== Пути ====================
-    STATIC_DIR: str = "static"
-    TEMPLATES_DIR: str = "web_admin/templates"
-
-    # ==================== Безопасность ====================
+    # Security
     SECRET_KEY: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
+    ADMIN_PASSWORD: str = 'admin'
 
-    @property
-    def WEBHOOK_URL(self) -> str:
-        if not self.WEBHOOK_BASE_URL:
-            return ""
-        return f"{self.WEBHOOK_BASE_URL}{self.WEBHOOK_PATH}"
+    # Other
+    ENVIRONMENT: str = 'development'
+
+    @model_validator(mode='before')
+    @classmethod
+    def parse_admin_ids(cls, data):
+        if isinstance(data, dict):
+            admin_str = data.get('ADMIN_IDS_STR', '')
+            if admin_str:
+                try:
+                    data['ADMIN_IDS'] = [int(x.strip()) for x in admin_str.split(',') if x.strip()]
+                except ValueError:
+                    data['ADMIN_IDS'] = []
+            else:
+                data['ADMIN_IDS'] = []
+        return data
+
+    @field_validator('SECRET_KEY')
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError('SECRET_KEY must be at least 32 characters long for security')
+        return v
+
+    @field_validator('BOT_TOKEN')
+    @classmethod
+    def validate_bot_token(cls, v: str) -> str:
+        if not v or len(v) < 30:
+            raise ValueError('Invalid BOT_TOKEN')
+        return v
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Ленивая загрузка настроек — решает проблему с alembic и ранними импортами"""
+    """Ленивая загрузка настроек — критично для alembic и импортов"""
     return Settings()
 
 
-# Для совместимости со всем старым кодом
+# Совместимость со всем кодом
 settings = get_settings()
 config = settings
