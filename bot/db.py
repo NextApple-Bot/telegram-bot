@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import text
@@ -47,7 +47,7 @@ async def init_db():
     """Инициализация базы данных."""
     engine = get_async_engine()
     async with engine.begin() as conn:
-        await conn.run_sync(lambda sync_conn: None)  # Прогрев
+        await conn.run_sync(lambda sync_conn: None)
     logger.info("✅ База данных инициализирована")
 
 
@@ -74,9 +74,10 @@ def get_redis_client() -> aioredis.Redis:
     return _redis_client
 
 
-async def check_db_health() -> dict:
+async def check_db_health() -> Dict[str, Any]:
     """Проверка здоровья базы данных и Redis."""
-    result = {
+    result: Dict[str, Any] = {
+        "status": "healthy",
         "database": False,
         "redis": False,
         "details": {}
@@ -90,6 +91,7 @@ async def check_db_health() -> dict:
         result["database"] = True
         result["details"]["database"] = "OK"
     except Exception as e:
+        result["status"] = "unhealthy"
         result["details"]["database"] = str(e)
         logger.error(f"Database health check failed: {e}")
 
@@ -100,18 +102,19 @@ async def check_db_health() -> dict:
         result["redis"] = True
         result["details"]["redis"] = "OK"
     except Exception as e:
+        result["status"] = "unhealthy"
         result["details"]["redis"] = str(e)
         logger.error(f"Redis health check failed: {e}")
 
     return result
 
 
-async def check_redis_health() -> dict:
+async def check_redis_health() -> Dict[str, Any]:
     """Проверка здоровья Redis."""
     try:
         redis_client = get_redis_client()
         await redis_client.ping()
-        return {"status": "OK", "details": "Redis is healthy"}
+        return {"status": "healthy", "details": "Redis is healthy"}
     except Exception as e:
         logger.error(f"Redis health check failed: {e}")
-        return {"status": "ERROR", "details": str(e)}
+        return {"status": "unhealthy", "details": str(e)}
