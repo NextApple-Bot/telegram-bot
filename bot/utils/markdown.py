@@ -1,3 +1,8 @@
+def escape_markdown(text: str) -> str:
+    """Alias for escape_markdown_v1 (for backward compatibility)"""
+    return escape_markdown_v1(text)
+
+
 def escape_markdown_v1(text: str) -> str:
     """Экранирование для MarkdownV1 (используется в aiogram)."""
     if not text:
@@ -35,10 +40,10 @@ def link(text: str, url: str) -> str:
 
 def escape_for_html(text: str) -> str:
     """Экранирование HTML-символов."""
-    return (text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;"))
+    return (text.replace("&", "&")
+            .replace("<", "<")
+            .replace(">", ">")
+            .replace('"', """))
 
 
 def format_price_html(price: int) -> str:
