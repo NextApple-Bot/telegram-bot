@@ -15,6 +15,7 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     items: Mapped[list["Item"]] = relationship("Item", back_populates="category", cascade="all, delete-orphan")
 
@@ -70,3 +71,20 @@ class Purchase(Base):
     items_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON строкой
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class DeletedItem(Base):
+    __tablename__ = "deleted_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    serial: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    category_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str] = mapped_column(String(50), default="manual")
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    restored: Mapped[bool] = mapped_column(Boolean, default=False)
+    sale_message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    def __repr__(self):
+        return f"<DeletedItem {self.id}: {self.text[:50]}>"
