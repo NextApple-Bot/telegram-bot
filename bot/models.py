@@ -164,3 +164,17 @@ class ProcessedMessage(Base):
 
     def __repr__(self):
         return f"<ProcessedMessage {self.chat_id}:{self.message_id}>"
+
+
+class Seller(Base):
+    __tablename__ = "sellers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    full_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    telegram_username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    def __repr__(self):
+        return f"<Seller {self.id}: {self.full_name}>"
