@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     ADMIN_IDS_STR: str = ''
 
+    # Telegram Groups / Topics (добавлено)
+    MAIN_GROUP_ID: Optional[int] = None
+    THREAD_ASSORTMENT: Optional[int] = None
+    THREAD_ARRIVAL: Optional[int] = None
+
     # Database
     DATABASE_URL: str
     DB_POOL_SIZE: int = 10
