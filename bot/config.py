@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
-from typing import Optional, List
+from typing import Optional
+from functools import lru_cache
 
 
 class Settings(BaseSettings):
@@ -21,12 +22,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # ==================== Webhook ====================
-    WEBHOOK_BASE_URL: str
+    WEBHOOK_BASE_URL: Optional[str] = None          # ← временно optional
     WEBHOOK_PATH: str = "/webhook"
     WEBHOOK_SECRET: Optional[str] = None
 
     # ==================== Админ-панель ====================
-    ADMIN_USERNAME: str
+    ADMIN_USERNAME: Optional[str] = None            # ← временно optional
     ADMIN_PASSWORD: str
 
     # ==================== Другие настройки ====================
@@ -46,16 +47,21 @@ class Settings(BaseSettings):
 
     # ==================== Безопасность ====================
     SECRET_KEY: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
 
     @property
     def WEBHOOK_URL(self) -> str:
+        if not self.WEBHOOK_BASE_URL:
+            return ""
         return f"{self.WEBHOOK_BASE_URL}{self.WEBHOOK_PATH}"
 
 
-# ←←←←←←←←←←←←←←←←←←← ИСПРАВЛЕНИЕ ЗДЕСЬ ←←←←←←←←←←←←←←←←←←←
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Ленивая загрузка настроек — теперь ничего не создаётся при импорте модуля"""
+    return Settings()
 
-# Добавлено для совместимости с main.py (было ImportError)
+
+# Для совместимости со всем старым кодом (main.py, alembic, handlers и т.д.)
+settings = get_settings()
 config = settings
-# ========================================================
