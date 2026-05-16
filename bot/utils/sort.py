@@ -15,7 +15,6 @@ def detect_sim_type(text: str) -> str:
 
 def get_full_model_name(text: str) -> str:
     """Извлекает чистое название модели (до первого пробела или скобки)."""
-    # Убираем всё после первого пробела или скобки
     match = re.match(r'^([^(]+)', text.strip())
     if match:
         return match.group(1).strip()
@@ -27,7 +26,7 @@ def build_output_text(categories: List[Dict[str, Any]]) -> str:
     Формирует красивый текстовый вывод ассортимента для отправки в .txt файл.
     """
     lines = []
-    lines.append("📦 ТЕКУЩИЙ АССОРТИМЕНТ")
+    lines.append("\ud83d\udce6 ТЕКУЩИЙ АССОРТИМЕНТ")
     lines.append("=" * 50)
     lines.append(f"Дата выгрузки: {__import__('datetime').datetime.now().strftime('%d.%m.%Y %H:%M')}\n")
 
@@ -38,21 +37,21 @@ def build_output_text(categories: List[Dict[str, Any]]) -> str:
         items = cat.get("items", [])
         
         if not items:
-            continue  # пропускаем пустые категории
+            continue
 
-        lines.append(f"\n🔹 {cat_name} ({len(items)} шт.)")
+        lines.append(f"\n\ud83d\udd39 {cat_name} ({len(items)} шт.)")
         lines.append("-" * 40)
 
         for item in items:
-            price_str = f"{item['price']:,} ₽".replace(",", " ") if item.get('price') else "—"
-            status = "🔒 ЗАБРОНИРОВАНО" if item.get("is_booked") else "✅ В наличии"
+            price_str = f"{item['price']:,} ₽".replace(",", " ") if item.get('price') else "\u2014"
+            status = "\ud83d\udd12 ЗАБРОНИРОВАНО" if item.get("is_booked") else "\u2705 В наличии"
             
             booking_info = f" | {item['booking_info']}" if item.get("booking_info") else ""
             serial = f" | S/N: {item['serial']}" if item.get("serial") else ""
 
             line = f"• {item['text']}"
-            if price_str != "—":
-                line += f" — {price_str}"
+            if price_str != "\u2014":
+                line += f" \u2014 {price_str}"
             line += f"  {status}{booking_info}{serial}"
             lines.append(line)
 
@@ -82,3 +81,79 @@ def group_by_model(items: List[Dict]) -> Dict[str, List[Dict]]:
             groups[model] = []
         groups[model].append(item)
     return groups
+
+
+def sort_assortment_to_categories(content: str) -> List[Dict[str, Any]]:
+    """
+    Парсит текст ассортимента в список категорий.
+    Ожидаемый формат:
+    ---
+    Категория 1:
+    ---
+    Товар 1 (SN123)
+    Товар 2 (SN456)
+    ---
+    Категория 2:
+    ---
+    ...
+    """
+    if not content or not content.strip():
+        return []
+
+    categories = []
+    current_category = None
+    current_items = []
+
+    lines = [line.strip() for line in content.strip().split('\n') if line.strip()]
+
+    for line in lines:
+        if line.startswith('---') or line == '---':
+            if current_category and current_items:
+                categories.append({
+                    "name": current_category,
+                    "header": current_category,
+                    "items": current_items
+                })
+            current_category = None
+            current_items = []
+            continue
+
+        # Если строка похожа на название категории (заканчивается на :)
+        if line.endswith(':') and not any(c.isdigit() for c in line.split('(')[0] if '(' in line else line):
+            if current_category and current_items:
+                categories.append({
+                    "name": current_category,
+                    "header": current_category,
+                    "items": current_items
+                })
+            current_category = line.rstrip(':').strip()
+            current_items = []
+        else:
+            # Это товар
+            if current_category is None:
+                current_category = "Без категории"
+            
+            item = {
+                "text": line,
+                "price": None,
+                "is_booked": False,
+                "booking_info": None,
+                "serial": None
+            }
+            
+            # Пытаемся извлечь серийный номер
+            serial_match = re.search(r'\(SN?[:\s-]*([A-Za-z0-9-]+)\)', line, re.IGNORECASE)
+            if serial_match:
+                item["serial"] = serial_match.group(1)
+            
+            current_items.append(item)
+
+    # Добавляем последнюю категорию
+    if current_category and current_items:
+        categories.append({
+            "name": current_category,
+            "header": current_category,
+            "items": current_items
+        })
+
+    return categories
