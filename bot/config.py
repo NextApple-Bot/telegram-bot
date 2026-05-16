@@ -22,12 +22,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # ==================== Webhook ====================
-    WEBHOOK_BASE_URL: Optional[str] = None          # ← временно optional
+    WEBHOOK_BASE_URL: Optional[str] = None          # ← сделано optional временно
     WEBHOOK_PATH: str = "/webhook"
     WEBHOOK_SECRET: Optional[str] = None
 
     # ==================== Админ-панель ====================
-    ADMIN_USERNAME: Optional[str] = None            # ← временно optional
+    ADMIN_USERNAME: Optional[str] = None            # ← сделано optional временно
     ADMIN_PASSWORD: str
 
     # ==================== Другие настройки ====================
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # ==================== Безопасность ====================
     SECRET_KEY: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 дней
 
     @property
     def WEBHOOK_URL(self) -> str:
@@ -58,10 +58,10 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Ленивая загрузка настроек — теперь ничего не создаётся при импорте модуля"""
+    """Ленивая загрузка настроек — решает проблему с alembic и ранними импортами"""
     return Settings()
 
 
-# Для совместимости со всем старым кодом (main.py, alembic, handlers и т.д.)
+# Для совместимости со всем старым кодом
 settings = get_settings()
 config = settings
