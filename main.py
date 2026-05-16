@@ -120,10 +120,10 @@ class Application:
 
     async def health(self, _: Request) -> Response:
         try:
-            from bot.db import get_async_session_factory
-            session_factory = await get_async_session_factory()
-            async with session_factory() as session:
-                await session.execute(text("SELECT 1"))
+            from bot.db import get_async_engine
+            engine = get_async_engine()
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
             return PlainTextResponse("OK")
         except Exception:
             return PlainTextResponse("FAIL", status_code=503)
@@ -151,8 +151,13 @@ def create_starlette_app(app_instance: Application):
 
 async def main_entry():
     app = Application()
-    await app.initialize()
+
+    # Главное исправление: создаём Starlette приложение СРАЗУ,
+    # чтобы /health был доступен до тяжёлой инициализации
     starlette_app = create_starlette_app(app)
+
+    # Теперь запускаем тяжёлую инициализацию (бот, webhook, роутеры и т.д.)
+    await app.initialize()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
