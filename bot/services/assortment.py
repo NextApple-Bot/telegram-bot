@@ -124,6 +124,80 @@ class AssortmentService:
             return {"success": False, "error": str(e)}
 
     @staticmethod
+    async def import_arrival_from_txt(file_path: str) -> Dict[str, Any]:
+        """Импорт нового ассортимента из TXT-файла (формат: категория | название | цена)."""
+        try:
+            added_categories = 0
+            added_items = 0
+            updated_items = 0
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            async with get_async_session_factory()() as session:
+                for line in lines:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+
+                    # Формат: категория | название | цена (цена опциональна)
+                    parts = [p.strip() for p in line.split('|')]
+                    if len(parts) < 2:
+                        continue
+
+                    category_name = parts[0]
+                    item_text = parts[1]
+                    price = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+
+                    if not category_name or not item_text:
+                        continue
+
+                    # Находим или создаём категорию
+                    category = await session.scalar(
+                        select(Category).where(Category.name.ilike(category_name))
+                    )
+                    if not category:
+                        category = Category(name=category_name)
+                        session.add(category)
+                        await session.flush()
+                        added_categories += 1
+
+                    # Проверяем, есть ли уже такой товар
+                    existing_item = await session.scalar(
+                        select(Item).where(
+                            Item.category_id == category.id,
+                            Item.text.ilike(item_text)
+                        )
+                    )
+
+                    if existing_item:
+                        if price is not None and existing_item.price != price:
+                            existing_item.price = price
+                            updated_items += 1
+                    else:
+                        new_item = Item(
+                            text=item_text,
+                            category_id=category.id,
+                            price=price,
+                            is_booked=False
+                        )
+                        session.add(new_item)
+                        added_items += 1
+
+                await session.commit()
+
+            return {
+                "success": True,
+                "added_categories": added_categories,
+                "added_items": added_items,
+                "updated_items": updated_items
+            }
+
+        except Exception as e:
+            logger.exception("Ошибка импорта из TXT")
+            return {"success": False, "error": str(e)}
+
+    @staticmethod
     async def add_category(name: str) -> bool:
         """Добавляет новую категорию."""
         if not name or len(name.strip()) < 2:
