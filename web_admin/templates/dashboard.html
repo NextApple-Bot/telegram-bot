@@ -153,7 +153,7 @@ new Chart(ctx, {
             tension: 0.3
         }, {
             label: 'Выручка (тыс. ₽)',
-            data: {{ chart_revenue | map('div', 1000) | list | tojson }},
+            data: {{ chart_revenue | tojson }},
             borderColor: '#198754',
             tension: 0.3
         }]
