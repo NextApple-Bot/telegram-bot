@@ -18,15 +18,15 @@ async def dashboard(request: Request, target_date: str | None = None):
     async with async_session() as session:
         sales_count = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == today))).scalar() or 0
 
-        # Исправленный запрос под модель DailyPayment
+        # Исправленный запрос под реальную таблицу
         payment_rows = (await session.execute(
             select(
-                func.coalesce(func.sum(DailyPayment.cash), 0).label('cash'),
-                func.coalesce(func.sum(DailyPayment.terminal), 0).label('terminal'),
-                func.coalesce(func.sum(DailyPayment.qr), 0).label('qr'),
-                func.coalesce(func.sum(DailyPayment.transfer), 0).label('transfer'),
-                func.coalesce(func.sum(DailyPayment.invoice), 0).label('invoice'),
-                func.coalesce(func.sum(DailyPayment.installment), 0).label('installment'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'cash'), 0).label('cash'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'terminal'), 0).label('terminal'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'qr'), 0).label('qr'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'transfer'), 0).label('transfer'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'invoice'), 0).label('invoice'),
+                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'installment'), 0).label('installment'),
             ).where(func.date(DailyPayment.created_at) == today)
         )).one()
         payments = {col: getattr(payment_rows, col, 0) for col in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
@@ -42,7 +42,10 @@ async def dashboard(request: Request, target_date: str | None = None):
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
             cnt = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == d))).scalar() or 0
-            rev = (await session.execute(select(func.coalesce(func.sum(DailyPayment.cash + DailyPayment.terminal + DailyPayment.qr + DailyPayment.transfer + DailyPayment.invoice + DailyPayment.installment), 0)).where(func.date(DailyPayment.created_at) == d))).scalar() or 0
+            rev = (await session.execute(
+                select(func.coalesce(func.sum(DailyPayment.amount), 0))
+                .where(func.date(DailyPayment.created_at) == d)
+            )).scalar() or 0
             sales_chart.append(cnt)
             revenue_chart.append(float(rev))
 
