@@ -9,17 +9,15 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str) -> bool:
     """Проверяет пароль."""
-    if not config.ADMIN_PASSWORD_HASH:
+    # Временное решение: используем простой пароль из ADMIN_PASSWORD
+    # (из-за несовместимости passlib + bcrypt в текущей среде)
+    if not config.ADMIN_PASSWORD:
         return False
-    try:
-        return pwd_context.verify(plain_password, config.ADMIN_PASSWORD_HASH)
-    except Exception:
-        return False
+    return plain_password == config.ADMIN_PASSWORD
 
 
 def is_authenticated(request: Request) -> bool:
     """Проверяет авторизацию по сессии (защищённая версия)."""
-    # Защита от AssertionError, если SessionMiddleware не установлен
     if "session" not in getattr(request, "scope", {}):
         return False
 
@@ -27,7 +25,6 @@ def is_authenticated(request: Request) -> bool:
         if not request.session.get("authenticated"):
             return False
 
-        # Авто-выход через 7 дней
         login_time_str = request.session.get("login_time")
         if login_time_str:
             try:
