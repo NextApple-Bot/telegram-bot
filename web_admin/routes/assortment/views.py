@@ -1,8 +1,8 @@
 # Файл: web_admin/routes/assortment/views.py
 
-from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse
-from sqlalchemy import func, select
+from fastapi import APIRouter, Form, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import func, select, update
 
 from bot.db import get_async_session_factory
 from bot.models import Category, Item
@@ -60,7 +60,6 @@ async def list_assortment(
         total_pages = (total + per_page - 1) // per_page if total > 0 else 1
         items = (await session.execute(base_query)).all()
 
-        # Категории для фильтра
         cats_q = select(Category.id, Category.name).where(Category.name != '__SYSTEM__').order_by(Category.sort_order, Category.name)
         categories = (await session.execute(cats_q)).all()
 
@@ -78,5 +77,18 @@ async def list_assortment(
         "sort_order": sort_order,
     })
 
-# Остальные эндпоинты (search, move_up, move_down, delete, rename, reorder) остаются без изменений,
-# так как уже были переписаны на сессии. При необходимости я могу предоставить и их, но в логах ошибок они не упоминались.
+@router.post("/categories/reorder")
+async def reorder_categories(request: Request):
+    data = await request.form()
+    order = data.getlist("order[]")
+
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        for idx, cat_id in enumerate(order):
+            await session.execute(
+                update(Category)
+                .where(Category.id == int(cat_id))
+                .values(sort_order=idx)
+            )
+
+    return RedirectResponse(url="/admin/assortment", status_code=303)
