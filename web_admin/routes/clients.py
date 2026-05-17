@@ -16,7 +16,19 @@ async def clients_list(request: Request):
     async_session = get_async_session_factory()
     async with async_session() as session:
         clients = (await session.execute(select(Client).order_by(Client.created_at.desc()))).scalars().all()
-    return templates.TemplateResponse("clients.html", {"request": request, "clients": clients})
+    return templates.TemplateResponse("clients.html", {
+        "request": request,
+        "clients": clients,
+        "total": len(clients),
+        "page": 1,
+        "per_page": 50,
+        "total_pages": 1,
+        "search": "",
+        "date_from": "",
+        "date_to": "",
+        "sort_by": "id",
+        "sort_order": "desc",
+    })
 
 
 @router.get("/{client_id}", response_class=HTMLResponse)
