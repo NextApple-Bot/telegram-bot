@@ -1,5 +1,3 @@
-# Файл: web_admin/routes/assortment/views.py
-
 from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select, update
