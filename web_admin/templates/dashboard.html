@@ -1,21 +1,20 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid p-4">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-1">Дашборд</h1>
-            <p class="text-muted mb-0">{{ target_date }} • {{ stats.sales_count }} продаж • {{ stats.preorders_count }} предзаказов • {{ stats.bookings_count }} бронирований</p>
-        </div>
-        <div class="d-flex gap-2">
-            <a href="/admin/dashboard?target_date={{ (target_date_iso | replace('-', '')) | int - 1 }}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-chevron-left"></i> Вчера
-            </a>
-            <a href="/admin/dashboard" class="btn btn-primary btn-sm">Сегодня</a>
-            <a href="/admin/dashboard?target_date={{ (target_date_iso | replace('-', '')) | int + 1 }}" class="btn btn-outline-secondary btn-sm">
-                Завтра <i class="bi bi-chevron-right"></i>
-            </a>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h4 mb-1">Дашборд</h1>
+                    <p class="text-muted mb-0">{{ target_date }} • {{ stats.sales_count }} продаж • {{ stats.preorders_count }} предзаказов • {{ stats.bookings_count }} бронирований</p>
+                </div>
+                <div class="btn-group">
+                    <a href="/admin/dashboard?target_date={{ (target_date_iso | replace('-', '')) | int - 1 }}" class="btn btn-outline-secondary btn-sm">← Вчера</a>
+                    <a href="/admin/dashboard" class="btn btn-primary btn-sm">Сегодня</a>
+                    <a href="/admin/dashboard?target_date={{ (target_date_iso | replace('-', '')) | int + 1 }}" class="btn btn-outline-secondary btn-sm">Завтра →</a>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -24,12 +23,12 @@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between">
+                    <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <div class="text-muted small">Выручка сегодня</div>
-                            <div class="kpi-value">{{ "{:,}".format(revenue_today | int) }} ₽</div>
+                            <div class="display-6 fw-bold">{{ "{:,}".format(revenue_today | int) }} ₽</div>
                         </div>
-                        <div class="text-success fs-3"><i class="bi bi-currency-ruble"></i></div>
+                        <div class="text-success"><i class="bi bi-currency-ruble fs-1"></i></div>
                     </div>
                 </div>
             </div>
@@ -37,12 +36,12 @@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between">
+                    <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <div class="text-muted small">Продажи сегодня</div>
-                            <div class="kpi-value">{{ sales_today }}</div>
+                            <div class="display-6 fw-bold">{{ sales_today }}</div>
                         </div>
-                        <div class="text-primary fs-3"><i class="bi bi-cart-check"></i></div>
+                        <div class="text-primary"><i class="bi bi-cart-check fs-1"></i></div>
                     </div>
                 </div>
             </div>
@@ -50,12 +49,12 @@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between">
+                    <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <div class="text-muted small">План на день</div>
-                            <div class="kpi-value">{{ "{:,}".format(plan_amount) }} ₽</div>
+                            <div class="display-6 fw-bold">{{ "{:,}".format(plan_amount) }} ₽</div>
                         </div>
-                        <div class="text-warning fs-3"><i class="bi bi-bullseye"></i></div>
+                        <div class="text-warning"><i class="bi bi-bullseye fs-1"></i></div>
                     </div>
                 </div>
             </div>
@@ -63,19 +62,18 @@
         <div class="col-md-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between">
+                    <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <div class="text-muted small">Выполнение плана</div>
-                            <div class="kpi-value">{{ ((revenue_today / plan_amount * 100) | round(1)) if plan_amount > 0 else 0 }}%</div>
+                            <div class="text-muted small">Выполнение</div>
+                            <div class="display-6 fw-bold">{{ ((revenue_today / plan_amount * 100) | round(1)) if plan_amount > 0 else 0 }}%</div>
                         </div>
-                        <div class="text-info fs-3"><i class="bi bi-graph-up"></i></div>
+                        <div class="text-info"><i class="bi bi-graph-up fs-1"></i></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Charts and Sellers -->
     <div class="row g-3">
         <!-- Sales Chart -->
         <div class="col-lg-8">
@@ -84,7 +82,7 @@
                     <h6 class="mb-0">Продажи и выручка за 7 дней</h6>
                 </div>
                 <div class="card-body">
-                    <canvas id="salesChart" height="120"></canvas>
+                    <canvas id="salesChart" height="100"></canvas>
                 </div>
             </div>
         </div>
@@ -99,16 +97,12 @@
                 <div class="card-body p-0">
                     <div class="list-group list-group-flush">
                         {% for seller in sellers %}
-                        <div class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <span class="fw-medium">{{ seller.name }}</span>
-                            </div>
-                            <div>
-                                <button class="btn btn-sm {% if seller.present %}btn-success{% else %}btn-outline-secondary{% endif %}"
-                                        onclick="toggleSellerDay({{ seller.id }}, '{{ target_date_iso }}', this)">
-                                    {% if seller.present %}✓{% else %}—{% endif %}
-                                </button>
-                            </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                            <span class="fw-medium">{{ seller.name }}</span>
+                            <button class="btn btn-sm {% if seller.present %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                                    onclick="toggleSellerDay({{ seller.id }}, '{{ target_date_iso }}', this)">
+                                {% if seller.present %}✓{% else %}—{% endif %}
+                            </button>
                         </div>
                         {% endfor %}
                     </div>
@@ -117,7 +111,7 @@
         </div>
     </div>
 
-    <!-- Payments Breakdown -->
+    <!-- Payments -->
     <div class="row g-3 mt-3">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
