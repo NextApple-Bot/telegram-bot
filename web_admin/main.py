@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from bot.config import config
-from bot.middleware.rate_limit import rate_limit
+from bot.middleware.rate_limit import RateLimitMiddleware
 from web_admin.auth import is_authenticated
 from web_admin.routes import auth, clients, dashboard, purchases, assortment
 
@@ -20,7 +20,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Middlewares
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.add_middleware(rate_limit.__class__, calls=40, period=60)   # rate limit для админки
+app.add_middleware(RateLimitMiddleware)   # исправлено: правильный класс
 
 # Роутеры
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
