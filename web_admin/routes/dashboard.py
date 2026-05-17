@@ -50,10 +50,11 @@ async def dashboard(request: Request, target_date: str | None = None):
             sales_chart.append(cnt)
             revenue_chart.append(float(rev))
 
+        # Исправлено: Seller.full_name вместо Seller.name
         sellers_rows = (await session.execute(
-            select(Seller.id, Seller.name, SellerDay.id.isnot(None).label('present'))
+            select(Seller.id, Seller.full_name.label('name'), SellerDay.id.isnot(None).label('present'))
             .outerjoin(SellerDay, (Seller.id == SellerDay.seller_id) & (SellerDay.date == today))
-            .order_by(Seller.name)
+            .order_by(Seller.full_name)
         )).all()
         sellers = [{"id": r.id, "name": r.name, "present": r.present} for r in sellers_rows]
 
