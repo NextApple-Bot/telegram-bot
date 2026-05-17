@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -178,3 +178,21 @@ class Seller(Base):
 
     def __repr__(self):
         return f"<Seller {self.id}: {self.full_name}>"
+
+
+class SellerDay(Base):
+    __tablename__ = "seller_days"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="CASCADE"))
+    date: Mapped[datetime] = mapped_column(Date, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    seller: Mapped[Seller] = relationship("Seller", back_populates="days")
+
+    def __repr__(self):
+        return f"<SellerDay {self.id}: seller={self.seller_id} date={self.date}>"
+
+
+# Добавляем обратную связь в Seller
+Seller.days: Mapped[list["SellerDay"]] = relationship("SellerDay", back_populates="seller", cascade="all, delete-orphan")
