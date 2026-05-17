@@ -1,50 +1,41 @@
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from datetime import datetime
 
-from bot.repositories.client_repository import ClientRepository
-from web_admin.auth import is_authenticated
+from bot.db import get_async_session_factory
+from bot.models import Purchase, Client
+from web_admin.templates import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="web_admin/templates")
 
 
-@router.get("/purchases", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 async def purchases_list(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/admin/auth/login")
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        purchases = (await session.execute(
+            select(Purchase, Client.full_name.label("client_name"))
+            .outerjoin(Client, Purchase.client_id == Client.id)
+            .order_by(Purchase.created_at.desc())
+        )).all()
 
-    purchases = await ClientRepository.get_all_purchases_for_export()
-
-    return templates.TemplateResponse("purchases/list.html", {
+    return templates.TemplateResponse("purchases.html", {
         "request": request,
         "purchases": purchases,
-        "title": "Покупки"
+        "total": len(purchases),
+        "page": 1,
+        "per_page": 50,
+        "total_pages": 1,
+        "client_search": "",
+        "date_from": "",
+        "date_to": "",
+        "payment_type": "all",
+        "purchase_type": "all",
+        "sort_by": "id",
+        "sort_order": "desc",
     })
 
 
-@router.get("/purchases/export")
-async def export_purchases(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/admin/auth/login")
-
-    file_path = await export_purchases_csv()
-    return FileResponse(
-        file_path,
-        media_type="text/csv",
-        filename=f"purchases_{datetime.now().strftime('%Y%m%d')}.csv"
-    )
-
-
-@router.get("/report/full")
-async def full_report(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/admin/auth/login")
-
-    file_path = await export_full_report_csv()
-    return FileResponse(
-        file_path,
-        media_type="text/csv",
-        filename=f"full_report_{datetime.now().strftime('%Y%m%d')}.csv"
-    )
+@router.get("/export/csv")
+async def export_purchases_csv(request: Request):
+    return {"detail": "Export not implemented yet"}
