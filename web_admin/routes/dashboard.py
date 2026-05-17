@@ -18,7 +18,6 @@ async def dashboard(request: Request, target_date: str | None = None):
     async with async_session() as session:
         sales_count = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == today))).scalar() or 0
 
-        # Безопасный запрос с обработкой ошибок
         try:
             payment_rows = (await session.execute(
                 select(
@@ -50,11 +49,11 @@ async def dashboard(request: Request, target_date: str | None = None):
             sales_chart.append(cnt)
             revenue_chart.append(float(rev))
 
-        # Исправлено: Seller.full_name вместо Seller.name
+        # Исправлено: Seller.name
         sellers_rows = (await session.execute(
-            select(Seller.id, Seller.full_name.label('name'), SellerDay.id.isnot(None).label('present'))
+            select(Seller.id, Seller.name.label('name'), SellerDay.id.isnot(None).label('present'))
             .outerjoin(SellerDay, (Seller.id == SellerDay.seller_id) & (SellerDay.date == today))
-            .order_by(Seller.full_name)
+            .order_by(Seller.name)
         )).all()
         sellers = [{"id": r.id, "name": r.name, "present": r.present} for r in sellers_rows]
 
