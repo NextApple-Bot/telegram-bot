@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Request
+from datetime import datetime
+
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, select
 
 from bot.db import get_async_session_factory
-from bot.models import Purchase, Client
+from bot.models import Client, Purchase
 from web_admin.templates import templates
 
 router = APIRouter()
@@ -18,7 +20,6 @@ async def purchases_list(request: Request):
             .outerjoin(Client, Purchase.client_id == Client.id)
             .order_by(Purchase.created_at.desc())
         )).all()
-
     return templates.TemplateResponse("purchases.html", {
         "request": request,
         "purchases": purchases,
