@@ -92,3 +92,22 @@ async def reorder_categories(request: Request):
             )
 
     return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/categories/{category_id}/delete")
+async def delete_category(request: Request, category_id: int):
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        category = await session.get(Category, category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="Категория не найдена")
+
+        items_count = await session.execute(
+            select(func.count()).select_from(Item).where(Item.category_id == category_id)
+        )
+        if items_count.scalar() > 0:
+            raise HTTPException(status_code=400, detail="Нельзя удалить категорию с товарами")
+
+        await session.delete(category)
+
+    return RedirectResponse(url="/admin/assortment", status_code=303)
