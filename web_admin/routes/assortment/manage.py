@@ -3,7 +3,7 @@ import logging
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from bot.db import get_async_session_factory
@@ -215,7 +215,6 @@ async def edit_item_submit(
                     old.sale_change = None
                     old.sale_change_type = None
                     old.sale_prepayment = None
-                    old.sale_payment_type = None
                     old.sale_platform = None
                     old.sale_full_name = None
                     old.sale_phone = None
@@ -230,7 +229,6 @@ async def edit_item_submit(
                             "is_cancel": True
                         }
 
-            # Уведомления после коммита
             if notify_booking:
                 from .notifications import send_booking_notification
                 asyncio.create_task(send_booking_notification(**notify_booking))
@@ -354,4 +352,21 @@ async def add_category(request: Request, name: str = Form(...)):
         new_category = Category(name=name, sort_order=max_order.scalar() + 1)
         session.add(new_category)
     await AssortmentService.invalidate_cache()
+    return RedirectResponse(url="/admin/assortment", status_code=303)
+
+
+@router.post("/categories/reorder")
+async def reorder_categories(request: Request):
+    data = await request.form()
+    order = data.getlist("order[]")
+
+    async_session = get_async_session_factory()
+    async with async_session() as session, session.begin():
+        for idx, cat_id in enumerate(order):
+            await session.execute(
+                update(Category)
+                .where(Category.id == int(cat_id))
+                .values(sort_order=idx)
+            )
+
     return RedirectResponse(url="/admin/assortment", status_code=303)
