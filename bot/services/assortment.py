@@ -1,7 +1,8 @@
 import logging
 from typing import List, Dict, Any
 
-from sqlalchemy import select, delete
+import pandas as pd
+from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db import get_async_session_factory
@@ -47,6 +48,80 @@ class AssortmentService:
                 })
 
         return list(categories.values())
+
+    @staticmethod
+    async def import_arrival_from_excel(file_path: str) -> Dict[str, Any]:
+        """Импорт нового ассортимента из Excel-файла (прибытие)."""
+        try:
+            df = pd.read_excel(file_path)
+
+            # Ожидаемые колонки: category, text, price (опционально)
+            required_cols = ['category', 'text']
+            if not all(col in df.columns for col in required_cols):
+                return {
+                    "success": False,
+                    "error": f"Неверный формат файла. Нужны колонки: {required_cols}"
+                }
+
+            added_categories = 0
+            added_items = 0
+            updated_items = 0
+
+            async with get_async_session_factory()() as session:
+                for _, row in df.iterrows():
+                    category_name = str(row['category']).strip()
+                    item_text = str(row['text']).strip()
+                    price = int(row['price']) if 'price' in row and pd.notna(row['price']) else None
+
+                    if not category_name or not item_text:
+                        continue
+
+                    # Находим или создаём категорию
+                    category = await session.scalar(
+                        select(Category).where(Category.name.ilike(category_name))
+                    )
+                    if not category:
+                        category = Category(name=category_name)
+                        session.add(category)
+                        await session.flush()
+                        added_categories += 1
+
+                    # Проверяем, есть ли уже такой товар
+                    existing_item = await session.scalar(
+                        select(Item).where(
+                            Item.category_id == category.id,
+                            Item.text.ilike(item_text)
+                        )
+                    )
+
+                    if existing_item:
+                        # Обновляем цену, если изменилась
+                        if price is not None and existing_item.price != price:
+                            existing_item.price = price
+                            updated_items += 1
+                    else:
+                        # Добавляем новый товар
+                        new_item = Item(
+                            text=item_text,
+                            category_id=category.id,
+                            price=price,
+                            is_booked=False
+                        )
+                        session.add(new_item)
+                        added_items += 1
+
+                await session.commit()
+
+            return {
+                "success": True,
+                "added_categories": added_categories,
+                "added_items": added_items,
+                "updated_items": updated_items
+            }
+
+        except Exception as e:
+            logger.exception("Ошибка импорта из Excel")
+            return {"success": False, "error": str(e)}
 
     @staticmethod
     async def add_category(name: str) -> bool:
