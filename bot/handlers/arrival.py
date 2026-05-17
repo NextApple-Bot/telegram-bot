@@ -1,6 +1,5 @@
 import logging
 import os
-import tempfile
 
 from aiogram import Router
 from aiogram.types import Message
@@ -14,24 +13,34 @@ logger = logging.getLogger(__name__)
 
 @router.message()
 async def handle_arrival_file(message: Message):
-    """Обработка файлов с новым ассортиментом в топике 'прибытие'."""
+    """Обработка файлов с новым ассортиментом (Excel или TXT)."""
     if not message.document:
         return
 
     file_name = message.document.file_name.lower()
-    if not file_name.endswith(('.xlsx', '.xls')):
-        await message.answer("❌ Поддерживаются только Excel-файлы (.xlsx, .xls)")
+
+    # Поддерживаемые форматы
+    if file_name.endswith(('.xlsx', '.xls')):
+        file_type = 'excel'
+    elif file_name.endswith('.txt'):
+        file_type = 'txt'
+    else:
+        await message.answer("❌ Поддерживаются только Excel (.xlsx, .xls) и TXT файлы")
         return
 
     # Скачиваем файл
     file_path = None
     try:
         file = await message.bot.get_file(message.document.file_id)
-        file_path = f"/tmp/{message.document.file_id}.xlsx"
+        ext = '.xlsx' if file_type == 'excel' else '.txt'
+        file_path = f"/tmp/{message.document.file_id}{ext}"
         await message.bot.download_file(file.file_path, file_path)
 
         # Импортируем
-        result = await AssortmentService.import_arrival_from_excel(file_path)
+        if file_type == 'excel':
+            result = await AssortmentService.import_arrival_from_excel(file_path)
+        else:
+            result = await AssortmentService.import_arrival_from_txt(file_path)
 
         if result.get("success"):
             text = (
