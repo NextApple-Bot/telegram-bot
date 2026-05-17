@@ -49,7 +49,6 @@ async def dashboard(request: Request, target_date: str | None = None):
             sales_chart.append(cnt)
             revenue_chart.append(float(rev))
 
-        # Исправлено: Seller.name
         sellers_rows = (await session.execute(
             select(Seller.id, Seller.name.label('name'), SellerDay.id.isnot(None).label('present'))
             .outerjoin(SellerDay, (Seller.id == SellerDay.seller_id) & (SellerDay.date == today))
@@ -84,15 +83,18 @@ async def dashboard(request: Request, target_date: str | None = None):
 async def toggle_seller_day(seller_id: int = Form(...), target_date: str = Form(...)):
     date_obj = datetime.strptime(target_date, "%Y-%m-%d").date()
     async_session = get_async_session_factory()
-    async with async_session() as session, session.begin():
-        existing = (await session.execute(select(SellerDay).where(SellerDay.seller_id == seller_id, SellerDay.date == date_obj))).scalar_one_or_none()
-        if existing:
-            await session.delete(existing)
-            status = "removed"
-        else:
-            session.add(SellerDay(seller_id=seller_id, date=date_obj))
-            status = "added"
-    return {"success": True, "status": status}
+    try:
+        async with async_session() as session, session.begin():
+            existing = (await session.execute(select(SellerDay).where(SellerDay.seller_id == seller_id, SellerDay.date == date_obj))).scalar_one_or_none()
+            if existing:
+                await session.delete(existing)
+                status = "removed"
+            else:
+                session.add(SellerDay(seller_id=seller_id, date=date_obj))
+                status = "added"
+        return {"success": True, "status": status}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @router.post("/update_stats")
 async def update_stats(request: Request):
