@@ -28,7 +28,6 @@ class Item(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    price: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
     category: Mapped[Category] = relationship("Category", back_populates="items")
@@ -161,7 +160,7 @@ class ProcessedMessage(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    message_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     processed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     def __repr__(self):
