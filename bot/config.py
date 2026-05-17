@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "default-insecure-key-for-development-only-change-in-production"
     ADMIN_PASSWORD: str = 'admin'
+    ADMIN_PASSWORD_HASH: str = ''   # добавлено для веб-админки
 
     # Other
     ENVIRONMENT: str = 'development'
