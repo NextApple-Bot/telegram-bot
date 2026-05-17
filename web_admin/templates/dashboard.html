@@ -1,20 +1,295 @@
 {% extends "base.html" %}
-
+{% block title %}Дашборд{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .stats-card { border-left: 4px solid var(--primary); transition: all 0.2s; }
+    .stats-card:hover { box-shadow: var(--shadow-lg); }
+    .kpi-value { font-size: 2.5rem; font-weight: 700; color: var(--text-dark); line-height: 1.2; }
+    .trend-badge { font-size: 0.85rem; padding: 0.25rem 0.75rem; border-radius: 20px; background-color: var(--bg-light); display: inline-block; }
+    .seller-toggle-btn { border-radius: 20px; padding: 0.3rem 1.2rem; transition: all 0.15s; }
+    .seller-toggle-btn.btn-primary { background-color: var(--primary); border-color: var(--primary); }
+    .date-nav-btn { width: 44px; height: 44px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 1.4rem; padding: 0; border: 1px solid var(--border-light); background: var(--card-bg); color: var(--text-dark); cursor: pointer; transition: all 0.15s; }
+    .date-nav-btn:hover { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
+    .date-display { font-size: 1.1rem; font-weight: 600; color: var(--text-dark); min-width: 120px; text-align: center; }
+    .date-picker-input { border: 1px solid var(--border-light); border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.9rem; background: var(--card-bg); color: var(--text-dark); cursor: pointer; width: auto; max-width: 150px; }
+    @media (max-width: 480px) { .kpi-value { font-size: 1.8rem; } .seller-toggle-btn { width: 100%; margin-bottom: 0.5rem; } .trend-badge { display: block; margin-bottom: 0.25rem; } .date-nav-btn { width: 38px; height: 38px; font-size: 1.2rem; } .date-display { font-size: 0.95rem; min-width: 100px; } }
+</style>
+{% endblock %}
 {% block content %}
-<h1>Панель управления</h1>
-
-<div class="status-grid">
-    <div class="card">
-        <h3>База данных</h3>
-        <p>{{ db_status }}</p>
+<div class="row align-items-end mb-4">
+    <div class="col-auto">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button class="date-nav-btn" id="prevDayBtn" title="Предыдущий день"><i class="bi bi-chevron-left"></i></button>
+            <span class="date-display" id="dateDisplay">{{ target_date }}</span>
+            <button class="date-nav-btn" id="nextDayBtn" title="Следующий день"><i class="bi bi-chevron-right"></i></button>
+            <input type="date" class="date-picker-input" id="targetDateInput" value="{{ target_date_iso }}" title="Выбрать дату">
+        </div>
     </div>
-    <div class="card">
-        <h3>Redis</h3>
-        <p>{{ redis_status }}</p>
+    <div class="col-auto ms-auto">
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editStatsModal">
+            <i class="bi bi-pencil-square me-1"></i> Редактировать статистику
+        </button>
     </div>
 </div>
 
-<a href="/admin/clients">Клиенты</a> |
-<a href="/admin/purchases">Покупки</a> |
-<a href="/admin/assortment">Ассортимент</a>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 style="font-weight: 600; font-size: 1.8rem; color: var(--text-dark);">Дашборд за {{ target_date }}</h1>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-cart-check-fill me-2 fs-4" style="color: var(--primary);"></i>
+                    <h5 class="card-title mb-0 fw-semibold">Продажи</h5>
+                </div>
+                <div class="kpi-value">{{ sales_today }}</div>
+                <div class="mt-2">
+                    {% if sales_change_yesterday is not none %}
+                    {% if sales_change_yesterday > 0 %}
+                    <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ sales_change_yesterday }}% ко вчера</span>
+                    {% elif sales_change_yesterday < 0 %}
+                    <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ sales_change_yesterday }}% ко вчера</span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">➖ без изменений</span>
+                    {% endif %}
+                    <span class="ms-2">
+                        {% if sales_change_week > 0 %}
+                        <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ sales_change_week }}% к нед.</span>
+                        {% elif sales_change_week < 0 %}
+                        <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ sales_change_week }}% к нед.</span>
+                        {% else %}
+                        <span class="trend-badge text-secondary">➖ к нед.</span>
+                        {% endif %}
+                    </span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">Нет данных сравнения</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card stats-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-currency-dollar me-2 fs-4" style="color: var(--success);"></i>
+                    <h5 class="card-title mb-0 fw-semibold">Выручка</h5>
+                </div>
+                <div class="kpi-value">{{ "{:,0f}".format(revenue_today) }} ₽</div>
+                <div class="mt-2">
+                    {% if revenue_change_yesterday is not none %}
+                    {% if revenue_change_yesterday > 0 %}
+                    <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ revenue_change_yesterday }}% ко вчера</span>
+                    {% elif revenue_change_yesterday < 0 %}
+                    <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ revenue_change_yesterday }}% ко вчера</span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">➖ без изменений</span>
+                    {% endif %}
+                    <span class="ms-2">
+                        {% if revenue_change_week > 0 %}
+                        <span class="trend-badge text-success"><i class="bi bi-arrow-up-short"></i> +{{ revenue_change_week }}% к нед.</span>
+                        {% elif revenue_change_week < 0 %}
+                        <span class="trend-badge text-danger"><i class="bi bi-arrow-down-short"></i> {{ revenue_change_week }}% к нед.</span>
+                        {% else %}
+                        <span class="trend-badge text-secondary">➖ к нед.</span>
+                        {% endif %}
+                    </span>
+                    {% else %}
+                    <span class="trend-badge text-secondary">Нет данных сравнения</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header fw-semibold"><i class="bi bi-coin me-2"></i> Финансы за {{ target_date }}</div>
+            <div class="card-body p-0">
+                <table class="table table-borderless mb-0">
+                    <tr><th class="ps-4">Наличные</th><td class="text-end pe-4">{{ payments.cash|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Терминал</th><td class="text-end pe-4">{{ payments.terminal|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">QR-код</th><td class="text-end pe-4">{{ payments.qr|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Перевод</th><td class="text-end pe-4">{{ payments.transfer|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Оплата по счету</th><td class="text-end pe-4">{{ payments.invoice|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Рассрочка</th><td class="text-end pe-4">{{ payments.installment|round(0) }} ₽</td></tr>
+                    <tr class="border-top"><th class="ps-4 fw-bold">Итого</th><td class="text-end pe-4 fw-bold fs-5">{{ total_revenue|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">План</th><td class="text-end pe-4">{{ plan_amount|round(0) }} ₽</td></tr>
+                    <tr><th class="ps-4">Выполнение</th><td class="text-end pe-4">{{ (total_revenue / plan_amount * 100)|round(1) }}%</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header fw-semibold"><i class="bi bi-people me-2"></i> Продавцы дня ({{ target_date }})</div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2" id="sellersList">
+            {% for seller in sellers %}
+            <button class="btn btn-sm seller-toggle-btn {% if seller.present %}btn-primary{% else %}btn-outline-secondary{% endif %}" data-seller-id="{{ seller.id }}" data-present="{{ 'true' if seller.present else 'false' }}">{{ seller.name }}</button>
+            {% endfor %}
+        </div>
+        <div class="mt-3">
+            <a href="/admin/sellers/manage" class="btn btn-outline-primary btn-sm"><i class="bi bi-gear"></i> Управление продавцами</a>
+            <a href="/admin/sellers/stats" class="btn btn-outline-primary btn-sm ms-2"><i class="bi bi-graph-up"></i> Статистика продавцов</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.querySelectorAll('.seller-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const sellerId = this.dataset.sellerId;
+            const targetDate = "{{ target_date_iso }}";
+            const formData = new FormData();
+            formData.append('seller_id', sellerId);
+            formData.append('target_date', targetDate);
+            try {
+                const resp = await fetch('/admin/dashboard/toggle_seller_day', { method: 'POST', body: formData });
+                const result = await resp.json();
+                if (result.success) {
+                    if (result.status === 'added') { this.classList.remove('btn-outline-secondary'); this.classList.add('btn-primary'); this.dataset.present = 'true'; }
+                    else { this.classList.remove('btn-primary'); this.classList.add('btn-outline-secondary'); this.dataset.present = 'false'; }
+                } else { alert('Ошибка'); }
+            } catch (e) { alert('Ошибка сети'); }
+        });
+    });
+
+    const targetDateInput = document.getElementById('targetDateInput');
+    function goToDate(dateString) { window.location.href = '?target_date=' + dateString; }
+    function navigateDate(direction) {
+        const currentDate = new Date(targetDateInput.value + 'T00:00:00');
+        currentDate.setDate(currentDate.getDate() + direction);
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        goToDate(`${year}-${month}-${day}`);
+    }
+    document.getElementById('prevDayBtn').addEventListener('click', () => navigateDate(-1));
+    document.getElementById('nextDayBtn').addEventListener('click', () => navigateDate(1));
+    targetDateInput.addEventListener('change', function() { if (this.value) goToDate(this.value); });
+    document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        if (e.key === 'ArrowLeft') navigateDate(-1);
+        if (e.key === 'ArrowRight') navigateDate(1);
+    });
+</script>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100"><div class="card-header fw-semibold"><i class="bi bi-graph-up me-2"></i>Динамика продаж за 7 дней</div><div class="card-body"><canvas id="salesChart" width="400" height="200"></canvas></div></div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100"><div class="card-header fw-semibold"><i class="bi bi-graph-up-arrow me-2"></i>Динамика выручки за 7 дней</div><div class="card-body"><canvas id="revenueChart" width="400" height="200"></canvas></div></div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center fw-semibold">
+                <span><i class="bi bi-trophy me-2"></i>Топ-5 моделей</span>
+                <select id="periodSelect" class="form-select form-select-sm w-auto">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>7 дней</option>
+                    <option value="14" {% if days == 14 %}selected{% endif %}>14 дней</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>30 дней</option>
+                </select>
+            </div>
+            <div class="card-body"><canvas id="topModelsChart" width="400" height="200"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editStatsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title fw-semibold">Редактировать статистики за <span id="editDateLabel">{{ target_date }}</span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <form id="editStatsForm">
+                    <input type="hidden" name="target_date" value="{{ target_date_iso }}">
+                    <h6 class="fw-semibold mb-3">Платежи</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4"><label class="form-label">Наличные (₽)</label><input type="number" step="0.01" class="form-control" name="cash" value="{{ payments.cash }}"></div>
+                        <div class="col-md-4"><label class="form-label">Терминал (₽)</label><input type="number" step="0.01" class="form-control" name="terminal" value="{{ payments.terminal }}"></div>
+                        <div class="col-md-4"><label class="form-label">QR-код (₽)</label><input type="number" step="0.01" class="form-control" name="qr" value="{{ payments.qr }}"></div>
+                        <div class="col-md-4"><label class="form-label">Перевод (₽)</label><input type="number" step="0.01" class="form-control" name="transfer" value="{{ payments.transfer }}"></div>
+                        <div class="col-md-4"><label class="form-label">Оплата по счету (₽)</label><input type="number" step="0.01" class="form-control" name="invoice" value="{{ payments.invoice }}"></div>
+                        <div class="col-md-4"><label class="form-label">Рассрочка (₽)</label><input type="number" step="0.01" class="form-control" name="installment" value="{{ payments.installment }}"></div>
+                    </div>
+                    <h6 class="fw-semibold mb-3">Количество</h6>
+                    <div class="row g-3">
+                        <div class="col-md-4"><label class="form-label">Продажи</label><input type="number" step="1" class="form-control" name="sales_count" value="{{ stats.sales_count }}"></div>
+                        <div class="col-md-4"><label class="form-label">Предзаказы</label><input type="number" step="1" class="form-control" name="preorders_count" value="{{ stats.preorders_count }}"></div>
+                        <div class="col-md-4"><label class="form-label">Брони</label><input type="number" step="1" class="form-control" name="bookings_count" value="{{ stats.bookings_count }}"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveStatsBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    new Chart(document.getElementById('salesChart'), { type: 'line', data: { labels: {{ chart_dates|tojson }}, datasets: [{ label: 'Продажи', data: {{ chart_sales|tojson }}, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.05)', fill: true, tension: 0.3, pointBackgroundColor: '#2563eb', borderWidth: 2 }] }, options: { responsive: true, plugins: { tooltip: { mode: 'index' } }, scales: { y: { beginAtZero: true, stepSize: 1, precision: 0, grid: { color: '#e2e8f0' } }, x: { grid: { display: false } } } } });
+    new Chart(document.getElementById('revenueChart'), { type: 'line', data: { labels: {{ chart_dates|tojson }}, datasets: [{ label: 'Выручка (₽)', data: {{ chart_revenue|tojson }}, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.05)', fill: true, tension: 0.3, pointBackgroundColor: '#10b981', borderWidth: 2 }] }, options: { responsive: true, plugins: { tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toLocaleString()} ₽` } } }, scales: { y: { beginAtZero: true, grid: { color: '#e2e8f0' }, ticks: { callback: (v) => v.toLocaleString() + ' ₽' } }, x: { grid: { display: false } } } } });
+
+    let pieChart = null;
+    const pieCtx = document.getElementById('topModelsChart').getContext('2d');
+    const colors = ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'];
+    function updateTopModels(days) {
+        fetch(`/admin/dashboard/top_models_data?days=${days}&target_date={{ target_date_iso }}`).then(res => res.json()).then(data => {
+            if (pieChart) pieChart.destroy();
+            if (data.labels.length === 0) { pieCtx.clearRect(0, 0, 400, 200); pieCtx.fillStyle = '#f1f5f9'; pieCtx.fillRect(0, 0, 400, 200); pieCtx.fillStyle = '#334155'; pieCtx.font = '14px Inter'; pieCtx.textAlign = 'center'; pieCtx.fillText('Нет данных за период', 200, 110); return; }
+            pieChart = new Chart(pieCtx, { type: 'doughnut', data: { labels: data.labels, datasets: [{ data: data.counts, backgroundColor: colors, borderWidth: 0, hoverOffset: 6 }] }, options: { responsive: true, plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 16, color: '#334155' } }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } } }, cutout: '65%' } });
+        });
+    }
+    document.getElementById('periodSelect').addEventListener('change', (e) => updateTopModels(e.target.value));
+    {% if top_labels %}
+    pieChart = new Chart(pieCtx, { type: 'doughnut', data: { labels: {{ top_labels|tojson }}, datasets: [{ data: {{ top_counts|tojson }}, backgroundColor: colors, borderWidth: 0, hoverOffset: 6 }] }, options: { responsive: true, plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 16, color: '#334155' } }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw} шт.` } } }, cutout: '65%' } });
+    {% else %}
+    pieCtx.fillStyle = '#f1f5f9'; pieCtx.fillRect(0, 0, 400, 200); pieCtx.fillStyle = '#334155'; pieCtx.font = '14px Inter'; pieCtx.textAlign = 'center'; pieCtx.fillText('Нет данных за период', 200, 110);
+    {% endif %}
+
+    document.getElementById('saveStatsBtn').addEventListener('click', async () => {
+        const form = document.getElementById('editStatsForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        for (let k in data) { if (k !== 'target_date') data[k] = parseFloat(data[k]) || 0; }
+        try {
+            const res = await fetch('/admin/dashboard/update_stats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            const result = await res.json();
+            if (result.success) { const modal = bootstrap.Modal.getInstance(document.getElementById('editStatsModal')); modal.hide(); window.location.href = '?target_date=' + encodeURIComponent(data.target_date) + '&_t=' + Date.now(); }
+            else { alert('Ошибка: ' + (result.error || 'Не удалось сохранить')); }
+        } catch (e) { alert('Ошибка сети: ' + e.message); }
+    });
+</script>
+
+{% endblock %}
+{% block extra_scripts %}
+<script>
+    let touchStartY = 0; const threshold = 120; const dashboardBody = document.querySelector('.main-content');
+    dashboardBody.addEventListener('touchstart', function(e) { if (window.scrollY === 0) touchStartY = e.touches[0].clientY; }, {passive: true});
+    dashboardBody.addEventListener('touchend', function(e) {
+        if (window.scrollY === 0 && touchStartY > 0) {
+            const touchEndY = e.changedTouches[0].clientY;
+            if (touchEndY - touchStartY > threshold) {
+                const indicator = document.createElement('div');
+                indicator.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;';
+                indicator.innerHTML = '<div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(0,0,0,0.1);border-top-color:#007aff;animation:apple-spin 0.7s linear infinite;backdrop-filter:blur(4px);box-shadow:0 0 15px rgba(0,122,255,0.5);"></div>';
+                document.body.appendChild(indicator);
+                setTimeout(() => location.reload(), 300);
+            }
+            touchStartY = 0;
+        }
+    }, {passive: true});
+</script>
 {% endblock %}
