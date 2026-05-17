@@ -1,23 +1,18 @@
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
 from starlette.requests import Request
 
 from bot.config import config
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain_password: str) -> bool:
-    """Проверяет пароль."""
-    # Временное решение: используем простой пароль из ADMIN_PASSWORD
-    # (из-за несовместимости passlib + bcrypt в текущей среде)
+    """Проверяет пароль (простое сравнение)."""
     if not config.ADMIN_PASSWORD:
         return False
     return plain_password == config.ADMIN_PASSWORD
 
 
 def is_authenticated(request: Request) -> bool:
-    """Проверяет авторизацию по сессии (защищённая версия)."""
+    """Проверяет авторизацию по сессии."""
     if "session" not in getattr(request, "scope", {}):
         return False
 
