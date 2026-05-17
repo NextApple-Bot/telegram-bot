@@ -12,7 +12,7 @@ templates = Jinja2Templates(directory="web_admin/templates")
 async def login_page(request: Request):
     if is_authenticated(request):
         return RedirectResponse("/admin/dashboard")
-    return templates.TemplateResponse("auth/login.html", {"request": request})
+    return templates.TemplateResponse("login.html", {"request": request})
 
 
 @router.post("/login")
@@ -21,7 +21,7 @@ async def login_post(request: Request, password: str = Form(...)):
         return RedirectResponse("/admin/dashboard", status_code=303)
     else:
         return templates.TemplateResponse(
-            "auth/login.html",
+            "login.html",
             {"request": request, "error": "Неверный пароль"}
         )
 
