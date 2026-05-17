@@ -38,7 +38,8 @@ app.include_router(assortment.router, prefix="/assortment", tags=["assortment"])
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if path.startswith(("/auth/login", "/static", "/health")) or path == "/":
+    # Исправлено: проверяем наличие "/auth/login" в пути (работает для /admin/auth/login)
+    if "/auth/login" in path or path.startswith("/static") or path.startswith("/health") or path == "/":
         return await call_next(request)
 
     if not is_authenticated(request):
