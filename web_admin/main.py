@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from bot.config import config
 from bot.middleware.rate_limit import RateLimitMiddleware
@@ -20,7 +21,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Middlewares
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.add_middleware(RateLimitMiddleware)   # исправлено: правильный класс
+app.add_middleware(RateLimitMiddleware)
+
+# Главное исправление: добавляем SessionMiddleware в самой админке
+if config.SECRET_KEY:
+    app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
 
 # Роутеры
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
