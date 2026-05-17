@@ -188,7 +188,6 @@ class SellerDay(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="CASCADE"))
     date: Mapped[datetime] = mapped_column(Date, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     seller: Mapped[Seller] = relationship("Seller", back_populates="days")
 
