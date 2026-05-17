@@ -33,7 +33,6 @@ class Item(Base):
     category: Mapped[Category] = relationship("Category", back_populates="items")
 
     is_booked: Mapped[bool] = mapped_column(Boolean, default=False)
-    booking_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     serial: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -65,9 +64,9 @@ class Purchase(Base):
     client: Mapped[Client] = relationship("Client", back_populates="purchases")
 
     total_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    purchase_type: Mapped[str] = mapped_column(String(50), nullable=False)  # sale, preorder, booking
+    purchase_type: Mapped[str] = mapped_column(String(50), nullable=False)
     payment_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    items_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON строкой
+    items_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
