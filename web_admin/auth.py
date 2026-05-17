@@ -18,23 +18,30 @@ def verify_password(plain_password: str) -> bool:
 
 
 def is_authenticated(request: Request) -> bool:
-    """Проверяет авторизацию по сессии."""
-    if not request.session.get("authenticated"):
+    """Проверяет авторизацию по сессии (защищённая версия)."""
+    # Защита от AssertionError, если SessionMiddleware не установлен
+    if "session" not in getattr(request, "scope", {}):
         return False
 
-    # Авто-выход через 7 дней
-    login_time_str = request.session.get("login_time")
-    if login_time_str:
-        try:
-            login_time = datetime.fromisoformat(login_time_str)
-            if datetime.utcnow() - login_time > timedelta(days=7):
-                request.session.clear()
-                return False
-        except Exception:
-            request.session.clear()
+    try:
+        if not request.session.get("authenticated"):
             return False
 
-    return True
+        # Авто-выход через 7 дней
+        login_time_str = request.session.get("login_time")
+        if login_time_str:
+            try:
+                login_time = datetime.fromisoformat(login_time_str)
+                if datetime.utcnow() - login_time > timedelta(days=7):
+                    request.session.clear()
+                    return False
+            except Exception:
+                request.session.clear()
+                return False
+
+        return True
+    except Exception:
+        return False
 
 
 def login_user(request: Request, password: str) -> bool:
