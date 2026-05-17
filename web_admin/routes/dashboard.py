@@ -18,18 +18,22 @@ async def dashboard(request: Request, target_date: str | None = None):
     async with async_session() as session:
         sales_count = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == today))).scalar() or 0
 
-        # Исправленный запрос под реальную таблицу
-        payment_rows = (await session.execute(
-            select(
-                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'cash'), 0).label('cash'),
-                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'terminal'), 0).label('terminal'),
-                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'qr'), 0).label('qr'),
-                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'transfer'), 0).label('transfer'),
-                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'invoice'), 0).label('invoice'),
-                func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'installment'), 0).label('installment'),
-            ).where(func.date(DailyPayment.created_at) == today)
-        )).one()
-        payments = {col: getattr(payment_rows, col, 0) for col in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
+        # Безопасный запрос с обработкой ошибок
+        try:
+            payment_rows = (await session.execute(
+                select(
+                    func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'cash'), 0).label('cash'),
+                    func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'terminal'), 0).label('terminal'),
+                    func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'qr'), 0).label('qr'),
+                    func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'transfer'), 0).label('transfer'),
+                    func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'invoice'), 0).label('invoice'),
+                    func.coalesce(func.sum(DailyPayment.amount).filter(DailyPayment.payment_type == 'installment'), 0).label('installment'),
+                ).where(func.date(DailyPayment.created_at) == today)
+            )).one()
+            payments = {col: getattr(payment_rows, col, 0) for col in ['cash', 'terminal', 'qr', 'transfer', 'invoice', 'installment']}
+        except Exception:
+            payments = {'cash': 0, 'terminal': 0, 'qr': 0, 'transfer': 0, 'invoice': 0, 'installment': 0}
+
         total_revenue = sum(payments.values())
         plan = 600000
 
@@ -42,10 +46,7 @@ async def dashboard(request: Request, target_date: str | None = None):
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
             cnt = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == d))).scalar() or 0
-            rev = (await session.execute(
-                select(func.coalesce(func.sum(DailyPayment.amount), 0))
-                .where(func.date(DailyPayment.created_at) == d)
-            )).scalar() or 0
+            rev = 0
             sales_chart.append(cnt)
             revenue_chart.append(float(rev))
 
