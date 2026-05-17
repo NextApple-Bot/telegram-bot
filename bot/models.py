@@ -142,12 +142,8 @@ class DailyPayment(Base):
     __tablename__ = "daily_payments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    cash: Mapped[float] = mapped_column(default=0)
-    terminal: Mapped[float] = mapped_column(default=0)
-    qr: Mapped[float] = mapped_column(default=0)
-    transfer: Mapped[float] = mapped_column(default=0)
-    invoice: Mapped[float] = mapped_column(default=0)
-    installment: Mapped[float] = mapped_column(default=0)
+    amount: Mapped[float] = mapped_column(default=0)
+    payment_type: Mapped[str] = mapped_column(String(20), default='cash')
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     def __repr__(self):
