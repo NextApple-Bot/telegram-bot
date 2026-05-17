@@ -1,36 +1,36 @@
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from bot.repositories.client_repository import ClientRepository
-from web_admin.auth import is_authenticated
+from bot.db import get_async_session_factory
+from bot.models import Client
+from web_admin.templates import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="web_admin/templates")
 
 
-@router.get("/clients", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 async def clients_list(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/admin/auth/login")
+    async_session = get_async_session_factory()
+    async with async_session() as session:
+        clients = (await session.execute(select(Client).order_by(Client.created_at.desc()))).scalars().all()
 
-    clients = await ClientRepository.get_all_clients_for_export()
-
-    return templates.TemplateResponse("clients/list.html", {
+    return templates.TemplateResponse("clients.html", {
         "request": request,
         "clients": clients,
-        "title": "Клиенты"
+        "total": len(clients),
+        "page": 1,
+        "per_page": 50,
+        "total_pages": 1,
+        "search": "",
+        "date_from": "",
+        "date_to": "",
+        "sort_by": "id",
+        "sort_order": "desc",
     })
 
 
-@router.get("/clients/export")
-async def export_clients(request: Request):
-    if not is_authenticated(request):
-        return RedirectResponse("/admin/auth/login")
-
-    file_path = await export_clients_csv()  # из service_commands
-    return FileResponse(
-        file_path,
-        media_type="text/csv",
-        filename=f"clients_{datetime.now().strftime('%Y%m%d')}.csv"
-    )
+@router.get("/export/csv")
+async def export_clients_csv(request: Request):
+    # Временная заглушка
+    return {"detail": "Export not implemented yet"}
