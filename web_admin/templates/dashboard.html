@@ -81,8 +81,8 @@
                 <div class="card-header bg-white border-0">
                     <h6 class="mb-0">Продажи и выручка за 7 дней</h6>
                 </div>
-                <div class="card-body">
-                    <canvas id="salesChart" height="100"></canvas>
+                <div class="card-body" style="height: 320px; position: relative;">
+                    <canvas id="salesChart"></canvas>
                 </div>
             </div>
         </div>
@@ -152,7 +152,11 @@ new Chart(ctx, {
             tension: 0.3
         }]
     },
-    options: { responsive: true, maintainAspectRatio: false }
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } }
+    }
 });
 
 function toggleSellerDay(sellerId, date, btn) {
