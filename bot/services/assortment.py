@@ -41,9 +41,9 @@ class AssortmentService:
                 categories[cat_name]["items"].append({
                     "id": item.id,
                     "text": item.text.strip(),
-                    "price": item.price,
+                    "price": getattr(item, 'booking_price', None) or getattr(item, 'sale_price', None),
                     "is_booked": item.is_booked,
-                    "booking_info": item.booking_info,
+                    "booking_info": getattr(item, 'booking_info', None),
                     "serial": item.serial,
                 })
 
@@ -55,7 +55,6 @@ class AssortmentService:
         try:
             df = pd.read_excel(file_path)
 
-            # Ожидаемые колонки: category, text, price (опционально)
             required_cols = ['category', 'text']
             if not all(col in df.columns for col in required_cols):
                 return {
@@ -76,7 +75,6 @@ class AssortmentService:
                     if not category_name or not item_text:
                         continue
 
-                    # Находим или создаём категорию
                     category = await session.scalar(
                         select(Category).where(Category.name.ilike(category_name))
                     )
@@ -86,7 +84,6 @@ class AssortmentService:
                         await session.flush()
                         added_categories += 1
 
-                    # Проверяем, есть ли уже такой товар
                     existing_item = await session.scalar(
                         select(Item).where(
                             Item.category_id == category.id,
@@ -95,16 +92,14 @@ class AssortmentService:
                     )
 
                     if existing_item:
-                        # Обновляем цену, если изменилась
-                        if price is not None and existing_item.price != price:
-                            existing_item.price = price
+                        if price is not None and getattr(existing_item, 'booking_price', None) != price:
+                            existing_item.booking_price = price
                             updated_items += 1
                     else:
-                        # Добавляем новый товар
                         new_item = Item(
                             text=item_text,
                             category_id=category.id,
-                            price=price,
+                            booking_price=price,
                             is_booked=False
                         )
                         session.add(new_item)
@@ -125,7 +120,7 @@ class AssortmentService:
 
     @staticmethod
     async def import_arrival_from_txt(file_path: str) -> Dict[str, Any]:
-        """Импорт нового ассортимента из TXT-файла (формат: категория | название | цена)."""
+        """Импорт нового ассортимента из TXT-файла."""
         try:
             added_categories = 0
             added_items = 0
@@ -140,7 +135,6 @@ class AssortmentService:
                     if not line or line.startswith('#'):
                         continue
 
-                    # Формат: категория | название | цена (цена опциональна)
                     parts = [p.strip() for p in line.split('|')]
                     if len(parts) < 2:
                         continue
@@ -152,7 +146,6 @@ class AssortmentService:
                     if not category_name or not item_text:
                         continue
 
-                    # Находим или создаём категорию
                     category = await session.scalar(
                         select(Category).where(Category.name.ilike(category_name))
                     )
@@ -162,7 +155,6 @@ class AssortmentService:
                         await session.flush()
                         added_categories += 1
 
-                    # Проверяем, есть ли уже такой товар
                     existing_item = await session.scalar(
                         select(Item).where(
                             Item.category_id == category.id,
@@ -171,14 +163,14 @@ class AssortmentService:
                     )
 
                     if existing_item:
-                        if price is not None and existing_item.price != price:
-                            existing_item.price = price
+                        if price is not None and getattr(existing_item, 'booking_price', None) != price:
+                            existing_item.booking_price = price
                             updated_items += 1
                     else:
                         new_item = Item(
                             text=item_text,
                             category_id=category.id,
-                            price=price,
+                            booking_price=price,
                             is_booked=False
                         )
                         session.add(new_item)
@@ -199,18 +191,13 @@ class AssortmentService:
 
     @staticmethod
     async def add_category(name: str) -> bool:
-        """Добавляет новую категорию."""
         if not name or len(name.strip()) < 2:
             return False
-
         name = name.strip()
         async with get_async_session_factory()() as session:
-            existing = await session.scalar(
-                select(Category).where(Category.name.ilike(name))
-            )
+            existing = await session.scalar(select(Category).where(Category.name.ilike(name)))
             if existing:
                 return False
-
             category = Category(name=name)
             session.add(category)
             await session.commit()
@@ -218,28 +205,19 @@ class AssortmentService:
 
     @staticmethod
     async def add_item(text: str, category_id: int, price: int | None = None) -> bool:
-        """Добавляет товар в категорию."""
         if not text or not category_id:
             return False
-
         async with get_async_session_factory()() as session:
             category = await session.get(Category, category_id)
             if not category:
                 return False
-
-            item = Item(
-                text=text.strip(),
-                category_id=category_id,
-                price=price,
-                is_booked=False
-            )
+            item = Item(text=text.strip(), category_id=category_id, booking_price=price, is_booked=False)
             session.add(item)
             await session.commit()
             return True
 
     @staticmethod
     async def delete_all_items() -> int:
-        """Полностью очищает все товары (используется при reset)."""
         async with get_async_session_factory()() as session:
             result = await session.execute(delete(Item))
             await session.commit()
@@ -247,7 +225,6 @@ class AssortmentService:
 
     @staticmethod
     async def delete_all_categories() -> int:
-        """Полностью очищает все категории."""
         async with get_async_session_factory()() as session:
             result = await session.execute(delete(Category))
             await session.commit()
@@ -265,21 +242,16 @@ class AssortmentService:
 
     @staticmethod
     async def count_items_in_category(cat_id: int) -> int:
-        """Количество товаров в категории."""
         async with get_async_session_factory()() as session:
             return await session.scalar(
-                select(func.count()).select_from(Item)
-                .where(Item.category_id == cat_id)
+                select(func.count()).select_from(Item).where(Item.category_id == cat_id)
             ) or 0
 
     @staticmethod
     async def move_items(from_category_id: int, to_category_id: int) -> int:
-        """Переносит все товары из одной категории в другую."""
         async with get_async_session_factory()() as session:
             result = await session.execute(
-                update(Item)
-                .where(Item.category_id == from_category_id)
-                .values(category_id=to_category_id)
+                update(Item).where(Item.category_id == from_category_id).values(category_id=to_category_id)
             )
             await session.commit()
             return result.rowcount
