@@ -187,7 +187,6 @@ async def edit_item_submit(
             logger.exception(f"Ошибка БД при редактировании товара {item_id}: {e}")
             raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера") from e
 
-    await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
 
@@ -206,7 +205,6 @@ async def delete_item(request: Request, item_id: int):
             )
             session.add(deleted)
             await session.delete(item)
-    await AssortmentService.invalidate_cache()
     referer = request.headers.get("referer")
     if referer:
         return RedirectResponse(url=referer, status_code=303)
@@ -278,7 +276,6 @@ async def add_item(
         from .notifications import send_booking_notification
         asyncio.create_task(send_booking_notification(**notify_data))
 
-    await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
 
@@ -295,7 +292,6 @@ async def add_category(request: Request, name: str = Form(...)):
         max_order = await session.execute(select(func.coalesce(func.max(Category.sort_order), -1)))
         new_category = Category(name=name, sort_order=max_order.scalar() + 1)
         session.add(new_category)
-    await AssortmentService.invalidate_cache()
     return RedirectResponse(url="/admin/assortment", status_code=303)
 
 
