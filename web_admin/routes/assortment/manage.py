@@ -47,7 +47,6 @@ async def edit_item_submit(
     serial: str | None = Form(None),
     category_id: int = Form(...),
     is_booked: bool = Form(False),
-    is_sold: bool = Form(False),
     booking_price: float | None = Form(None),
     booking_bonus: float | None = Form(None),
     booking_bonus_reason: str | None = Form(None),
@@ -57,29 +56,15 @@ async def edit_item_submit(
     booking_phone: str | None = Form(None),
     booking_payment_type: str | None = Form(None),
     booking_birth_date: str | None = Form(None),
-    sale_price: float | None = Form(None),
-    sale_bonus: float | None = Form(None),
-    sale_bonus_reason: str | None = Form(None),
-    sale_change: float | None = Form(None),
-    sale_change_type: str | None = Form(None),
-    sale_prepayment: float | None = Form(None),
-    sale_payment_amount: float | None = Form(None),
-    sale_payment_type: str | None = Form(None),
-    sale_platform: str | None = Form(None),
-    sale_full_name: str | None = Form(None),
-    sale_phone: str | None = Form(None),
-    sale_birth_date: str | None = Form(None),
     accessory_name: list[str] = Form([]),
     accessory_serial: list[str] = Form([]),
     accessory_price: list[float] = Form([]),
     accessory_payment_type: list[str] = Form([]),
 ):
-    logger.info(f"edit_item_submit {item_id} is_sold={is_sold} is_booked={is_booked}")
+    logger.info(f"edit_item_submit {item_id} is_booked={is_booked}")
 
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
-    if sale_phone and not validate_phone(sale_phone):
-        raise HTTPException(status_code=400, detail="Номер телефона продажи должен быть в формате +7XXXXXXXXXX")
 
     async_session = get_async_session_factory()
     async with async_session() as session:
@@ -88,51 +73,10 @@ async def edit_item_submit(
                 old = await session.get(Item, item_id, populate_existing=True, with_for_update=True)
                 if not old:
                     raise HTTPException(status_code=404, detail="Item not found")
-                old_is_sold = old.is_sold
                 old_text = old.text
                 old_serial = old.serial or ""
                 old_category_id = old.category_id
                 old_is_booked = old.is_booked
-
-                if old_is_sold:
-                    raise HTTPException(status_code=400, detail="Товар уже продан, редактирование невозможно")
-
-                if is_sold and is_booked:
-                    raise HTTPException(status_code=400, detail="Снимите бронь перед продажей")
-
-                notify_booking = None
-                notify_cancel = None
-
-                if is_sold:
-                    accessories = []
-                    for name, acc_serial, price, pay_type in zip(
-                        accessory_name, accessory_serial, accessory_price, accessory_payment_type, strict=False
-                    ):
-                        if name.strip() and price is not None and price > 0:
-                            accessories.append({
-                                "name": name.strip(),
-                                "serial": acc_serial.strip() if acc_serial and acc_serial.strip() else None,
-                                "price": price,
-                                "payment_type": pay_type if pay_type else None
-                            })
-
-                    from .sales import handle_sale_from_form
-                    result = await handle_sale_from_form(
-                        item_id=item_id, text=text, serial=serial, category_id=category_id,
-                        old_text=old_text, old_serial=old_serial, old_category_id=old_category_id,
-                        sale_price=sale_price, sale_prepayment=sale_prepayment,
-                        sale_payment_amount=sale_payment_amount, sale_payment_type=sale_payment_type,
-                        sale_platform=sale_platform, sale_full_name=sale_full_name, sale_phone=sale_phone,
-                        sale_birth_date=sale_birth_date,
-                        sale_bonus=sale_bonus, sale_bonus_reason=sale_bonus_reason,
-                        sale_change=sale_change, sale_change_type=sale_change_type,
-                        accessories=accessories,
-                        conn=session
-                    )
-                    if "error" in result:
-                        raise HTTPException(status_code=400, detail=result["error"])
-                    await AssortmentService.invalidate_cache()
-                    return RedirectResponse(url="/admin/assortment", status_code=303)
 
                 if is_booked:
                     if not booking_price:
@@ -170,7 +114,6 @@ async def edit_item_submit(
                     old.sale_full_name = None
                     old.sale_phone = None
                     old.sale_payment_amount = None
-                    old.is_sold = False
                     session.add(old)
 
                     if booking_prepayment and booking_prepayment > 0 and booking_payment_type:
@@ -219,7 +162,6 @@ async def edit_item_submit(
                     old.sale_full_name = None
                     old.sale_phone = None
                     old.sale_payment_amount = None
-                    old.is_sold = False
                     session.add(old)
 
                     if old_is_booked and not is_booked:
