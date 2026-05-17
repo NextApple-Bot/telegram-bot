@@ -66,6 +66,9 @@ async def edit_item_submit(
     if booking_phone and not validate_phone(booking_phone):
         raise HTTPException(status_code=400, detail="Номер телефона брони должен быть в формате +7XXXXXXXXXX")
 
+    notify_booking = None
+    notify_cancel = None
+
     async_session = get_async_session_factory()
     async with async_session() as session:
         try:
@@ -109,7 +112,6 @@ async def edit_item_submit(
                     old.sale_change = None
                     old.sale_change_type = None
                     old.sale_prepayment = None
-                    old.sale_payment_type = None
                     old.sale_platform = None
                     old.sale_full_name = None
                     old.sale_phone = None
