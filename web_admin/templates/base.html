@@ -2,423 +2,125 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>{% block title %}Admin Panel{% endblock %}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Telegram Bot Admin{% endblock %}</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap');
         :root {
-            --sidebar-width: 280px;
-            --sidebar-collapsed-width: 80px;
-            --primary: #2563eb;
-            --primary-light: #3b82f6;
-            --primary-soft: #eff6ff;
-            --secondary: #64748b;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --bg-light: #f9fafb;
-            --card-bg: #ffffff;
-            --border-light: #e2e8f0;
-            --text-dark: #1e293b;
-            --text-muted: #334155;
-            --shadow-sm: 0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.05);
-            --shadow-md: 0 4px 6px -2px rgba(0,0,0,0.03), 0 10px 15px -3px rgba(0,0,0,0.05);
-            --shadow-lg: 0 20px 25px -5px rgba(0,0,0,0.03), 0 10px 10px -5px rgba(0,0,0,0.02);
-            --radius-md: 0.75rem;
-            --radius-lg: 1rem;
+            --primary: #3b82f6;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg-light);
-            color: var(--text-dark);
-            line-height: 1.5;
-            -webkit-font-smoothing: antialiased;
+        * {
+            font-family: 'Inter', system-ui, sans-serif;
         }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100vh;
-            width: var(--sidebar-width);
-            background: var(--card-bg);
-            border-right: 1px solid var(--border-light);
-            transition: width 0.2s ease, transform 0.3s ease;
-            z-index: 1040;
-            display: flex;
-            flex-direction: column;
-            box-shadow: var(--shadow-sm);
+        .tail-container {
+            @apply bg-zinc-50 text-zinc-900;
         }
-        .sidebar-collapsed { width: var(--sidebar-collapsed-width); }
-        .sidebar .logo-area {
-            padding: 1.75rem 1.5rem 1.25rem;
-            border-bottom: 1px solid var(--border-light);
-            margin-bottom: 0.5rem;
-        }
-        .sidebar .logo-area h4 {
-            font-size: 1.35rem;
-            font-weight: 600;
-            margin: 0;
-            letter-spacing: -0.3px;
-            color: var(--primary);
-            white-space: nowrap;
-            overflow: hidden;
-        }
-        .sidebar-collapsed .logo-area h4 {
-            font-size: 1.5rem;
-            text-align: center;
-            padding: 0;
-        }
-        .sidebar .nav-link {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 0.625rem 1.25rem;
-            margin: 0.25rem 0.75rem;
-            border-radius: var(--radius-md);
-            color: var(--text-dark);
-            font-weight: 500;
-            font-size: 0.9rem;
-            transition: all 0.15s;
-            white-space: nowrap;
-        }
-        .sidebar .nav-link i {
-            font-size: 1.2rem;
-            min-width: 24px;
-            color: var(--text-muted);
-        }
-        .sidebar .nav-link:hover {
-            background-color: var(--primary-soft);
-            color: var(--primary);
-        }
-        .sidebar .nav-link:hover i { color: var(--primary); }
-        .sidebar .nav-link.active {
-            background-color: var(--primary-soft);
-            color: var(--primary);
-            font-weight: 600;
-        }
-        .sidebar .nav-link.active i { color: var(--primary); }
-
-        .main-content {
-            margin-left: var(--sidebar-width);
-            transition: margin-left 0.2s ease;
-            padding: 1.75rem 2rem;
-            min-height: 100vh;
-        }
-        .main-content-expanded { margin-left: var(--sidebar-collapsed-width); }
-
-        .top-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-        .top-bar h1, .top-bar h2 {
-            font-size: 1.75rem;
-            font-weight: 600;
-            margin: 0;
-            color: var(--text-dark);
-            letter-spacing: -0.02em;
-        }
-
         .card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-light);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-md);
-            transition: box-shadow 0.2s;
-            margin-bottom: 1.5rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .card-header {
-            background-color: transparent;
-            border-bottom: 1px solid var(--border-light);
-            padding: 1rem 1.5rem;
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+        .sidebar-link {
+            transition: all 0.2s ease;
+        }
+        .sidebar-link:hover {
+            background-color: #f1f5f9;
+            color: #3b82f6;
+        }
+        .active {
+            background-color: #eff6ff;
+            color: #3b82f6;
             font-weight: 600;
-            font-size: 1rem;
-            color: var(--text-dark);
         }
-
-        .table {
-            margin-bottom: 0;
-            font-size: 0.875rem;
-        }
-        .table th {
-            font-weight: 600;
-            color: var(--text-muted);
-            border-bottom: 1px solid var(--border-light);
-            padding: 0.75rem 1rem;
-        }
-        .table td {
-            padding: 0.75rem 1rem;
-            vertical-align: middle;
-            border-color: var(--border-light);
-            word-break: break-word;
-        }
-        .table tbody tr:hover {
-            background-color: rgba(0,0,0,0.01);
-        }
-
         .btn {
-            border-radius: var(--radius-md);
-            padding: 0.5rem 1rem;
-            font-weight: 500;
-            font-size: 0.875rem;
-            transition: all 0.15s;
-            min-height: 44px;             /* Тач-зона Apple */
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
+            transition: all 0.2s ease;
         }
-        .btn-primary {
-            background-color: var(--primary);
-            border-color: var(--primary);
-        }
-        .btn-primary:hover { background-color: var(--primary-light); border-color: var(--primary-light); }
-        .btn-outline-secondary {
-            border-color: var(--border-light);
-            color: var(--text-dark);
-        }
-        .btn-outline-secondary:hover {
-            background-color: var(--bg-light);
-            border-color: var(--secondary);
-        }
-        .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; min-height: 36px; }  /* чуть меньше для мелких кнопок */
-
-        /* СТЕКЛЯННЫЙ ИНДИКАТОР ЗАГРУЗКИ APPLE */
-        .btn-loading {
-            position: relative;
-            pointer-events: none;
-            color: transparent !important;
-        }
-        .btn-loading::after {
-            content: "";
-            position: absolute;
-            width: 22px;
-            height: 22px;
-            top: 50%;
-            left: 50%;
-            margin: -11px 0 0 -11px;
-            border-radius: 50%;
-            border: 2px solid rgba(255,255,255,0.2);
-            border-top-color: rgba(255,255,255,0.9);
-            animation: apple-spin 0.7s linear infinite;
-            box-shadow: 0 0 12px rgba(255,255,255,0.6), inset 0 0 6px rgba(255,255,255,0.4);
-            backdrop-filter: blur(4px);
-        }
-        @keyframes apple-spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .form-control, .form-select {
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-light);
-            padding: 0.5rem 0.75rem;
-            font-size: 0.875rem;
-            background-color: #fff;
-        }
-        .form-control:focus, .form-select:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-
-        .pagination .page-link {
-            border-radius: var(--radius-md);
-            margin: 0 2px;
-            color: var(--text-dark);
-            border: 1px solid var(--border-light);
-            background: var(--card-bg);
-        }
-        .pagination .page-item.active .page-link {
-            background-color: var(--primary);
-            border-color: var(--primary);
-            color: white;
-        }
-        .pagination .page-link:hover { background-color: var(--bg-light); }
-
-        .badge {
-            font-weight: 500;
-            padding: 0.35rem 0.65rem;
-            border-radius: 30px;
-        }
-
-        .footer {
-            margin-top: 3rem;
-            text-align: center;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            border-top: 1px solid var(--border-light);
-            padding-top: 1.5rem;
-        }
-
-        :focus-visible {
-            outline: 2px solid var(--primary);
-            outline-offset: 2px;
-        }
-
-        .mobile-menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            font-size: 1.8rem;
-            margin-right: 1rem;
-            color: var(--text-dark);
-            cursor: pointer;
-            z-index: 1100;
-        }
-
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.4);
-            z-index: 1039;
-            animation: fadeIn 0.2s ease;
-        }
-        .sidebar-overlay.active { display: block; }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        @media (max-width: 992px) {
-            .sidebar { width: var(--sidebar-collapsed-width); }
-            .sidebar .nav-link span { display: none; }
-            .sidebar .nav-link i { margin: 0 auto; }
-            .sidebar .logo-area h4 { text-align: center; font-size: 1.2rem; }
-        }
-        @media (max-width: 768px) {
-            .mobile-menu-toggle { display: block; }
-            .sidebar {
-                width: var(--sidebar-width);
-                transform: translateX(-100%);
-                transition: transform 0.3s ease;
-                z-index: 1050;
-            }
-            .sidebar.sidebar-mobile-open { transform: translateX(0); }
-            .sidebar.sidebar-mobile-open .nav-link span { display: inline !important; }
-            .main-content { margin-left: 0 !important; padding: 1rem; }
-            .top-bar { flex-direction: column; align-items: flex-start; }
-            .top-bar h1 { font-size: 1.5rem; }
-            .btn { width: 100%; margin-bottom: 0.5rem; }
-            .table { font-size: 0.8rem; }
-        }
-        @media (max-width: 480px) {
-            .card-body { padding: 1rem; }
-            .row { flex-direction: column; }
-            .col-md-4, .col-md-3, .col-md-2 { width: 100%; }
+        .btn:hover {
+            transform: scale(1.05);
         }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
-<body>
-    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Меню">
-        <i class="bi bi-list"></i>
-    </button>
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-    <div class="sidebar" id="sidebar">
-        <div class="logo-area">
-            <h4>📊 Bot Admin</h4>
-        </div>
-        <div class="nav flex-column">
-            <a href="/admin/dashboard" class="nav-link {% if request.url.path.startswith('/admin/dashboard') %}active{% endif %}">
-                <i class="bi bi-speedometer2"></i> <span>Дашборд</span>
-            </a>
-            <a href="/admin/clients" class="nav-link {% if request.url.path.startswith('/admin/clients') %}active{% endif %}">
-                <i class="bi bi-people"></i> <span>Клиенты</span>
-            </a>
-            <a href="/admin/purchases" class="nav-link {% if request.url.path.startswith('/admin/purchases') %}active{% endif %}">
-                <i class="bi bi-cart-check"></i> <span>Покупки</span>
-            </a>
-            <a href="/admin/assortment" class="nav-link {% if request.url.path.startswith('/admin/assortment') %}active{% endif %}">
-                <i class="bi bi-box-seam"></i> <span>Ассортимент</span>
-            </a>
-            <a href="/admin/sold" class="nav-link {% if request.url.path.startswith('/admin/sold') %}active{% endif %}">
-                <i class="bi bi-bag-check"></i> <span>Продано</span>
-            </a>
-            <a href="/admin/stats" class="nav-link {% if request.url.path.startswith('/admin/stats') %}active{% endif %}">
-                <i class="bi bi-graph-up"></i> <span>Статистика</span>
-            </a>
-            <a href="/admin/sellers/stats" class="nav-link {% if request.url.path.startswith('/admin/sellers') %}active{% endif %}">
-                <i class="bi bi-people-fill"></i> <span>Продавцы</span>
-            </a>
-            <a href="/admin/auth/logout" class="nav-link">
-                <i class="bi bi-box-arrow-right"></i> <span>Выйти</span>
-            </a>
-        </div>
-        <div class="mt-auto p-3 text-center small text-muted">
-            <i class="bi bi-shield-check"></i> v3.0
-        </div>
-    </div>
-
-    <div class="main-content" id="mainContent">
-        <div class="top-bar">
-            <div style="display: flex; align-items: center;">
-                <h1>{% block page_title %}Панель управления{% endblock %}</h1>
+<body class="tail-container">
+    <div class="flex h-screen">
+        <!-- Modern Sidebar -->
+        <div class="w-72 bg-white border-r border-zinc-200 flex flex-col shadow-xl">
+            <div class="p-6 border-b border-zinc-100 flex items-center gap-3">
+                <div class="w-9 h-9 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl">🤖</div>
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-zinc-900">Bot Admin</h1>
+                    <p class="text-xs text-zinc-400 -mt-0.5">управление продажами</p>
+                </div>
+            </div>
+            <nav class="flex-1 px-3 py-6 space-y-1">
+                <a href="/admin/dashboard" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/dashboard') %}active{% endif %}">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                    <span class="font-medium">Дашборд</span>
+                </a>
+                <a href="/admin/assortment" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/assortment') %}active{% endif %}">
+                    <i data-lucide="package" class="w-5 h-5"></i>
+                    <span class="font-medium">Ассортимент</span>
+                </a>
+                <a href="/admin/purchases" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/purchases') %}active{% endif %}">
+                    <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+                    <span class="font-medium">Покупки</span>
+                </a>
+                <a href="/admin/clients" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/clients') %}active{% endif %}">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span class="font-medium">Клиенты</span>
+                </a>
+                <a href="/admin/sold" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sold') %}active{% endif %}">
+                    <i data-lucide="bag-check" class="w-5 h-5"></i>
+                    <span class="font-medium">Продано</span>
+                </a>
+                <a href="/admin/stats" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/stats') %}active{% endif %}">
+                    <i data-lucide="trending-up" class="w-5 h-5"></i>
+                    <span class="font-medium">Статистика</span>
+                </a>
+                <a href="/admin/sellers/stats" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sellers') %}active{% endif %}">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span class="font-medium">Продавцы</span>
+                </a>
+            </nav>
+            <div class="p-4 border-t border-zinc-100">
+                <a href="/admin/auth/logout" class="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-3xl transition-colors">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    <span class="font-medium">Выйти</span>
+                </a>
             </div>
         </div>
-        <div class="container-fluid px-0">
-            {% block content %}{% endblock %}
-        </div>
-        <div class="footer">
-            <p>© 2026 Telegram Bot Admin — Управление продажами</p>
+
+        <!-- Main Content -->
+        <div class="flex-1 overflow-auto">
+            <div class="p-8">
+                {% block content %}{% endblock %}
+            </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('sidebarOverlay');
-        const mobileToggle = document.getElementById('mobileMenuToggle');
-        const mainContent = document.getElementById('mainContent');
-
-        let collapsed = false;
-        document.querySelector('.logo-area').addEventListener('dblclick', () => {
-            collapsed = !collapsed;
-            if (collapsed) {
-                sidebar.classList.add('sidebar-collapsed');
-                mainContent.classList.add('main-content-expanded');
-            } else {
-                sidebar.classList.remove('sidebar-collapsed');
-                mainContent.classList.remove('main-content-expanded');
+        // Tailwind script init
+        function initializeTailwind() {
+            tailwind.config = {
+                content: [],
+                theme: {
+                    extend: {}
+                }
             }
-        });
-
-        if (mobileToggle) {
-            mobileToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('sidebar-mobile-open');
-                overlay.classList.toggle('active');
-            });
-            overlay.addEventListener('click', () => {
-                sidebar.classList.remove('sidebar-mobile-open');
-                overlay.classList.remove('active');
-            });
         }
+        initializeTailwind();
 
-        // ГЛОБАЛЬНЫЙ ИНДИКАТОР ЗАГРУЗКИ ДЛЯ ВСЕХ ФОРМ
-        document.addEventListener('submit', function(e) {
-            const form = e.target;
-            const submitBtn = form.querySelector('button[type="submit"]');
-            if (submitBtn && !submitBtn.classList.contains('btn-loading')) {
-                submitBtn.classList.add('btn-loading');
-                // Для асинхронных форм (fetch) восстановление будет в их обработчиках,
-                // для синхронных – страница перезагрузится, и это нормально.
-            }
-        });
+        // Lucide icons
+        lucide.createIcons();
+
+        // Simple smooth scroll and animations
+        console.log('%c🚀 Радикальный редизайн админки загружен!', 'color: #3b82f6; font-size: 14px; font-weight: 600;');
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
