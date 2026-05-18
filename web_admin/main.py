@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
-# from web_admin.auth import is_authenticated  # временно отключено
+from web_admin.auth import is_authenticated
 
 from web_admin.routes import auth, clients, dashboard, debug, purchases, sellers, sold, stats
 from web_admin.routes.assortment import manage as assortment_manage
@@ -23,13 +23,13 @@ app.include_router(sellers.router, prefix="/sellers", tags=["sellers"])
 app.include_router(debug.router, prefix="/admin", tags=["debug"])
 
 
-# @app.middleware("http")  # Временно отключена авторизация
-# async def auth_middleware(request: Request, call_next):
-#     if request.url.path.startswith("/admin/auth/login") or request.url.path.startswith("/admin/static"):
-#         return await call_next(request)
-#     if not is_authenticated(request):
-#         return RedirectResponse(url="/admin/auth/login")
-#     return await call_next(request)
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if request.url.path.startswith("/admin/auth/login") or request.url.path.startswith("/admin/static"):
+        return await call_next(request)
+    if not is_authenticated(request):
+        return RedirectResponse(url="/admin/auth/login")
+    return await call_next(request)
 
 
 @app.get("/")
