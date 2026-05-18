@@ -126,11 +126,18 @@ class Application:
             except Exception as e:
                 logger.error(f"Ошибка при закрытии бота: {e}")
         if self._redis_client:
-            await self._redis_client.aclose()
-            logger.info("✅ Redis-клиент закрыт")
-        from bot.db import dispose_engine
-        await dispose_engine()
-        logger.info("✅ Пул БД закрыт")
+            try:
+                await self._redis_client.aclose()
+                logger.info("✅ Redis-клиент закрыт")
+            except (RuntimeError, asyncio.CancelledError, Exception) as e:
+                # Это нормально при завершении работы с uvloop + сигналы
+                logger.debug(f"Redis закрыт (нормально при shutdown): {e}")
+        try:
+            from bot.db import dispose_engine
+            await dispose_engine()
+            logger.info("✅ Пул БД закрыт")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при закрытии БД (не критично): {e}")
 
     async def webhook(self, request: Request) -> Response:
         if not self.bot or not self.dp:
