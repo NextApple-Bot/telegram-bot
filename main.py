@@ -192,4 +192,59 @@ def create_starlette_app(app_instance):
         Route("/health", app_instance.health, methods=["GET"]),
         Route("/health/detailed", app_instance.health_detailed, methods=["GET"]),
     ]
-    star
+    starlette_app = Starlette(routes=routes, on_startup=[lambda: None], on_shutdown=[lambda: None])
+
+    Instrumentator().instrument(starlette_app).expose(starlette_app, endpoint="/metrics")
+
+    if SENTRY_DSN:
+        starlette_app = SentryAsgiMiddleware(starlette_app)
+
+    if app_instance.config.SECRET_KEY:
+        starlette_app.add_middleware(SessionMiddleware, secret_key=app_instance.config.SECRET_KEY)
+        logger.info("✅ SessionMiddleware добавлена")
+    else:
+        logger.warning("⚠️ SECRET_KEY не задан")
+
+    if app_instance.config.ADMIN_PASSWORD and app_instance.config.SECRET_KEY:
+        try:
+            from web_admin.main import app as admin_app
+            starlette_app.mount("/admin", admin_app)
+            logger.info("✅ Веб-админка смонтирована на /admin")
+        except Exception as e:
+            logger.error(f"❌ Не удалось смонтировать веб-админку: {e}")
+    else:
+        logger.info("ℹ️ Веб-админка не настроена")
+
+    return starlette_app
+
+
+async def main_entry():
+    app = Application()
+    try:
+        await app.initialize()
+    except Exception:
+        logger.critical("Не удалось инициализировать приложение.\n" + traceback.format_exc())
+        sys.exit(1)
+
+    starlette_app = create_starlette_app(app)
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(app.shutdown()))
+
+    port = int(os.getenv("PORT", "8000"))
+    logger.info(f"🚀 Запуск сервера на порту {port}")
+    config = uvicorn.Config(
+        starlette_app,
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+        timeout_graceful_shutdown=30,
+        timeout_keep_alive=30
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
+if __name__ == "__main__":
+    asyncio.run(main_entry())
