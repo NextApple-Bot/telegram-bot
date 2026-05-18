@@ -18,11 +18,15 @@ def get_async_session_factory():
         db_url = config.DATABASE_URL
         if db_url.startswith("postgresql://"):
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        
+        min_size = getattr(config, 'DB_POOL_MIN_SIZE', 1)
+        max_size = getattr(config, 'DB_POOL_MAX_SIZE', 5)
+        
         _async_engine = create_async_engine(
             db_url,
             echo=False,
-            pool_size=int(os.getenv("DB_POOL_MIN_SIZE", "1")),
-            max_overflow=int(os.getenv("DB_POOL_MAX_SIZE", "5")) - int(os.getenv("DB_POOL_MIN_SIZE", "1")),
+            pool_size=min_size,
+            max_overflow=max_size - min_size,
             pool_recycle=300,
             connect_args={"ssl": False}
         )

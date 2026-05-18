@@ -52,6 +52,7 @@ class Application:
         self.dp = None
         self.config = None
         self._redis_client = None
+        self._background_tasks = []
 
     async def initialize(self):
         import redis.asyncio as redis
@@ -91,7 +92,8 @@ class Application:
         logger.info("✅ Подключение к БД подтверждено")
 
         from bot.background import start_background_tasks
-        asyncio.create_task(start_background_tasks(self.bot, self.dp))
+        task = asyncio.create_task(start_background_tasks(self.bot, self.dp))
+        self._background_tasks.append(task)
         logger.info("✅ Фоновые задачи запущены")
 
         await self._setup_webhook()
@@ -118,6 +120,10 @@ class Application:
 
     async def shutdown(self):
         logger.info("🛑 Завершение работы...")
+        # Отменяем фоновые задачи
+        for task in self._background_tasks:
+            if not task.done():
+                task.cancel()
         if self.bot:
             try:
                 await self.bot.delete_webhook()
