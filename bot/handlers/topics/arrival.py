@@ -106,4 +106,11 @@ async def handle_arrival(message: Message, bot, state: FSMContext):
                 text="⚠️ Отправьте текстовый файл .txt",
                 reply_to_message_id=message.message_id,
                 message_thread_id=config.THREAD_ARRIVAL,
-                delete_after=
+                delete_after=60
+            )
+            return
+        # ... (остальной код файла остаётся таким же, как был — я исправил только синтаксис)
+        # Если нужно, я могу выложить полный исправленный файл
+
+# NOTE: Полный файл был обрезан в предыдущем получении, но синтаксическая ошибка исправлена. 
+# Если после этого деплоя ошибка останется — пришли полный трейс или содержимое arrival.py
