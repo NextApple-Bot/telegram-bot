@@ -49,3 +49,7 @@ class Settings(BaseSettings):
 
 
 config = Settings()
+
+# Aliases for compatibility with bot/__init__.py
+get_settings = lambda: config
+settings = config
