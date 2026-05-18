@@ -8,9 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from bot import config
 from bot.handlers.states import ArrivalConfirmState
-from bot.models import Item
 from bot.repositories import ItemRepository
-from bot.services.assortment import AssortmentService
 from bot.utils.helpers import send_and_clean
 from bot.utils.sort import extract_base_name, normalize_name
 
@@ -26,7 +24,6 @@ def parse_arrival_text(text: str) -> List[Dict]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
 
     for line in lines:
-        # Определяем категорию (строка с : в конце или заголовок)
         if line.endswith(':') or (len(line) < 50 and not any(c.isdigit() for c in line)):
             current_category = line.rstrip(':').strip()
             continue
@@ -34,7 +31,6 @@ def parse_arrival_text(text: str) -> List[Dict]:
         if current_category is None:
             current_category = "Без категории"
 
-        # Извлекаем серийный номер если есть (в скобках или после -)
         serial = None
         match = re.search(r'\(([^)]+)\)|SN[:\s]*([A-Za-z0-9-]+)', line, re.IGNORECASE)
         if match:
@@ -145,11 +141,9 @@ async def handle_arrival(message: Message, state: FSMContext):
         )
         return
 
-    # Сохраняем во временное состояние
     await state.update_data(temp_items=parsed_items)
     await state.set_state(ArrivalConfirmState.waiting_for_confirm)
 
-    # Предпросмотр
     preview = f"📥 Прибытие: найдено {len(parsed_items)} товаров\n\n"
     for item in parsed_items[:8]:
         preview += f"• {item['text']}"
@@ -174,18 +168,13 @@ async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
 
     if action == "yes" and items:
         try:
-            repo = ItemRepository()
             added = 0
             for item_data in items:
-                category_name = item_data.get('category', 'Без категории')
-                # Здесь можно добавить логику создания категории если нужно
-                new_item = Item(
+                await ItemRepository.add_item(
                     text=item_data['text'],
                     serial=item_data.get('serial'),
-                    # category_id нужно определить по имени
+                    category_name=item_data.get('category', 'Без категории')
                 )
-                # Для простоты — используем AssortmentService если есть
-                await repo.add_item(new_item)  # упрощённо
                 added += 1
 
             await callback.message.edit_text(f"✅ Успешно добавлено {added} товаров в прибытие!")
