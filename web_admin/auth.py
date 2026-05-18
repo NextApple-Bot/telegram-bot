@@ -5,30 +5,35 @@ from bot.config import config
 
 
 def verify_password(plain_password: str) -> bool:
-    """Проверяет пароль (простое сравнение)."""
+    """Проверяет пароль."""
     if not config.ADMIN_PASSWORD:
         return False
     return plain_password == config.ADMIN_PASSWORD
 
 
 def is_authenticated(request: Request) -> bool:
-    """Проверяет авторизацию по сессии."""
-    if "session" not in getattr(request, "scope", {}):
-        return False
-
+    """Проверяет авторизацию. Более устойчивая версия."""
     try:
-        if not request.session.get("authenticated"):
+        # Пытаемся получить сессию разными способами
+        session = getattr(request, 'session', None)
+        if session is None:
+            # Пробуем через scope
+            scope = getattr(request, 'scope', {})
+            session = scope.get('session', {})
+
+        if not session or not session.get("authenticated"):
             return False
 
-        login_time_str = request.session.get("login_time")
+        login_time_str = session.get("login_time")
         if login_time_str:
             try:
                 login_time = datetime.fromisoformat(login_time_str)
                 if datetime.utcnow() - login_time > timedelta(days=7):
-                    request.session.clear()
+                    session.clear()
                     return False
             except Exception:
-                request.session.clear()
+                if hasattr(session, 'clear'):
+                    session.clear()
                 return False
 
         return True
@@ -39,12 +44,18 @@ def is_authenticated(request: Request) -> bool:
 def login_user(request: Request, password: str) -> bool:
     """Выполняет вход."""
     if verify_password(password):
-        request.session["authenticated"] = True
-        request.session["login_time"] = datetime.utcnow().isoformat()
-        return True
+        try:
+            request.session["authenticated"] = True
+            request.session["login_time"] = datetime.utcnow().isoformat()
+            return True
+        except Exception:
+            return False
     return False
 
 
 def logout_user(request: Request):
     """Выход из системы."""
-    request.session.clear()
+    try:
+        request.session.clear()
+    except Exception:
+        pass
