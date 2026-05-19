@@ -3,28 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Telegram Bot Admin{% endblock %}</title>
-    <!-- Tailwind CSS CDN -->
+    <title>{% block title %}Bot Admin{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap');
-        :root {
-            --primary: #3b82f6;
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
         * {
             font-family: 'Inter', system-ui, sans-serif;
         }
-        .tail-container {
-            @apply bg-zinc-50 text-zinc-900;
-        }
-        .card {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        .sidebar {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .sidebar-link {
             transition: all 0.2s ease;
@@ -38,56 +26,78 @@
             color: #3b82f6;
             font-weight: 600;
         }
-        .btn {
-            transition: all 0.2s ease;
+        .backdrop {
+            animation: fadeIn 0.2s ease forwards;
         }
-        .btn:hover {
-            transform: scale(1.05);
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
-<body class="tail-container">
+<body class="bg-zinc-50 text-zinc-900">
+
+    <!-- HEADER -->
+    <header class="bg-white border-b border-zinc-200 px-4 py-4 flex items-center justify-between md:hidden sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <button onclick="toggleSidebar()" class="p-2 hover:bg-zinc-100 rounded-xl">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-xl">🤖</div>
+                <div>
+                    <h1 class="text-xl font-semibold">Bot Admin</h1>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- SIDEBAR + BACKDROP -->
     <div class="flex h-screen">
-        <!-- Modern Sidebar -->
-        <div class="w-72 bg-white border-r border-zinc-200 flex flex-col shadow-xl">
-            <div class="p-6 border-b border-zinc-100 flex items-center gap-3">
+        <!-- Sidebar (Mobile + Desktop) -->
+        <div id="sidebar" class="sidebar fixed md:static inset-y-0 left-0 z-50 w-72 bg-white border-r border-zinc-200 shadow-2xl md:shadow-none flex flex-col transform -translate-x-full md:translate-x-0">
+            
+            <!-- Logo inside sidebar (desktop only) -->
+            <div class="p-6 border-b border-zinc-100 hidden md:flex items-center gap-3">
                 <div class="w-9 h-9 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl">🤖</div>
                 <div>
-                    <h1 class="text-2xl font-semibold tracking-tight text-zinc-900">Bot Admin</h1>
+                    <h1 class="text-2xl font-semibold tracking-tight">Bot Admin</h1>
                     <p class="text-xs text-zinc-400 -mt-0.5">управление продажами</p>
                 </div>
             </div>
-            <nav class="flex-1 px-3 py-6 space-y-1">
-                <a href="/admin/dashboard" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/dashboard') %}active{% endif %}">
+
+            <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
+                <a href="/admin/dashboard" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/dashboard') %}active{% endif %}">
                     <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
                     <span class="font-medium">Дашборд</span>
                 </a>
-                <a href="/admin/assortment" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/assortment') %}active{% endif %}">
+                <a href="/admin/assortment" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/assortment') %}active{% endif %}">
                     <i data-lucide="package" class="w-5 h-5"></i>
                     <span class="font-medium">Ассортимент</span>
                 </a>
-                <a href="/admin/purchases" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/purchases') %}active{% endif %}">
+                <a href="/admin/purchases" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/purchases') %}active{% endif %}">
                     <i data-lucide="shopping-cart" class="w-5 h-5"></i>
                     <span class="font-medium">Покупки</span>
                 </a>
-                <a href="/admin/clients" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/clients') %}active{% endif %}">
+                <a href="/admin/clients" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/clients') %}active{% endif %}">
                     <i data-lucide="users" class="w-5 h-5"></i>
                     <span class="font-medium">Клиенты</span>
                 </a>
-                <a href="/admin/sold" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sold') %}active{% endif %}">
+                <a href="/admin/sold" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sold') %}active{% endif %}">
                     <i data-lucide="bag-check" class="w-5 h-5"></i>
                     <span class="font-medium">Продано</span>
                 </a>
-                <a href="/admin/stats" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/stats') %}active{% endif %}">
+                <a href="/admin/stats" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/stats') %}active{% endif %}">
                     <i data-lucide="trending-up" class="w-5 h-5"></i>
                     <span class="font-medium">Статистика</span>
                 </a>
-                <a href="/admin/sellers/stats" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sellers') %}active{% endif %}">
+                <a href="/admin/sellers/stats" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sellers') %}active{% endif %}">
                     <i data-lucide="users" class="w-5 h-5"></i>
                     <span class="font-medium">Продавцы</span>
                 </a>
             </nav>
+
             <div class="p-4 border-t border-zinc-100">
                 <a href="/admin/auth/logout" class="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-3xl transition-colors">
                     <i data-lucide="log-out" class="w-5 h-5"></i>
@@ -96,32 +106,66 @@
             </div>
         </div>
 
+        <!-- Backdrop -->
+        <div onclick="closeSidebar()" id="backdrop" class="hidden md:hidden fixed inset-0 bg-black/50 z-40"></div>
+
         <!-- Main Content -->
-        <div class="flex-1 overflow-auto">
-            <div class="p-8">
+        <div class="flex-1 flex flex-col min-w-0">
+            <!-- Desktop header -->
+            <header class="hidden md:flex bg-white border-b border-zinc-200 px-8 py-5 items-center justify-between">
+                <h1 class="text-2xl font-semibold text-zinc-800">{% block page_title %}Админ-панель{% endblock %}</h1>
+            </header>
+
+            <div class="flex-1 overflow-auto p-4 md:p-8">
                 {% block content %}{% endblock %}
             </div>
         </div>
     </div>
 
     <script>
-        // Tailwind script init
         function initializeTailwind() {
-            tailwind.config = {
-                content: [],
-                theme: {
-                    extend: {}
-                }
-            }
+            return;
         }
-        initializeTailwind();
 
-        // Lucide icons
-        lucide.createIcons();
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('backdrop');
+            sidebar.classList.toggle('-translate-x-full');
+            backdrop.classList.toggle('hidden');
+        }
 
-        // Simple smooth scroll and animations
-        console.log('%c🚀 Радикальный редизайн админки загружен!', 'color: #3b82f6; font-size: 14px; font-weight: 600;');
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('backdrop');
+            sidebar.classList.add('-translate-x-full');
+            backdrop.classList.add('hidden');
+        }
+
+        // Закрывать меню при клике по любой ссылке (важно для мобильных)
+        document.addEventListener('DOMContentLoaded', function() {
+            lucide.createIcons();
+            
+            const links = document.querySelectorAll('#sidebar a');
+            links.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    // Даем время на переход по ссылке перед закрытием
+                    setTimeout(() => {
+                        closeSidebar();
+                    }, 50);
+                });
+            });
+
+            console.log('%c✅ Мобильное меню полностью адаптировано!', 'color: #22c55e; font-weight: 600;');
+        });
+
+        // Закрывать при нажатии Esc
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeSidebar();
+            }
+        });
     </script>
+
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
