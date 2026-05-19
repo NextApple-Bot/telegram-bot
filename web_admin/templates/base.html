@@ -40,6 +40,34 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
+
+        /* Toast Notifications */
+        .toast {
+            animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .toast.hide {
+            animation: slideOut 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+        }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
@@ -142,8 +170,11 @@
         </div>
     </div>
 
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-3"></div>
+
     <script>
-        // === Tailwind Config (ВАЖНО для dark mode) ===
+        // === Tailwind Config ===
         tailwind.config = {
             darkMode: 'class'
         };
@@ -185,6 +216,53 @@
             backdrop.classList.add('hidden');
         }
 
+        // === Toast Notifications ===
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const icons = {
+                success: 'check-circle',
+                error: 'alert-circle',
+                warning: 'alert-triangle',
+                info: 'info'
+            };
+
+            const colors = {
+                success: 'bg-emerald-600 text-white',
+                error: 'bg-red-600 text-white',
+                warning: 'bg-amber-500 text-white',
+                info: 'bg-blue-600 text-white'
+            };
+
+            const toast = document.createElement('div');
+            toast.className = `toast flex items-start gap-3 px-4 py-3.5 rounded-2xl shadow-xl max-w-sm ${colors[type] || colors.success}`;
+            
+            toast.innerHTML = `
+                <div class="flex-shrink-0 mt-0.5">
+                    <i data-lucide="${icons[type] || 'check-circle'}" class="w-5 h-5"></i>
+                </div>
+                <div class="flex-1 text-sm font-medium leading-snug pr-2">${message}</div>
+                <button onclick="this.closest('.toast').remove()" class="flex-shrink-0 opacity-70 hover:opacity-100 transition">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            `;
+
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            // Auto dismiss after 4 seconds
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.classList.add('hide');
+                    setTimeout(() => toast.remove(), 250);
+                }
+            }, 4000);
+        }
+
+        // Make toast function global
+        window.showToast = showToast;
+
         document.addEventListener('DOMContentLoaded', function() {
             initTheme();
             lucide.createIcons();
@@ -196,10 +274,10 @@
                 });
             });
 
-            console.log('%c✅ Тёмная тема работает! (darkMode: class)', 'color: #22c55e; font-weight: 600;');
+            console.log('%c✅ Toast-уведомления + тёмная тема готовы!', 'color: #22c55e; font-weight: 600;');
         });
 
-        // Close on Escape
+        // Close sidebar on Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeSidebar();
