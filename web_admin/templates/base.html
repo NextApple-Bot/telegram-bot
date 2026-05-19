@@ -143,10 +143,10 @@
     </div>
 
     <script>
-        // Tailwind dark mode config
-        function initTailwind() {
-            document.documentElement.style.setProperty('--accent', '#3b82f6');
-        }
+        // === Tailwind Config (ВАЖНО для dark mode) ===
+        tailwind.config = {
+            darkMode: 'class'
+        };
 
         function initTheme() {
             const savedTheme = localStorage.getItem('theme');
@@ -168,8 +168,7 @@
                 html.classList.add('dark');
                 localStorage.setItem('theme', 'dark');
             }
-            // Re-render icons after theme change
-            setTimeout(() => lucide.createIcons(), 50);
+            setTimeout(() => lucide.createIcons(), 30);
         }
 
         function toggleSidebar() {
@@ -187,11 +186,9 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            initTailwind();
             initTheme();
             lucide.createIcons();
             
-            // Auto-close sidebar on link click (mobile)
             const links = document.querySelectorAll('#sidebar a');
             links.forEach(link => {
                 link.addEventListener('click', function() {
@@ -199,10 +196,10 @@
                 });
             });
 
-            console.log('%c✅ Тёмная тема + переключатель добавлены!', 'color: #22c55e; font-weight: 600;');
+            console.log('%c✅ Тёмная тема работает! (darkMode: class)', 'color: #22c55e; font-weight: 600;');
         });
 
-        // Close sidebar on Escape
+        // Close on Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeSidebar();
