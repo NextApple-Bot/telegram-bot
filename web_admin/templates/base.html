@@ -12,7 +12,7 @@
             font-family: 'Inter', system-ui, sans-serif;
         }
         .sidebar {
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s ease;
         }
         .sidebar-link {
             transition: all 0.2s ease;
@@ -99,12 +99,18 @@
         <div id="sidebar" class="sidebar fixed md:static inset-y-0 left-0 z-50 w-72 bg-white border-r border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 shadow-2xl md:shadow-none flex flex-col transform -translate-x-full md:translate-x-0">
             
             <!-- Logo -->
-            <div class="p-6 border-b border-zinc-100 dark:border-zinc-800 hidden md:flex items-center gap-3">
-                <div class="w-9 h-9 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl">🤖</div>
-                <div>
-                    <h1 class="text-2xl font-semibold tracking-tight">Bot Admin</h1>
-                    <p class="text-xs text-zinc-400 -mt-0.5">управление продажами</p>
+            <div class="p-6 border-b border-zinc-100 dark:border-zinc-800 hidden md:flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl">🤖</div>
+                    <div>
+                        <h1 class="text-2xl font-semibold tracking-tight">Bot Admin</h1>
+                        <p class="text-xs text-zinc-400 -mt-0.5">управление продажами</p>
+                    </div>
                 </div>
+                <!-- Desktop collapse button -->
+                <button onclick="toggleDesktopSidebar()" class="hidden md:block p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl">
+                    <i data-lucide="chevrons-left" class="w-5 h-5 text-zinc-500"></i>
+                </button>
             </div>
 
             <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
@@ -153,7 +159,12 @@
         <div class="flex-1 flex flex-col min-w-0">
             <!-- Desktop header -->
             <header class="hidden md:flex bg-white border-b border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 px-8 py-5 items-center justify-between">
-                <h1 class="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">{% block page_title %}Админ-панель{% endblock %}</h1>
+                <div class="flex items-center gap-4">
+                    <button onclick="toggleDesktopSidebar()" class="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-2xl">
+                        <i data-lucide="menu" class="w-5 h-5 text-zinc-600 dark:text-zinc-400"></i>
+                    </button>
+                    <h1 class="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">{% block page_title %}Админ-панель{% endblock %}</h1>
+                </div>
                 
                 <!-- Theme Toggle Desktop -->
                 <button onclick="toggleTheme()" 
@@ -202,6 +213,7 @@
             setTimeout(() => lucide.createIcons(), 30);
         }
 
+        // === Sidebar (Mobile) ===
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const backdrop = document.getElementById('backdrop');
@@ -214,6 +226,39 @@
             const backdrop = document.getElementById('backdrop');
             sidebar.classList.add('-translate-x-full');
             backdrop.classList.add('hidden');
+        }
+
+        // === Sidebar (Desktop collapse) ===
+        let desktopSidebarCollapsed = false;
+
+        function toggleDesktopSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = sidebar.parentElement.querySelector('.flex-1');
+            
+            desktopSidebarCollapsed = !desktopSidebarCollapsed;
+            
+            if (desktopSidebarCollapsed) {
+                sidebar.style.width = '0px';
+                sidebar.style.overflow = 'hidden';
+                sidebar.style.borderRight = 'none';
+                localStorage.setItem('sidebarCollapsed', 'true');
+            } else {
+                sidebar.style.width = '18rem';
+                sidebar.style.overflow = 'visible';
+                sidebar.style.borderRight = '';
+                localStorage.setItem('sidebarCollapsed', 'false');
+            }
+        }
+
+        function initDesktopSidebar() {
+            const saved = localStorage.getItem('sidebarCollapsed');
+            if (saved === 'true') {
+                const sidebar = document.getElementById('sidebar');
+                sidebar.style.width = '0px';
+                sidebar.style.overflow = 'hidden';
+                sidebar.style.borderRight = 'none';
+                desktopSidebarCollapsed = true;
+            }
         }
 
         // === Toast Notifications ===
@@ -251,7 +296,6 @@
             container.appendChild(toast);
             lucide.createIcons();
 
-            // Auto dismiss after 4 seconds
             setTimeout(() => {
                 if (toast.parentNode) {
                     toast.classList.add('hide');
@@ -260,11 +304,11 @@
             }, 4000);
         }
 
-        // Make toast function global
         window.showToast = showToast;
 
         document.addEventListener('DOMContentLoaded', function() {
             initTheme();
+            initDesktopSidebar();
             lucide.createIcons();
             
             const links = document.querySelectorAll('#sidebar a');
@@ -274,10 +318,9 @@
                 });
             });
 
-            console.log('%c✅ Toast-уведомления + тёмная тема готовы!', 'color: #22c55e; font-weight: 600;');
+            console.log('%c✅ Всё готово: тёмная тема + toast + collapsible sidebar!', 'color: #22c55e; font-weight: 600;');
         });
 
-        // Close sidebar on Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeSidebar();
