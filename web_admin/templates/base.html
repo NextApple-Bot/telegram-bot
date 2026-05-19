@@ -19,12 +19,19 @@
         }
         .sidebar-link:hover {
             background-color: #f1f5f9;
-            color: #3b82f6;
+        }
+        .dark .sidebar-link:hover {
+            background-color: #27272a;
+            color: #60a5fa;
         }
         .active {
             background-color: #eff6ff;
             color: #3b82f6;
             font-weight: 600;
+        }
+        .dark .active {
+            background-color: #1e3a8a;
+            color: #60a5fa;
         }
         .backdrop {
             animation: fadeIn 0.2s ease forwards;
@@ -36,12 +43,12 @@
     </style>
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-zinc-50 text-zinc-900">
+<body class="bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
 
-    <!-- HEADER -->
-    <header class="bg-white border-b border-zinc-200 px-4 py-4 flex items-center justify-between md:hidden sticky top-0 z-50">
+    <!-- HEADER (Mobile) -->
+    <header class="bg-white border-b border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 px-4 py-4 flex items-center justify-between md:hidden sticky top-0 z-50">
         <div class="flex items-center gap-3">
-            <button onclick="toggleSidebar()" class="p-2 hover:bg-zinc-100 rounded-xl">
+            <button onclick="toggleSidebar()" class="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl">
                 <i data-lucide="menu" class="w-6 h-6"></i>
             </button>
             <div class="flex items-center gap-3">
@@ -51,15 +58,20 @@
                 </div>
             </div>
         </div>
+        <!-- Theme toggle mobile -->
+        <button onclick="toggleTheme()" class="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl">
+            <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+            <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+        </button>
     </header>
 
     <!-- SIDEBAR + BACKDROP -->
     <div class="flex h-screen">
-        <!-- Sidebar (Mobile + Desktop) -->
-        <div id="sidebar" class="sidebar fixed md:static inset-y-0 left-0 z-50 w-72 bg-white border-r border-zinc-200 shadow-2xl md:shadow-none flex flex-col transform -translate-x-full md:translate-x-0">
+        <!-- Sidebar -->
+        <div id="sidebar" class="sidebar fixed md:static inset-y-0 left-0 z-50 w-72 bg-white border-r border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 shadow-2xl md:shadow-none flex flex-col transform -translate-x-full md:translate-x-0">
             
-            <!-- Logo inside sidebar (desktop only) -->
-            <div class="p-6 border-b border-zinc-100 hidden md:flex items-center gap-3">
+            <!-- Logo -->
+            <div class="p-6 border-b border-zinc-100 dark:border-zinc-800 hidden md:flex items-center gap-3">
                 <div class="w-9 h-9 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-2xl">🤖</div>
                 <div>
                     <h1 class="text-2xl font-semibold tracking-tight">Bot Admin</h1>
@@ -68,38 +80,38 @@
             </div>
 
             <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-                <a href="/admin/dashboard" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/dashboard') %}active{% endif %}">
+                <a href="/admin/dashboard" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 dark:text-zinc-300 {% if request.url.path.startswith('/admin/dashboard') %}active{% endif %}">
                     <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
                     <span class="font-medium">Дашборд</span>
                 </a>
-                <a href="/admin/assortment" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/assortment') %}active{% endif %}">
+                <a href="/admin/assortment" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 dark:text-zinc-300 {% if request.url.path.startswith('/admin/assortment') %}active{% endif %}">
                     <i data-lucide="package" class="w-5 h-5"></i>
                     <span class="font-medium">Ассортимент</span>
                 </a>
-                <a href="/admin/purchases" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/purchases') %}active{% endif %}">
+                <a href="/admin/purchases" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 dark:text-zinc-300 {% if request.url.path.startswith('/admin/purchases') %}active{% endif %}">
                     <i data-lucide="shopping-cart" class="w-5 h-5"></i>
                     <span class="font-medium">Покупки</span>
                 </a>
-                <a href="/admin/clients" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/clients') %}active{% endif %}">
+                <a href="/admin/clients" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 dark:text-zinc-300 {% if request.url.path.startswith('/admin/clients') %}active{% endif %}">
                     <i data-lucide="users" class="w-5 h-5"></i>
                     <span class="font-medium">Клиенты</span>
                 </a>
-                <a href="/admin/sold" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sold') %}active{% endif %}">
+                <a href="/admin/sold" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 dark:text-zinc-300 {% if request.url.path.startswith('/admin/sold') %}active{% endif %}">
                     <i data-lucide="bag-check" class="w-5 h-5"></i>
                     <span class="font-medium">Продано</span>
                 </a>
-                <a href="/admin/stats" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/stats') %}active{% endif %}">
+                <a href="/admin/stats" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 dark:text-zinc-300 {% if request.url.path.startswith('/admin/stats') %}active{% endif %}">
                     <i data-lucide="trending-up" class="w-5 h-5"></i>
                     <span class="font-medium">Статистика</span>
                 </a>
-                <a href="/admin/sellers/stats" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 {% if request.url.path.startswith('/admin/sellers') %}active{% endif %}">
+                <a href="/admin/sellers/stats" onclick="closeSidebar()" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-3xl text-zinc-700 dark:text-zinc-300 {% if request.url.path.startswith('/admin/sellers') %}active{% endif %}">
                     <i data-lucide="users" class="w-5 h-5"></i>
                     <span class="font-medium">Продавцы</span>
                 </a>
             </nav>
 
-            <div class="p-4 border-t border-zinc-100">
-                <a href="/admin/auth/logout" class="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-3xl transition-colors">
+            <div class="p-4 border-t border-zinc-100 dark:border-zinc-800">
+                <a href="/admin/auth/logout" class="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-950 rounded-3xl transition-colors">
                     <i data-lucide="log-out" class="w-5 h-5"></i>
                     <span class="font-medium">Выйти</span>
                 </a>
@@ -112,8 +124,16 @@
         <!-- Main Content -->
         <div class="flex-1 flex flex-col min-w-0">
             <!-- Desktop header -->
-            <header class="hidden md:flex bg-white border-b border-zinc-200 px-8 py-5 items-center justify-between">
-                <h1 class="text-2xl font-semibold text-zinc-800">{% block page_title %}Админ-панель{% endblock %}</h1>
+            <header class="hidden md:flex bg-white border-b border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 px-8 py-5 items-center justify-between">
+                <h1 class="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">{% block page_title %}Админ-панель{% endblock %}</h1>
+                
+                <!-- Theme Toggle Desktop -->
+                <button onclick="toggleTheme()" 
+                        class="flex items-center gap-2 px-3 py-2 rounded-2xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                    <i data-lucide="sun" class="w-5 h-5 hidden dark:block text-amber-400"></i>
+                    <i data-lucide="moon" class="w-5 h-5 block dark:hidden text-zinc-600"></i>
+                    <span class="text-sm text-zinc-600 dark:text-zinc-400">Тема</span>
+                </button>
             </header>
 
             <div class="flex-1 overflow-auto p-4 md:p-8">
@@ -123,8 +143,33 @@
     </div>
 
     <script>
-        function initializeTailwind() {
-            return;
+        // Tailwind dark mode config
+        function initTailwind() {
+            document.documentElement.style.setProperty('--accent', '#3b82f6');
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            // Re-render icons after theme change
+            setTimeout(() => lucide.createIcons(), 50);
         }
 
         function toggleSidebar() {
@@ -141,24 +186,23 @@
             backdrop.classList.add('hidden');
         }
 
-        // Закрывать меню при клике по любой ссылке (важно для мобильных)
         document.addEventListener('DOMContentLoaded', function() {
+            initTailwind();
+            initTheme();
             lucide.createIcons();
             
+            // Auto-close sidebar on link click (mobile)
             const links = document.querySelectorAll('#sidebar a');
             links.forEach(link => {
-                link.addEventListener('click', function(e) {
-                    // Даем время на переход по ссылке перед закрытием
-                    setTimeout(() => {
-                        closeSidebar();
-                    }, 50);
+                link.addEventListener('click', function() {
+                    setTimeout(() => closeSidebar(), 50);
                 });
             });
 
-            console.log('%c✅ Мобильное меню полностью адаптировано!', 'color: #22c55e; font-weight: 600;');
+            console.log('%c✅ Тёмная тема + переключатель добавлены!', 'color: #22c55e; font-weight: 600;');
         });
 
-        // Закрывать при нажатии Esc
+        // Close sidebar on Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeSidebar();
