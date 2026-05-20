@@ -13,10 +13,6 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .category-container:hover {
-    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
-    transform: translateY(-1px);
-  }
   .category-header {
     background: linear-gradient(to right, #f8fafc, #ffffff);
     padding: 16px 24px;
@@ -24,12 +20,20 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    cursor: grab;
+    cursor: pointer;
+    user-select: none;
     border-bottom: 1px solid #f1f5f9;
+  }
+  .category-header:hover {
+    background: #f8fafc;
   }
   .category-items {
     padding: 12px 20px;
     background: white;
+    display: none; /* скрыто по умолчанию */
+  }
+  .category-container.open .category-items {
+    display: block;
   }
   .item {
     background: #fafafa;
@@ -48,7 +52,12 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.06);
   }
   .sortable-ghost { opacity: 0.7; background: #dbeafe; border: 2px dashed #3b82f6; }
-  .premium-shadow { box-shadow: 0 10px 30px -15px rgba(59, 130, 246, 0.15); }
+  .chevron {
+    transition: transform 0.3s ease;
+  }
+  .category-container.open .chevron {
+    transform: rotate(180deg);
+  }
 </style>
 {% endblock %}
 
@@ -60,8 +69,9 @@
             <p class="text-zinc-500 mt-1">Перетаскивай категории и товары. Всё сохраняется автоматически.</p>
         </div>
         <div class="flex gap-3">
-            <button onclick="location.reload()" 
-                    class="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 rounded-2xl flex items-center gap-2 text-sm font-medium transition-all active:scale-[0.985]">
+            <button onclick="expandAll()" class="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-2xl transition">Развернуть всё</button>
+            <button onclick="collapseAll()" class="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-2xl transition">Свернуть всё</button>
+            <button onclick="location.reload()" class="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 rounded-2xl flex items-center gap-2 text-sm font-medium transition-all active:scale-[0.985]">
                 <i data-lucide="refresh-cw" class="w-4 h-4"></i> Обновить
             </button>
         </div>
@@ -78,16 +88,17 @@
         {% endfor %}
 
         {% for cat_name, cat_items in grouped.items() %}
-        <div class="category-container premium-shadow" data-category="{{ cat_name }}">
-            <div class="category-header">
+        <div class="category-container" data-category="{{ cat_name }}">
+            <div class="category-header" onclick="toggleCategory(this)">
                 <div class="flex items-center gap-4">
                     <span class="drag-handle text-zinc-400">☰</span>
                     <span class="font-semibold text-xl tracking-tight">{{ cat_name }}</span>
                     <span class="px-4 py-1 text-xs font-medium bg-zinc-100 text-zinc-600 rounded-full">{{ cat_items|length }} товаров</span>
                 </div>
+                <i data-lucide="chevron-down" class="chevron w-5 h-5 text-zinc-400"></i>
             </div>
             
-            <div class="category-items" data-category="{{ cat_name }}">
+            <div class="category-items">
                 {% for item in cat_items %}
                 <div class="item" data-item-id="{{ item.id }}">
                     <div class="flex items-center gap-4">
@@ -114,7 +125,20 @@
 </div>
 
 <script>
-    // ... (тот же код drag & drop и delete, что был раньше)
+    function toggleCategory(header) {
+        const container = header.parentElement;
+        container.classList.toggle('open');
+        lucide.createIcons();
+    }
+
+    function expandAll() {
+        document.querySelectorAll('.category-container').forEach(el => el.classList.add('open'));
+    }
+
+    function collapseAll() {
+        document.querySelectorAll('.category-container').forEach(el => el.classList.remove('open'));
+    }
+
     let categorySortable;
     let itemSortables = [];
 
@@ -175,6 +199,8 @@
     document.addEventListener('DOMContentLoaded', () => {
         initDragAndDrop();
         lucide.createIcons();
+        // По умолчанию все категории свёрнуты
+        document.querySelectorAll('.category-container').forEach(el => el.classList.remove('open'));
     });
 </script>
 {% endblock %}
