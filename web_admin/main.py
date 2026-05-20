@@ -8,7 +8,7 @@ from web_admin.routes import auth, clients, dashboard, debug, purchases, sellers
 from web_admin.routes.assortment import manage as assortment_manage
 from web_admin.routes.assortment import views as assortment_views
 
-app = FastAPI(title="Telegram Bot Admin Panel")
+app = FastAPI(title="Telegram Bot Admin Panel", redirect_slashes=False)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
