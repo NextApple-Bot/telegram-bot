@@ -7,6 +7,7 @@ from aiogram.types.input_file import BufferedInputFile
 
 from bot import config
 from bot.handlers.states import AssortmentConfirmState
+from bot.repositories import ItemRepository
 from bot.services.assortment import AssortmentService
 from bot.utils.sort import build_output_text, sort_assortment_to_categories
 
@@ -65,7 +66,7 @@ async def handle_assortment_upload(message: Message, state: FSMContext):
 
     # Показываем предпросмотр и кнопки подтверждения
     preview = f"📦 Найдено категорий: {len(categories)}\n\n"
-    for cat in categories[:5]:  # показываем первые 5 категорий
+    for cat in categories[:5]:  # показываем первые 5 категории
         preview += f"• {cat['header']} — {len(cat['items'])} товаров\n"
     if len(categories) > 5:
         preview += f"... и ещё {len(categories)-5} категорий."
@@ -85,7 +86,7 @@ async def process_assortment_confirm(callback: CallbackQuery, state: FSMContext)
 
     if action == "yes" and categories:
         try:
-            await AssortmentService.save_inventory(categories)
+            await ItemRepository.bulk_replace_assortment(categories)
             await callback.message.edit_text("✅ Ассортимент успешно загружен и сохранён.")
         except Exception as e:
             logger.exception("Ошибка сохранения ассортимента")
