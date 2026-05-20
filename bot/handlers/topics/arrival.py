@@ -17,11 +17,29 @@ router = Router()
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
+def merge_serial_lines(lines: List[str]) -> List[str]:
+    """Склеивает строки, где серийный номер находится на следующей строке."""
+    merged = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not re.search(r'\([^)]+\)|SN[:\s]*[A-Za-z0-9-]+', line, re.IGNORECASE) and i + 1 < len(lines):
+            next_line = lines[i + 1]
+            if re.search(r'\([^)]+\)|SN[:\s]*[A-Za-z0-9-]+', next_line, re.IGNORECASE):
+                merged.append(f"{line} {next_line}")
+                i += 2
+                continue
+        merged.append(line)
+        i += 1
+    return merged
+
+
 def parse_arrival_text(text: str) -> List[Dict]:
-    """Парсит текст прибытия в список товаров с категориями."""
+    """Парсит текст прибытия в список товаров с категориями (с поддержкой склейки строк)."""
     items = []
     current_category = None
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    raw_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = merge_serial_lines(raw_lines)
 
     for line in lines:
         if line.endswith(':') or (len(line) < 50 and not any(c.isdigit() for c in line)):
