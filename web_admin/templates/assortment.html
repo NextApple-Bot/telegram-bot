@@ -6,6 +6,32 @@
 {% endblock %}
 
 {% block content %}
+<!-- Категории с перемещением -->
+<div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <div class="font-semibold text-lg">Категории (перемещение ↑↓)</div>
+        <div class="text-sm text-zinc-500">Перетаскивай или используй кнопки</div>
+    </div>
+    
+    <div class="flex flex-wrap gap-2">
+        {% for cat in categories %}
+        <div class="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl px-4 py-2">
+            <span class="font-medium">{{ cat.name }}</span>
+            <div class="flex gap-1 ml-2">
+                <form action="/admin/assortment/move_up" method="post" class="inline">
+                    <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                    <button type="submit" class="px-2 py-1 text-xs bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-xl" title="Вверх">↑</button>
+                </form>
+                <form action="/admin/assortment/move_down" method="post" class="inline">
+                    <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                    <button type="submit" class="px-2 py-1 text-xs bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-xl" title="Вниз">↓</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
 <div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
     <div class="flex flex-col md:flex-row gap-4 items-end">
         <div class="flex-1">
@@ -77,7 +103,7 @@
                     </td>
                     <td class="px-6 py-4 font-medium text-zinc-900 dark:text-white">{{ item.text }}</td>
                     <td class="px-6 py-4 text-zinc-600 dark:text-zinc-400">{{ item.serial or '—' }}</td>
-                    <td class="px-6 py-4 text-zinc-600 dark:text-zinc-400">{{ item.category_name }}</td>
+                    <td class="px-6 py-4 text-zinc-600 dark:text-zinc-400">{{ item.category_name or '—' }}</td>
                     <td class="px-6 py-4">{% if item.is_booked %}<span class="px-3 py-1 text-xs bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded-full">Забронировано</span>{% else %}—{% endif %}</td>
                     <td class="px-6 py-4 text-sm text-zinc-500">{{ item.created_at|format_date if item.created_at else '—' }}</td>
                     <td class="px-6 py-4">
@@ -108,7 +134,6 @@
             {% if page < total_pages %}
             <a href="?page={{ page+1 }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}" class="px-4 py-2 rounded-2xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">&raquo;</a>
             {% endif %}
-        </div>
     </div>
     {% endif %}
 </div>
@@ -167,9 +192,8 @@
         setTimeout(() => window.location.reload(), 1200);
     }
 
-    // Существующие скрипты (сохранены)
     document.addEventListener('DOMContentLoaded', function() {
-        // ... (оригинальный код Sortable и модалок оставлен для совместимости)
+        // Инициализация Sortable для будущего drag-and-drop
     });
 </script>
 {% endblock %}
