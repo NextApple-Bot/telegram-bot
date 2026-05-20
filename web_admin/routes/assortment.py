@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import APIRouter, Request, Form
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
 
@@ -17,11 +17,29 @@ async def assortment_view(request: Request):
 
     categories = await AssortmentService.load_inventory()
 
-    return templates.TemplateResponse("assortment/list.html", {
+    return templates.TemplateResponse("assortment.html", {
         "request": request,
         "categories": categories,
         "title": "Ассортимент"
     })
+
+
+@router.post("/assortment/move_up")
+async def move_category_up(request: Request, cat_id: int = Form(...)):
+    if not is_authenticated(request):
+        return RedirectResponse("/admin/auth/login")
+
+    await AssortmentService.move_category_up(cat_id)
+    return RedirectResponse("/admin/assortment", status_code=303)
+
+
+@router.post("/assortment/move_down")
+async def move_category_down(request: Request, cat_id: int = Form(...)):
+    if not is_authenticated(request):
+        return RedirectResponse("/admin/auth/login")
+
+    await AssortmentService.move_category_down(cat_id)
+    return RedirectResponse("/admin/assortment", status_code=303)
 
 
 @router.get("/assortment/export")
