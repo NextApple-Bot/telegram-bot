@@ -8,6 +8,15 @@ from web_admin.templates import templates
 
 router = APIRouter()
 
+ALLOWED_SORT_FIELDS = {
+    "id": Item.id,
+    "text": Item.text,
+    "serial": Item.serial,
+    "category_name": Category.name,
+    "is_booked": Item.is_booked,
+    "created_at": Item.created_at,
+}
+
 @router.get("/", response_class=HTMLResponse)
 async def list_assortment(
     request: Request,
@@ -70,7 +79,6 @@ async def save_order(request: Request):
             cat_name = cat_data["name"]
             item_ids = cat_data.get("item_ids", [])
 
-            # Находим или создаём категорию
             cat = await session.scalar(select(Category).where(Category.name == cat_name))
             if not cat:
                 cat = Category(name=cat_name, sort_order=idx)
@@ -79,7 +87,6 @@ async def save_order(request: Request):
             else:
                 cat.sort_order = idx
 
-            # Обновляем категорию у всех товаров
             for item_id in item_ids:
                 await session.execute(
                     update(Item)
