@@ -141,26 +141,11 @@
     }
 
     function quickSale(itemId, btn) {
-        // Переходим на страницу редактирования с режимом продажи
         window.location.href = `/admin/assortment/edit/${itemId}?sale=1`;
     }
 
-    async function quickBook(itemId, btn) {
-        const bookingInfo = prompt('Введите информацию о брони (например: "Бронь от Ивана"):');
-        if (!bookingInfo) return;
-        
-        const res = await fetch(`/admin/assortment/book/${itemId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ booking_info: bookingInfo })
-        });
-        
-        if (res.ok) {
-            showToast('Товар забронирован!', 'success');
-            setTimeout(() => location.reload(), 600);
-        } else {
-            showToast('Ошибка при бронировании', 'error');
-        }
+    function quickBook(itemId, btn) {
+        window.location.href = `/admin/assortment/edit/${itemId}?book=1`;
     }
 
     async function deleteItem(itemId, element) {
