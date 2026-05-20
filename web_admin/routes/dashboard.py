@@ -70,7 +70,7 @@ async def dashboard(request: Request, target_date: str | None = None):
         "payments": payments,
         "total_revenue": total_revenue,
         "plan_amount": plan,
-        "stats": {"sales_count": sales_count, "preorders_count": preorders_count, "bookings_count": bookings_count},
+        "stats": {"sales_count": sales_count, "preorders_count": preorders_count, "bookings_count": bookings_count],
         "sellers": sellers,
         "chart_dates": dates_labels,
         "chart_sales": sales_chart,
@@ -124,7 +124,7 @@ async def update_stats(request: Request):
 
         sys_item = (await session.execute(select(Item).where(Item.id == 0))).scalar_one_or_none()
         if not sys_item:
-            sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__')).scalar_one_or_none()
+            sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__'))).scalar_one_or_none()
             if not sys_cat:
                 sys_cat = Category(name='__SYSTEM__', sort_order=-1)
                 session.add(sys_cat)
