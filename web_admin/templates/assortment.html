@@ -3,35 +3,60 @@
 {% block page_title %}Ассортимент{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+  .category-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+  }
+  .category-chip {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: grab;
+    user-select: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  .category-chip:active { cursor: grabbing; }
+  .sortable-ghost { opacity: 0.4; }
+</style>
 {% endblock %}
 
 {% block content %}
-<!-- Категории с перемещением -->
+<!-- Drag & Drop категории -->
 <div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
     <div class="flex items-center justify-between mb-4">
-        <div class="font-semibold text-lg">Категории (перемещение ↑↓)</div>
-        <div class="text-sm text-zinc-500">Перетаскивай или используй кнопки</div>
+        <div>
+            <div class="font-semibold text-lg">Категории</div>
+            <div class="text-sm text-zinc-500">Перетаскивай карточки, чтобы изменить порядок</div>
+        </div>
+        <button onclick="saveCategoryOrder()" 
+                class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium flex items-center gap-2">
+            <i data-lucide="save" class="w-4 h-4"></i> Сохранить порядок
+        </button>
     </div>
-    
-    <div class="flex flex-wrap gap-2">
+
+    <div id="category-list" class="category-list">
         {% for cat in categories %}
-        <div class="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl px-4 py-2">
-            <span class="font-medium">{{ cat.name }}</span>
-            <div class="flex gap-1 ml-2">
-                <form action="/admin/assortment/move_up" method="post" class="inline">
-                    <input type="hidden" name="cat_id" value="{{ cat.id }}">
-                    <button type="submit" class="px-2 py-1 text-xs bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-xl" title="Вверх">↑</button>
-                </form>
-                <form action="/admin/assortment/move_down" method="post" class="inline">
-                    <input type="hidden" name="cat_id" value="{{ cat.id }}">
-                    <button type="submit" class="px-2 py-1 text-xs bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-xl" title="Вниз">↓</button>
-                </form>
-            </div>
+        <div class="category-chip" data-id="{{ cat.id }}">
+            {{ cat.name }}
+            <span class="text-xs text-zinc-400">↕</span>
         </div>
         {% endfor %}
     </div>
 </div>
 
+<!-- Основная таблица товаров -->
 <div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
     <div class="flex flex-col md:flex-row gap-4 items-end">
         <div class="flex-1">
@@ -59,19 +84,6 @@
                 <i data-lucide="plus" class="w-4 h-4"></i> Товар
             </button>
         </div>
-    </div>
-</div>
-
-<!-- Bulk Actions Bar -->
-<div id="bulk-bar" class="hidden mb-4 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-3xl px-5 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-        <span class="font-medium text-red-700 dark:text-red-300" id="selected-count">0 выбрано</span>
-    </div>
-    <div class="flex gap-2">
-        <button onclick="bulkDelete()" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-medium flex items-center gap-2">
-            <i data-lucide="trash-2" class="w-4 h-4"></i> Удалить выбранные
-        </button>
-        <button onclick="clearSelection()" class="px-4 py-2 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-2xl text-sm">Отменить</button>
     </div>
 </div>
 
@@ -139,6 +151,43 @@
 </div>
 
 <script>
+    let sortable;
+
+    function initSortable() {
+        const el = document.getElementById('category-list');
+        if (!el) return;
+        
+        sortable = new Sortable(el, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            onEnd: function(evt) {
+                // Можно сразу сохранять или по кнопке
+            }
+        });
+    }
+
+    async function saveCategoryOrder() {
+        const chips = document.querySelectorAll('#category-list .category-chip');
+        const order = Array.from(chips).map(chip => parseInt(chip.dataset.id));
+        
+        try {
+            const res = await fetch('/admin/assortment/categories/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order: order })
+            });
+            
+            if (res.ok) {
+                showToast('Порядок категорий сохранён!', 'success');
+                setTimeout(() => location.reload(), 800);
+            } else {
+                showToast('Ошибка сохранения', 'error');
+            }
+        } catch (e) {
+            showToast('Ошибка сети', 'error');
+        }
+    }
+
     function applyFilters() {
         const params = new URLSearchParams();
         const search = document.getElementById('searchInput').value;
@@ -185,15 +234,18 @@
         if (checkboxes.length === 0) return;
 
         const ids = Array.from(checkboxes).map(cb => cb.value);
-        
         if (!confirm(`Удалить ${ids.length} товаров?`)) return;
-
         showToast(`Удалено ${ids.length} товаров (демо)`, 'success');
         setTimeout(() => window.location.reload(), 1200);
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        // Инициализация Sortable для будущего drag-and-drop
+        initSortable();
+        
+        // Инициализация Lucide иконок
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     });
 </script>
 {% endblock %}
