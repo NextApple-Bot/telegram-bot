@@ -34,4 +34,4 @@ async def auth_middleware(request: Request, call_next):
 
 @app.get("/")
 async def root():
-    return RedirectResponse(url="/admin/dashboard")
+    return RedirectResponse(url="/dashboard")
