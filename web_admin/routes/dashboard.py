@@ -70,7 +70,7 @@ async def dashboard(request: Request, target_date: str | None = None):
         "payments": payments,
         "total_revenue": total_revenue,
         "plan_amount": plan,
-        "stats": {"sales_count": sales_count, "preorders_count": preorders_count, "bookings_count": bookings_count],
+        "stats": {"sales_count": sales_count, "preorders_count": preorders_count, "bookings_count": bookings_count},
         "sellers": sellers,
         "chart_dates": dates_labels,
         "chart_sales": sales_chart,
