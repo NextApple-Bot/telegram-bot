@@ -4,6 +4,29 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <style>
+  .category-reorder {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 8px;
+    max-height: 380px;
+    overflow-y: auto;
+  }
+  .category-reorder-item {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: grab;
+    font-weight: 500;
+  }
+  .category-reorder-item:active { cursor: grabbing; }
+  .sortable-ghost { opacity: 0.6; background: #e0f2fe; }
+  .drag-handle { color: #94a3b8; margin-right: 12px; font-size: 18px; }
   .category-accordion {
     border: 1px solid #e2e8f0;
     border-radius: 16px;
@@ -49,7 +72,32 @@
 {% endblock %}
 
 {% block content %}
-<!-- Основная таблица товаров (сгруппированная по категориям) -->
+<!-- Drag & Drop для изменения порядка категорий -->
+<div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <div class="font-semibold text-lg">Порядок категорий</div>
+            <div class="text-sm text-zinc-500">Перетаскивай, чтобы изменить порядок (сохраняется при загрузке ассортимента)</div>
+        </div>
+        <button onclick="saveCategoryOrder()" 
+                class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium flex items-center gap-2">
+            <i data-lucide="save" class="w-4 h-4"></i> Сохранить порядок
+        </button>
+    </div>
+
+    <div id="category-reorder-list" class="category-reorder">
+        {% for cat in categories %}
+        <div class="category-reorder-item" data-id="{{ cat.id }}">
+            <div class="flex items-center gap-3">
+                <span class="drag-handle">☰</span>
+                <span>{{ cat.name }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Основная таблица товаров (аккордеон) -->
 <div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
     <div class="flex flex-col md:flex-row gap-4 items-end mb-4">
         <div class="flex-1">
@@ -114,6 +162,41 @@
 </div>
 
 <script>
+    let sortable;
+
+    function initSortable() {
+        const el = document.getElementById('category-reorder-list');
+        if (!el) return;
+        
+        sortable = new Sortable(el, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            handle: '.drag-handle',
+        });
+    }
+
+    async function saveCategoryOrder() {
+        const rows = document.querySelectorAll('#category-reorder-list .category-reorder-item');
+        const order = Array.from(rows).map(row => parseInt(row.dataset.id));
+        
+        try {
+            const res = await fetch('/admin/assortment/categories/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order: order })
+            });
+            
+            if (res.ok) {
+                showToast('Порядок категорий сохранён!', 'success');
+                setTimeout(() => location.reload(), 600);
+            } else {
+                showToast('Ошибка сохранения', 'error');
+            }
+        } catch (e) {
+            showToast('Ошибка сети', 'error');
+        }
+    }
+
     function applyFilters() {
         const params = new URLSearchParams();
         const search = document.getElementById('searchInput').value;
@@ -125,6 +208,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
+        initSortable();
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
