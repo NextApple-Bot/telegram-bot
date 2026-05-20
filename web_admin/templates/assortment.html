@@ -4,116 +4,61 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <style>
-  .category-reorder {
+  .category-container {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 16px;
-    padding: 8px;
-    max-height: 380px;
-    overflow-y: auto;
+    margin-bottom: 12px;
+    overflow: hidden;
   }
-  .category-reorder-item {
+  .category-header {
+    background: #e0f2fe;
+    padding: 12px 20px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: grab;
+    user-select: none;
+  }
+  .category-header:active { cursor: grabbing; }
+  .category-items {
+    padding: 8px;
+    min-height: 60px;
+    background: white;
+  }
+  .item {
     background: white;
     border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 12px 16px;
+    border-radius: 10px;
+    padding: 10px 14px;
     margin-bottom: 6px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: grab;
-    font-weight: 500;
+    font-size: 14px;
   }
-  .category-reorder-item:active { cursor: grabbing; }
-  .sortable-ghost { opacity: 0.6; background: #e0f2fe; }
-  .drag-handle { color: #94a3b8; margin-right: 12px; font-size: 18px; }
-  .category-accordion {
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    overflow: hidden;
-    margin-bottom: 8px;
-  }
-  .category-header {
-    background: #f8fafc;
-    padding: 14px 20px;
-    font-weight: 600;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    user-select: none;
-  }
-  .category-header:hover {
-    background: #f1f5f9;
-  }
-  .category-header .count {
-    background: #e2e8f0;
-    color: #64748b;
-    font-size: 12px;
-    padding: 2px 10px;
-    border-radius: 9999px;
-    font-weight: 500;
-  }
-  details[open] .category-header {
-    background: #f1f5f9;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .item-row {
-    padding: 12px 20px;
-    border-bottom: 1px solid #f1f5f9;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .item-row:last-child {
-    border-bottom: none;
-  }
+  .item:active { cursor: grabbing; }
+  .sortable-ghost { opacity: 0.5; background: #bae6fd; }
+  .drag-handle { color: #64748b; margin-right: 10px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Drag & Drop для изменения порядка категорий -->
 <div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
     <div class="flex items-center justify-between mb-4">
         <div>
-            <div class="font-semibold text-lg">Порядок категорий</div>
-            <div class="text-sm text-zinc-500">Перетаскивай, чтобы изменить порядок (сохраняется при загрузке ассортимента)</div>
+            <div class="font-semibold text-lg">Ассортимент (перетаскивание)</div>
+            <div class="text-sm text-zinc-500">Перетаскивай категории и товары между ними. Порядок сохраняется автоматически.</div>
         </div>
-        <button onclick="saveCategoryOrder()" 
+        <button onclick="location.reload()" 
                 class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium flex items-center gap-2">
-            <i data-lucide="save" class="w-4 h-4"></i> Сохранить порядок
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Обновить
         </button>
     </div>
 
-    <div id="category-reorder-list" class="category-reorder">
-        {% for cat in categories %}
-        <div class="category-reorder-item" data-id="{{ cat.id }}">
-            <div class="flex items-center gap-3">
-                <span class="drag-handle">☰</span>
-                <span>{{ cat.name }}</span>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-
-<!-- Основная таблица товаров (аккордеон) -->
-<div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
-    <div class="flex flex-col md:flex-row gap-4 items-end mb-4">
-        <div class="flex-1">
-            <label class="block text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">Поиск</label>
-            <input type="text" id="searchInput" class="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" placeholder="Название или серийный номер" value="{{ search or '' }}">
-        </div>
-        <div class="flex gap-2">
-            <button onclick="applyFilters()" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-medium">Применить</button>
-            <button onclick="document.getElementById('addItemModal').classList.remove('hidden'); document.getElementById('addItemModal').classList.add('flex')" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl flex items-center gap-2">
-                <i data-lucide="plus" class="w-4 h-4"></i> Товар
-            </button>
-        </div>
-    </div>
-
-    <!-- Аккордеон по категориям -->
-    <div class="space-y-2">
+    <div id="assortment-drag-list">
         {% set grouped = {} %}
         {% for item in items %}
             {% set cat_name = item.category_name or 'Без категории' %}
@@ -124,91 +69,106 @@
         {% endfor %}
 
         {% for cat_name, cat_items in grouped.items() %}
-        <details class="category-accordion">
-            <summary class="category-header">
+        <div class="category-container" data-category="{{ cat_name }}">
+            <div class="category-header">
                 <div class="flex items-center gap-3">
+                    <span class="drag-handle">☰</span>
                     <span class="font-semibold">{{ cat_name }}</span>
-                    <span class="count">{{ cat_items|length }}</span>
+                    <span class="px-3 py-1 text-xs bg-white text-zinc-500 rounded-full">{{ cat_items|length }}</span>
                 </div>
-                <span class="text-xs text-zinc-400">нажми, чтобы развернуть</span>
-            </summary>
+            </div>
             
-            <div class="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div class="category-items" data-category="{{ cat_name }}">
                 {% for item in cat_items %}
-                <div class="item-row hover:bg-zinc-50 dark:hover:bg-zinc-950 transition">
-                    <div class="flex-1">
-                        <div class="font-medium text-zinc-900 dark:text-white">{{ item.text }}</div>
-                        <div class="text-xs text-zinc-500">{{ item.serial or '—' }}</div>
+                <div class="item" data-item-id="{{ item.id }}">
+                    <div class="flex items-center gap-3">
+                        <span class="drag-handle">☰</span>
+                        <div>
+                            <div class="font-medium">{{ item.text }}</div>
+                            <div class="text-xs text-zinc-500">{{ item.serial or '—' }}</div>
+                        </div>
                     </div>
                     <div class="flex items-center gap-2">
                         {% if item.is_booked %}
-                            <span class="px-3 py-1 text-xs bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded-full">Забронировано</span>
+                            <span class="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded">Бронь</span>
                         {% endif %}
-                        <a href="/admin/assortment/edit/{{ item.id }}" class="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl" title="Редактировать">
-                            <i data-lucide="pencil" class="w-4 h-4 text-zinc-500"></i>
+                        <a href="/admin/assortment/edit/{{ item.id }}" class="p-1.5 hover:bg-zinc-100 rounded-lg">
+                            <i data-lucide="pencil" class="w-3.5 h-3.5 text-zinc-500"></i>
                         </a>
-                        <form action="/admin/assortment/delete/{{ item.id }}" method="post" onsubmit="return confirm('Удалить товар?');">
-                            <button class="p-2 hover:bg-red-50 dark:hover:bg-red-950 rounded-xl text-red-500" title="Удалить">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                            </button>
-                        </form>
                     </div>
                 </div>
                 {% endfor %}
             </div>
-        </details>
+        </div>
         {% endfor %}
     </div>
 </div>
 
 <script>
-    let sortable;
+    let categorySortable;
+    let itemSortables = [];
 
-    function initSortable() {
-        const el = document.getElementById('category-reorder-list');
-        if (!el) return;
-        
-        sortable = new Sortable(el, {
+    function initDragAndDrop() {
+        // Сортировка категорий
+        const container = document.getElementById('assortment-drag-list');
+        categorySortable = new Sortable(container, {
             animation: 150,
+            handle: '.category-header',
             ghostClass: 'sortable-ghost',
-            handle: '.drag-handle',
+            onEnd: function(evt) {
+                saveOrder();
+            }
+        });
+
+        // Сортировка товаров внутри категорий + перемещение между категориями
+        document.querySelectorAll('.category-items').forEach(el => {
+            const sortable = new Sortable(el, {
+                group: 'items',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: function(evt) {
+                    saveOrder();
+                }
+            });
+            itemSortables.push(sortable);
         });
     }
 
-    async function saveCategoryOrder() {
-        const rows = document.querySelectorAll('#category-reorder-list .category-reorder-item');
-        const order = Array.from(rows).map(row => parseInt(row.dataset.id));
+    async function saveOrder() {
+        const categories = [];
         
+        document.querySelectorAll('.category-container').forEach(catEl => {
+            const catName = catEl.dataset.category;
+            const itemIds = [];
+            
+            catEl.querySelectorAll('.item').forEach(itemEl => {
+                itemIds.push(parseInt(itemEl.dataset.itemId));
+            });
+            
+            categories.push({
+                name: catName,
+                item_ids: itemIds
+            });
+        });
+
         try {
-            const res = await fetch('/admin/assortment/categories/reorder', {
+            const res = await fetch('/admin/assortment/save-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order: order })
+                body: JSON.stringify({ categories: categories })
             });
             
             if (res.ok) {
-                showToast('Порядок категорий сохранён!', 'success');
-                setTimeout(() => location.reload(), 600);
-            } else {
-                showToast('Ошибка сохранения', 'error');
+                // Можно показать тихое уведомление
+                console.log('Порядок сохранён');
             }
         } catch (e) {
-            showToast('Ошибка сети', 'error');
+            console.error('Ошибка сохранения порядка', e);
         }
     }
 
-    function applyFilters() {
-        const params = new URLSearchParams();
-        const search = document.getElementById('searchInput').value;
-        const category_id = document.getElementById('category_id').value;
-
-        if (search) params.set('search', search);
-        if (category_id) params.set('category_id', category_id);
-        window.location.search = params.toString();
-    }
-
     document.addEventListener('DOMContentLoaded', function() {
-        initSortable();
+        initDragAndDrop();
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
