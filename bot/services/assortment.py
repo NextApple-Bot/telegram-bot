@@ -2,7 +2,7 @@ import logging
 from typing import List, Dict, Any
 
 import pandas as pd
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db import get_async_session_factory
@@ -16,12 +16,12 @@ class AssortmentService:
 
     @staticmethod
     async def load_inventory() -> List[Dict[str, Any]]:
-        """Загружает весь ассортимент с группировкой по категориям."""
+        """Загружает весь ассортимент с группировкой по категориям, отсортированный по sort_order."""
         async with get_async_session_factory()() as session:
             query = (
                 select(Category, Item)
                 .outerjoin(Item, Category.id == Item.category_id)
-                .order_by(Category.name, Item.text)
+                .order_by(Category.sort_order, Item.text)
             )
             result = await session.execute(query)
             rows = result.all()
@@ -34,6 +34,7 @@ class AssortmentService:
                 categories[cat_name] = {
                     "id": cat.id,
                     "name": cat_name,
+                    "sort_order": cat.sort_order,
                     "items": []
                 }
 
@@ -255,3 +256,50 @@ class AssortmentService:
             )
             await session.commit()
             return result.rowcount
+
+    @staticmethod
+    async def move_category_up(cat_id: int) -> bool:
+        """Переместить категорию вверх (уменьшить sort_order)."""
+        async with get_async_session_factory()() as session:
+            cat = await session.get(Category, cat_id)
+            if not cat:
+                return False
+            # Найти категорию выше
+            prev_cat = await session.scalar(
+                select(Category).where(Category.sort_order < cat.sort_order).order_by(Category.sort_order.desc()).limit(1)
+            )
+            if not prev_cat:
+                return False
+            # Поменять местами
+            cat.sort_order, prev_cat.sort_order = prev_cat.sort_order, cat.sort_order
+            await session.commit()
+            return True
+
+    @staticmethod
+    async def move_category_down(cat_id: int) -> bool:
+        """Переместить категорию вниз (увеличить sort_order)."""
+        async with get_async_session_factory()() as session:
+            cat = await session.get(Category, cat_id)
+            if not cat:
+                return False
+            # Найти категорию ниже
+            next_cat = await session.scalar(
+                select(Category).where(Category.sort_order > cat.sort_order).order_by(Category.sort_order).limit(1)
+            )
+            if not next_cat:
+                return False
+            # Поменять местами
+            cat.sort_order, next_cat.sort_order = next_cat.sort_order, cat.sort_order
+            await session.commit()
+            return True
+
+    @staticmethod
+    async def reorder_categories(new_order: list[int]) -> bool:
+        """Полная перестановка категорий по списку ID."""
+        async with get_async_session_factory()() as session:
+            for index, cat_id in enumerate(new_order):
+                cat = await session.get(Category, cat_id)
+                if cat:
+                    cat.sort_order = index
+            await session.commit()
+            return True
