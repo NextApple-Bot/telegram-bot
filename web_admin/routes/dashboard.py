@@ -12,6 +12,7 @@ router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
+@router.get("", response_class=HTMLResponse)
 async def dashboard(request: Request, target_date: str | None = None):
     today = datetime.now().date() if not target_date else datetime.strptime(target_date, "%Y-%m-%d").date()
     async_session = get_async_session_factory()
@@ -123,7 +124,7 @@ async def update_stats(request: Request):
 
         sys_item = (await session.execute(select(Item).where(Item.id == 0))).scalar_one_or_none()
         if not sys_item:
-            sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__'))).scalar_one_or_none()
+            sys_cat = (await session.execute(select(Category).where(Category.name == '__SYSTEM__')).scalar_one_or_none()
             if not sys_cat:
                 sys_cat = Category(name='__SYSTEM__', sort_order=-1)
                 session.add(sys_cat)
