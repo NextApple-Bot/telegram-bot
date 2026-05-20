@@ -20,8 +20,6 @@ ALLOWED_SORT_FIELDS = {
 @router.get("/", response_class=HTMLResponse)
 async def list_assortment(
     request: Request,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=10, le=200),
     search: str | None = Query(None),
     category_id: str | None = Query(None),
     sort_by: str = Query("id", pattern="^(id|text|serial|category_name|is_booked|created_at)$"),
@@ -29,7 +27,6 @@ async def list_assortment(
 ):
     async_session = get_async_session_factory()
     async with async_session() as session:
-        offset = (page - 1) * per_page
         base_query = select(
             Item.id, Item.text, Item.serial, Item.is_booked, Item.created_at,
             Category.id.label('category_id'), Category.name.label('category_name')
@@ -44,7 +41,7 @@ async def list_assortment(
 
         sort_column = ALLOWED_SORT_FIELDS.get(sort_by, Item.id)
         order_direction = sort_column.desc() if sort_order == "desc" else sort_column.asc()
-        base_query = base_query.order_by(order_direction).limit(per_page).offset(offset)
+        base_query = base_query.order_by(order_direction)
 
         count_query = select(func.count()).select_from(Item).join(Category, Item.category_id == Category.id).where(Category.name != '__SYSTEM__')
         if search:
@@ -55,7 +52,6 @@ async def list_assortment(
             count_query = count_query.where(Item.category_id == int(category_id))
 
         total = (await session.execute(count_query)).scalar()
-        total_pages = (total + per_page - 1) // per_page if total > 0 else 1
         items = (await session.execute(base_query)).all()
 
         cats_q = select(Category.id, Category.name).where(Category.name != '__SYSTEM__').order_by(Category.sort_order, Category.name)
@@ -64,9 +60,6 @@ async def list_assortment(
     return templates.TemplateResponse("assortment.html", {
         "request": request,
         "items": [dict(i._mapping) for i in items],
-        "page": page,
-        "total_pages": total_pages,
-        "per_page": per_page,
         "total": total,
         "search": search,
         "category_id": category_id,
@@ -77,7 +70,6 @@ async def list_assortment(
 
 @router.post("/categories/reorder")
 async def reorder_categories(request: Request):
-    # Поддержка и form-data, и JSON
     try:
         data = await request.json()
         if isinstance(data, list):
