@@ -111,20 +111,6 @@
         </details>
         {% endfor %}
     </div>
-
-    {% if total_pages > 1 %}
-    <div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-center mt-4">
-        <div class="flex gap-1">
-            {% if page > 1 %}
-            <a href="?page={{ page-1 }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}" class="px-4 py-2 rounded-2xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">&laquo;</a>
-            {% endif %}
-            <span class="px-5 py-2 bg-blue-600 text-white rounded-2xl font-medium">{{ page }} / {{ total_pages }}</span>
-            {% if page < total_pages %}
-            <a href="?page={{ page+1 }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}" class="px-4 py-2 rounded-2xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">&raquo;</a>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
 </div>
 
 <script>
@@ -132,12 +118,9 @@
         const params = new URLSearchParams();
         const search = document.getElementById('searchInput').value;
         const category_id = document.getElementById('category_id').value;
-        const per_page = document.getElementById('per_page').value;
 
         if (search) params.set('search', search);
         if (category_id) params.set('category_id', category_id);
-        params.set('per_page', per_page);
-        params.set('page', 1);
         window.location.search = params.toString();
     }
 
