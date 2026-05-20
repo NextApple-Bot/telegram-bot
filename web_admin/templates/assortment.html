@@ -140,23 +140,9 @@
         document.querySelectorAll('.category-container').forEach(el => el.classList.remove('open'));
     }
 
-    async function quickSale(itemId, btn) {
-        if (!confirm('Продать этот товар?')) return;
-        
-        const res = await fetch(`/admin/assortment/sell/${itemId}`, { method: 'POST' });
-        if (res.ok) {
-            const itemEl = btn.closest('.item');
-            itemEl.style.transition = 'all 0.4s ease';
-            itemEl.style.opacity = '0';
-            itemEl.style.transform = 'translateX(40px)';
-            
-            setTimeout(() => {
-                itemEl.remove();
-                showToast('Товар успешно продан!', 'success');
-            }, 400);
-        } else {
-            showToast('Ошибка при продаже', 'error');
-        }
+    function quickSale(itemId, btn) {
+        // Переходим на страницу редактирования с режимом продажи
+        window.location.href = `/admin/assortment/edit/${itemId}?sale=1`;
     }
 
     async function quickBook(itemId, btn) {
@@ -188,7 +174,6 @@
         }
     }
 
-    // Drag & Drop код (оставлен для краткости)
     let categorySortable;
     let itemSortables = [];
 
