@@ -49,32 +49,6 @@
 {% endblock %}
 
 {% block content %}
-<!-- Вертикальный список категорий с drag & drop -->
-<div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
-    <div class="flex items-center justify-between mb-4">
-        <div>
-            <div class="font-semibold text-lg">Категории</div>
-            <div class="text-sm text-zinc-500">Перетаскивай строки вверх/вниз, чтобы изменить порядок</div>
-        </div>
-        <button onclick="saveCategoryOrder()" 
-                class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium flex items-center gap-2">
-            <i data-lucide="save" class="w-4 h-4"></i> Сохранить порядок
-        </button>
-    </div>
-
-    <div id="category-list" class="category-list">
-        {% for cat in categories %}
-        <div class="category-row" data-id="{{ cat.id }}">
-            <div class="flex items-center gap-3">
-                <span class="drag-handle">☰</span>
-                <span>{{ cat.name }}</span>
-            </div>
-            <span class="text-xs text-zinc-400">перетащи</span>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-
 <!-- Основная таблица товаров (сгруппированная по категориям) -->
 <div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
     <div class="flex flex-col md:flex-row gap-4 items-end mb-4">
@@ -137,46 +111,23 @@
         </details>
         {% endfor %}
     </div>
+
+    {% if total_pages > 1 %}
+    <div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-center mt-4">
+        <div class="flex gap-1">
+            {% if page > 1 %}
+            <a href="?page={{ page-1 }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}" class="px-4 py-2 rounded-2xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">&laquo;</a>
+            {% endif %}
+            <span class="px-5 py-2 bg-blue-600 text-white rounded-2xl font-medium">{{ page }} / {{ total_pages }}</span>
+            {% if page < total_pages %}
+            <a href="?page={{ page+1 }}&per_page={{ per_page }}&search={{ search or '' }}&category_id={{ category_id or '' }}" class="px-4 py-2 rounded-2xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800">&raquo;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <script>
-    let sortable;
-
-    function initSortable() {
-        const el = document.getElementById('category-list');
-        if (!el) return;
-        
-        sortable = new Sortable(el, {
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            handle: '.drag-handle',
-            onEnd: function(evt) {
-            }
-        });
-    }
-
-    async function saveCategoryOrder() {
-        const rows = document.querySelectorAll('#category-list .category-row');
-        const order = Array.from(rows).map(row => parseInt(row.dataset.id));
-        
-        try {
-            const res = await fetch('/admin/assortment/categories/reorder', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order: order })
-            });
-            
-            if (res.ok) {
-                showToast('Порядок категорий сохранён!', 'success');
-                setTimeout(() => location.reload(), 700);
-            } else {
-                showToast('Ошибка сохранения', 'error');
-            }
-        } catch (e) {
-            showToast('Ошибка сети', 'error');
-        }
-    }
-
     function applyFilters() {
         const params = new URLSearchParams();
         const search = document.getElementById('searchInput').value;
@@ -191,7 +142,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        initSortable();
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
         }
