@@ -11,7 +11,6 @@
     margin-bottom: 16px;
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .category-header {
     background: linear-gradient(to right, #f8fafc, #ffffff);
@@ -22,15 +21,11 @@
     align-items: center;
     cursor: pointer;
     user-select: none;
-    border-bottom: 1px solid #f1f5f9;
-  }
-  .category-header:hover {
-    background: #f8fafc;
   }
   .category-items {
     padding: 12px 20px;
     background: white;
-    display: none; /* скрыто по умолчанию */
+    display: none;
   }
   .category-container.open .category-items {
     display: block;
@@ -45,18 +40,16 @@
     align-items: center;
     justify-content: space-between;
     cursor: grab;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .item:hover {
     background: white;
     box-shadow: 0 4px 12px rgba(0,0,0,0.06);
   }
-  .sortable-ghost { opacity: 0.7; background: #dbeafe; border: 2px dashed #3b82f6; }
-  .chevron {
-    transition: transform 0.3s ease;
-  }
-  .category-container.open .chevron {
-    transform: rotate(180deg);
+  .action-btn {
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    transition: all 0.2s ease;
   }
 </style>
 {% endblock %}
@@ -101,19 +94,29 @@
             <div class="category-items">
                 {% for item in cat_items %}
                 <div class="item" data-item-id="{{ item.id }}">
-                    <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-4 flex-1">
                         <span class="drag-handle text-zinc-400">☰</span>
                         <div>
                             <div class="font-semibold text-[15px]">{{ item.text }}</div>
                             <div class="text-sm text-zinc-500">{{ item.serial or '—' }}</div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3">
-                        {% if item.is_booked %}
-                            <span class="px-3 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">Забронировано</span>
+                    
+                    <!-- Кнопки действий -->
+                    <div class="flex items-center gap-2">
+                        {% if not item.is_booked %}
+                            <button onclick="quickBook({{ item.id }}, this)" class="action-btn px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium rounded-xl flex items-center gap-1">
+                                <i data-lucide="bookmark" class="w-3.5 h-3.5"></i> Бронь
+                            </button>
+                            <button onclick="quickSale({{ item.id }}, this)" class="action-btn px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-medium rounded-xl flex items-center gap-1">
+                                <i data-lucide="shopping-cart" class="w-3.5 h-3.5"></i> Продать
+                            </button>
                         {% endif %}
-                        <button onclick="deleteItem({{ item.id }}, this)" class="p-2 hover:bg-red-50 rounded-xl text-red-500 transition-colors">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        <a href="/admin/assortment/edit/{{ item.id }}" class="action-btn px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-medium rounded-xl flex items-center gap-1">
+                            <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Изменить
+                        </a>
+                        <button onclick="deleteItem({{ item.id }}, this)" class="action-btn px-2.5 py-1.5 hover:bg-red-50 text-red-500 rounded-xl">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
                     </div>
                 </div>
@@ -139,6 +142,29 @@
         document.querySelectorAll('.category-container').forEach(el => el.classList.remove('open'));
     }
 
+    async function quickBook(itemId, btn) {
+        if (!confirm('Забронировать товар?')) return;
+        const res = await fetch(`/admin/assortment/book/${itemId}`, { method: 'POST' });
+        if (res.ok) {
+            showToast('Товар забронирован!', 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast('Ошибка', 'error');
+        }
+    }
+
+    async function quickSale(itemId, btn) {
+        if (!confirm('Продать товар?')) return;
+        const res = await fetch(`/admin/assortment/sell/${itemId}`, { method: 'POST' });
+        if (res.ok) {
+            showToast('Товар продан!', 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast('Ошибка', 'error');
+        }
+    }
+
+    // ... остальной код (drag & drop, deleteItem, saveOrder) ...
     let categorySortable;
     let itemSortables = [];
 
@@ -186,20 +212,13 @@
             const itemEl = element.closest('.item');
             itemEl.style.transition = 'all 0.3s ease';
             itemEl.style.opacity = '0';
-            itemEl.style.transform = 'translateX(30px)';
-            setTimeout(() => {
-                itemEl.remove();
-                const container = element.closest('.category-container');
-                const countEl = container.querySelector('.px-4');
-                if (countEl) countEl.textContent = (parseInt(countEl.textContent) || 1) - 1 + ' товаров';
-            }, 300);
+            setTimeout(() => itemEl.remove(), 300);
         }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
         initDragAndDrop();
         lucide.createIcons();
-        // По умолчанию все категории свёрнуты
         document.querySelectorAll('.category-container').forEach(el => el.classList.remove('open'));
     });
 </script>
