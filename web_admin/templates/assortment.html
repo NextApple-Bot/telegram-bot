@@ -1,77 +1,73 @@
 {% extends "base.html" %}
-{% block title %}Ассортимент{% endblock %}
+{% block title %}Ассортимент — NextStore{% endblock %}
 {% block page_title %}Ассортимент{% endblock %}
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <style>
   .category-container {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    margin-bottom: 12px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 20px;
+    margin-bottom: 16px;
     overflow: hidden;
-    transition: box-shadow 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .category-container:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
   }
   .category-header {
-    background: #e0f2fe;
-    padding: 12px 20px;
+    background: linear-gradient(to right, #f8fafc, #ffffff);
+    padding: 16px 24px;
     font-weight: 600;
     display: flex;
     justify-content: space-between;
     align-items: center;
     cursor: grab;
-    user-select: none;
-    transition: background 0.2s ease;
+    border-bottom: 1px solid #f1f5f9;
   }
-  .category-header:active { cursor: grabbing; background: #bae6fd; }
   .category-items {
-    padding: 8px;
-    min-height: 60px;
+    padding: 12px 20px;
     background: white;
   }
   .item {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 10px 14px;
-    margin-bottom: 6px;
+    background: #fafafa;
+    border: 1px solid #f1f5f9;
+    border-radius: 14px;
+    padding: 14px 18px;
+    margin-bottom: 8px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: grab;
-    font-size: 14px;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .item:active { cursor: grabbing; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
-  .sortable-ghost { opacity: 0.6; background: #bae6fd; border: 2px dashed #0284c8; }
-  .drag-handle { color: #64748b; margin-right: 10px; }
-  .delete-btn {
-    opacity: 0.6;
-    transition: opacity 0.2s ease;
+  .item:hover {
+    background: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
   }
-  .item:hover .delete-btn {
-    opacity: 1;
-  }
+  .sortable-ghost { opacity: 0.7; background: #dbeafe; border: 2px dashed #3b82f6; }
+  .premium-shadow { box-shadow: 0 10px 30px -15px rgba(59, 130, 246, 0.15); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
-    <div class="flex items-center justify-between mb-4">
+<div class="max-w-7xl mx-auto">
+    <div class="flex items-center justify-between mb-8">
         <div>
-            <div class="font-semibold text-lg">Ассортимент (перетаскивание)</div>
-            <div class="text-sm text-zinc-500">Перетаскивай категории и товары. Порядок сохраняется автоматически.</div>
+            <h1 class="text-3xl font-semibold tracking-tight text-zinc-900">Ассортимент</h1>
+            <p class="text-zinc-500 mt-1">Перетаскивай категории и товары. Всё сохраняется автоматически.</p>
         </div>
-        <button onclick="location.reload()" 
-                class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-medium flex items-center gap-2">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Обновить
-        </button>
+        <div class="flex gap-3">
+            <button onclick="location.reload()" 
+                    class="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 rounded-2xl flex items-center gap-2 text-sm font-medium transition-all active:scale-[0.985]">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Обновить
+            </button>
+        </div>
     </div>
 
-    <div id="assortment-drag-list">
+    <div id="assortment-drag-list" class="space-y-4">
         {% set grouped = {} %}
         {% for item in items %}
             {% set cat_name = item.category_name or 'Без категории' %}
@@ -82,31 +78,31 @@
         {% endfor %}
 
         {% for cat_name, cat_items in grouped.items() %}
-        <div class="category-container" data-category="{{ cat_name }}">
+        <div class="category-container premium-shadow" data-category="{{ cat_name }}">
             <div class="category-header">
-                <div class="flex items-center gap-3">
-                    <span class="drag-handle">☰</span>
-                    <span class="font-semibold">{{ cat_name }}</span>
-                    <span class="px-3 py-1 text-xs bg-white text-zinc-500 rounded-full">{{ cat_items|length }}</span>
+                <div class="flex items-center gap-4">
+                    <span class="drag-handle text-zinc-400">☰</span>
+                    <span class="font-semibold text-xl tracking-tight">{{ cat_name }}</span>
+                    <span class="px-4 py-1 text-xs font-medium bg-zinc-100 text-zinc-600 rounded-full">{{ cat_items|length }} товаров</span>
                 </div>
             </div>
             
             <div class="category-items" data-category="{{ cat_name }}">
                 {% for item in cat_items %}
                 <div class="item" data-item-id="{{ item.id }}">
-                    <div class="flex items-center gap-3">
-                        <span class="drag-handle">☰</span>
+                    <div class="flex items-center gap-4">
+                        <span class="drag-handle text-zinc-400">☰</span>
                         <div>
-                            <div class="font-medium">{{ item.text }}</div>
-                            <div class="text-xs text-zinc-500">{{ item.serial or '—' }}</div>
+                            <div class="font-semibold text-[15px]">{{ item.text }}</div>
+                            <div class="text-sm text-zinc-500">{{ item.serial or '—' }}</div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-3">
                         {% if item.is_booked %}
-                            <span class="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded">Бронь</span>
+                            <span class="px-3 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">Забронировано</span>
                         {% endif %}
-                        <button onclick="deleteItem({{ item.id }}, this)" class="delete-btn p-1.5 hover:bg-red-50 rounded-lg text-red-500">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        <button onclick="deleteItem({{ item.id }}, this)" class="p-2 hover:bg-red-50 rounded-xl text-red-500 transition-colors">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
                         </button>
                     </div>
                 </div>
@@ -118,33 +114,27 @@
 </div>
 
 <script>
+    // ... (тот же код drag & drop и delete, что был раньше)
     let categorySortable;
     let itemSortables = [];
 
     function initDragAndDrop() {
         const container = document.getElementById('assortment-drag-list');
-        
-        // Сортировка категорий
         categorySortable = new Sortable(container, {
-            animation: 200,
+            animation: 220,
             easing: "cubic-bezier(0.4, 0, 0.2, 1)",
             handle: '.category-header',
             ghostClass: 'sortable-ghost',
-            onEnd: function(evt) {
-                saveOrder();
-            }
+            onEnd: saveOrder
         });
 
-        // Сортировка товаров + перемещение между категориями
         document.querySelectorAll('.category-items').forEach(el => {
             const sortable = new Sortable(el, {
                 group: 'items',
-                animation: 200,
+                animation: 220,
                 easing: "cubic-bezier(0.4, 0, 0.2, 1)",
                 ghostClass: 'sortable-ghost',
-                onEnd: function(evt) {
-                    saveOrder();
-                }
+                onEnd: saveOrder
             });
             itemSortables.push(sortable);
         });
@@ -152,73 +142,39 @@
 
     async function saveOrder() {
         const categories = [];
-        
         document.querySelectorAll('.category-container').forEach(catEl => {
             const catName = catEl.dataset.category;
-            const itemIds = [];
-            
-            catEl.querySelectorAll('.item').forEach(itemEl => {
-                itemIds.push(parseInt(itemEl.dataset.itemId));
-            });
-            
-            categories.push({
-                name: catName,
-                item_ids: itemIds
-            });
+            const itemIds = Array.from(catEl.querySelectorAll('.item')).map(el => parseInt(el.dataset.itemId));
+            categories.push({ name: catName, item_ids: itemIds });
         });
 
-        try {
-            const res = await fetch('/admin/assortment/save-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ categories: categories })
-            });
-            
-            if (res.ok) {
-                console.log('Порядок сохранён');
-            }
-        } catch (e) {
-            console.error('Ошибка сохранения', e);
-        }
+        await fetch('/admin/assortment/save-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categories })
+        });
     }
 
     async function deleteItem(itemId, element) {
         if (!confirm('Удалить этот товар?')) return;
-        
-        try {
-            const res = await fetch(`/admin/assortment/delete/${itemId}`, {
-                method: 'POST'
-            });
-            
-            if (res.ok) {
-                // Плавно удаляем элемент
-                element.closest('.item').style.transition = 'all 0.3s ease';
-                element.closest('.item').style.opacity = '0';
-                element.closest('.item').style.transform = 'translateX(20px)';
-                
-                setTimeout(() => {
-                    element.closest('.item').remove();
-                    // Обновляем счётчик в заголовке категории
-                    const container = element.closest('.category-container');
-                    const countEl = container.querySelector('.category-header .px-3');
-                    if (countEl) {
-                        const current = parseInt(countEl.textContent) || 0;
-                        countEl.textContent = current - 1;
-                    }
-                }, 300);
-            } else {
-                alert('Ошибка при удалении');
-            }
-        } catch (e) {
-            alert('Ошибка сети');
+        const res = await fetch(`/admin/assortment/delete/${itemId}`, { method: 'POST' });
+        if (res.ok) {
+            const itemEl = element.closest('.item');
+            itemEl.style.transition = 'all 0.3s ease';
+            itemEl.style.opacity = '0';
+            itemEl.style.transform = 'translateX(30px)';
+            setTimeout(() => {
+                itemEl.remove();
+                const container = element.closest('.category-container');
+                const countEl = container.querySelector('.px-4');
+                if (countEl) countEl.textContent = (parseInt(countEl.textContent) || 1) - 1 + ' товаров';
+            }, 300);
         }
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', () => {
         initDragAndDrop();
-        if (typeof lucide !== 'undefined') {
-            lucide.createIcons();
-        }
+        lucide.createIcons();
     });
 </script>
 {% endblock %}
