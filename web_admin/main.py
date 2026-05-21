@@ -2,13 +2,14 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 app = FastAPI(title="NextStore Admin")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(SessionMiddleware, secret_key="change-this-secret-key-2026")
 
 templates = Jinja2Templates(directory="web_admin/templates")
 
-# Подключаем роуты
 from web_admin.routes import auth, dashboard, assortment, clients, purchases, sellers, stats
 
 app.include_router(auth.router, prefix="/admin/auth", tags=["auth"])
