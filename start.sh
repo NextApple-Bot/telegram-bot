@@ -1,24 +1,31 @@
 #!/bin/sh
-set -e
+set -ex
 
-echo "🔥 Проверяем окружение..."
-if [ -z "$DATABASE_URL" ]; then
-    echo "❌ FATAL: DATABASE_URL is not set!"
-    exit 1
-fi
+echo "🚀 Запуск (root start.sh v4 - debug on refactoring)..."
 
-if [ -z "$BOT_TOKEN" ]; then
-    echo "❌ FATAL: BOT_TOKEN is not set!"
-    exit 1
-fi
+required_vars="DATABASE_URL BOT_TOKEN ADMIN_IDS_STR"
+for var in $required_vars; do
+    if [ -z "$(eval echo \$$var)" ]; then
+        echo "❌ FATAL: $var is not set!"
+        exit 1
+    fi
+done
 
 echo "✅ Переменные окружения в порядке."
 
-export PYTHONPATH=/app
+python -c "
+import os, asyncio
+from sqlalchemy.ext.asyncio import create_async_engine
+async def check():
+    engine = create_async_engine(os.environ['DATABASE_URL'])
+    async with engine.connect() as conn:
+        await conn.execute('SELECT 1')
+    print('✅ Подключение к БД успешно')
+asyncio.run(check())
+" || { echo "❌ Не удалось подключиться к БД"; exit 1; }
 
-# Упрощённая миграция
- echo "🔄 Применяем миграции Alembic..."
-alembic upgrade head || echo "⚠️ Миграции не выполнены (возможно уже актуальны)"
+alembic upgrade head || { echo "⚠️ Ошибка миграций"; exit 1; }
+echo "✅ Миграции успешны."
 
-echo "🚀 Запускаем основной сервер..."
-exec python main.py
+echo "🚀 Запускаем сервер..."
+exec python -m uvicorn web_admin.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info
