@@ -54,3 +54,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Use start script
 CMD ["sh", "./start.sh"]
+
+# FORCE FULL REBUILD - 21.05.2026 03:25
