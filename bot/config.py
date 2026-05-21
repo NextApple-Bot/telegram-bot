@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,21 +10,27 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    # ==================== Telegram ====================
+    # Telegram
     BOT_TOKEN: str = ""
     ADMIN_IDS_STR: str = ""
     MAIN_GROUP_ID: int = 0
 
-    # ==================== Database ====================
+    # Database
     DATABASE_URL: str = ""
     DB_POOL_SIZE: int = 20
     DB_POOL_MAX_OVERFLOW: int = 10
 
-    # ==================== Admin Panel ====================
+    # Admin
     ADMIN_PASSWORD_HASH: str = ""
 
-    # ==================== Debug ====================
+    # Debug
     DEBUG: bool = False
 
 
-config = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
+config = settings
