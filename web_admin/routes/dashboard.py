@@ -40,15 +40,56 @@ async def dashboard(request: Request, target_date: str | None = None):
         preorders_count = (await session.execute(select(func.count(Preorder.id)).where(func.date(Preorder.created_at) == today))).scalar() or 0
         bookings_count = (await session.execute(select(func.count(Booking.id)).where(func.date(Booking.booked_at) == today))).scalar() or 0
 
+        # === ВОССТАНОВЛЕНИЕ ГРАФИКА ВЫРУЧКИ И ПРОДАЖ ЗА 7 ДНЕЙ ===
         dates_labels = [(today - timedelta(days=i)).strftime("%d.%m") for i in range(6, -1, -1)]
         sales_chart = []
         revenue_chart = []
+
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
             cnt = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == d))).scalar() or 0
-            rev = 0
+            
+            # Реальный подсчёт выручки за день
+            rev_row = await session.execute(
+                select(func.coalesce(func.sum(DailyPayment.amount), 0))
+                .where(func.date(DailyPayment.created_at) == d)
+            )
+            rev = rev_row.scalar() or 0
+            
             sales_chart.append(cnt)
             revenue_chart.append(float(rev))
+
+        # === ВОССТАНОВЛЕНИЕ СРАВНЕНИЙ ===
+        yesterday = today - timedelta(days=1)
+        week_ago_start = today - timedelta(days=7)
+
+        # Вчера
+        yesterday_sales = (await session.execute(select(func.count(Sale.id)).where(func.date(Sale.sold_at) == yesterday))).scalar() or 0
+        yesterday_rev_row = await session.execute(
+            select(func.coalesce(func.sum(DailyPayment.amount), 0))
+            .where(func.date(DailyPayment.created_at) == yesterday)
+        )
+        yesterday_revenue = yesterday_rev_row.scalar() or 0
+
+        # Среднее за последние 7 дней
+        week_sales_row = await session.execute(
+            select(func.count(Sale.id)).where(func.date(Sale.sold_at) >= week_ago_start)
+        )
+        week_sales = week_sales_row.scalar() or 0
+
+        week_rev_row = await session.execute(
+            select(func.coalesce(func.sum(DailyPayment.amount), 0))
+            .where(func.date(DailyPayment.created_at) >= week_ago_start)
+        )
+        week_revenue = week_rev_row.scalar() or 0
+
+        avg_sales = round(week_sales / 7, 1) if week_sales > 0 else 0
+        avg_revenue = round(week_revenue / 7, 1) if week_revenue > 0 else 0
+
+        sales_change_yesterday = sales_count - yesterday_sales
+        revenue_change_yesterday = total_revenue - yesterday_revenue
+        sales_change_week = round(sales_count - avg_sales, 1)
+        revenue_change_week = round(total_revenue - avg_revenue, 1)
 
         sellers_rows = (await session.execute(
             select(Seller.id, Seller.name.label('name'), SellerDay.id.isnot(None).label('present'))
@@ -63,10 +104,10 @@ async def dashboard(request: Request, target_date: str | None = None):
         "target_date_iso": today.isoformat(),
         "sales_today": sales_count,
         "revenue_today": total_revenue,
-        "sales_change_yesterday": 0,
-        "sales_change_week": 0,
-        "revenue_change_yesterday": 0,
-        "revenue_change_week": 0,
+        "sales_change_yesterday": sales_change_yesterday,
+        "sales_change_week": sales_change_week,
+        "revenue_change_yesterday": revenue_change_yesterday,
+        "revenue_change_week": revenue_change_week,
         "payments": payments,
         "total_revenue": total_revenue,
         "plan_amount": plan,
@@ -79,6 +120,7 @@ async def dashboard(request: Request, target_date: str | None = None):
         "top_counts": [],
         "days": 7,
     })
+
 
 @router.post("/toggle_seller_day")
 async def toggle_seller_day(seller_id: int = Form(...), target_date: str = Form(...)):
@@ -96,6 +138,7 @@ async def toggle_seller_day(seller_id: int = Form(...), target_date: str = Form(
         return {"success": True, "status": status}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
 
 @router.post("/update_stats")
 async def update_stats(request: Request):
@@ -134,6 +177,7 @@ async def update_stats(request: Request):
             session.add(Booking(item_id=0, booked_at=target_date))
 
     return JSONResponse({"success": True})
+
 
 @router.get("/top_models_data")
 async def top_models_data(request: Request, days: int = 7, target_date: str | None = None):
