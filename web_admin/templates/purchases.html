@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Покупки — NextStore{% endblock %}
+{% block page_title %}Покупки{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-semibold tracking-tight text-zinc-900">Покупки</h1>
+            <p class="text-zinc-500 mt-1">Всего записей: <span class="font-semibold text-zinc-700">{{ total }}</span></p>
+        </div>
+        <a href="/admin/purchases/export/csv?{{ request.query_params }}" 
+           class="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 rounded-2xl flex items-center gap-2 text-sm font-medium transition-all">
+            <i data-lucide="download" class="w-4 h-4"></i> CSV
+        </a>
+    </div>
+
+    <!-- Фильтры -->
+    <div class="bg-white rounded-3xl shadow-sm border border-zinc-200 p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-zinc-600 mb-1.5">Клиент</label>
+                <input type="text" id="client_search" class="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 bg-white" 
+                       placeholder="Имя или телефон" value="{{ client_search or '' }}">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-zinc-600 mb-1.5">Дата с</label>
+                <input type="date" id="date_from" class="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 bg-white" value="{{ date_from or '' }}">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-zinc-600 mb-1.5">Дата по</label>
+                <input type="date" id="date_to" class="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 bg-white" value="{{ date_to or '' }}">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-zinc-600 mb-1.5">Тип оплаты</label>
+                <select id="payment_type" class="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 bg-white">
+                    <option value="all">Все</option>
+                    {% for pt in payment_types %}
+                    <option value="{{ pt }}" {% if payment_type==pt %}selected{% endif %}>{{ pt|capitalize }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button onclick="applyFilters()" 
+                        class="w-full px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-medium transition-all active:scale-[0.985]">
+                    Применить фильтр
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица покупок -->
+    <div class="bg-white rounded-3xl shadow-sm border border-zinc-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-zinc-50 border-b border-zinc-200">
+                    <tr>
+                        <th class="px-6 py-4 text-left text-sm font-semibold text-zinc-600">ID</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold text-zinc-600">Клиент</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold text-zinc-600">Дата</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold text-zinc-600">Сумма</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold text-zinc-600">Тип</th>
+                        <th class="px-6 py-4 text-left text-sm font-semibold text-zinc-600">Оплата</th>
+                        <th class="w-20 px-6 py-4"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-100">
+                    {% for p in purchases %}
+                    <tr class="hover:bg-zinc-50 transition">
+                        <td class="px-6 py-4 font-mono text-sm text-zinc-500">#{{ p.id }}</td>
+                        <td class="px-6 py-4">
+                            <a href="/admin/clients/{{ p.client_id }}" class="font-medium text-zinc-900 hover:text-blue-600 transition">
+                                {{ p.client_name or '—' }}
+                            </a>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-zinc-600">{{ p.created_at|format_date if p.created_at else '—' }}</td>
+                        <td class="px-6 py-4 font-semibold text-emerald-600">{{ p.total_amount|round(0) if p.total_amount else 0 }} ₽</td>
+                        <td class="px-6 py-4">
+                            <span class="px-3 py-1 text-xs font-medium bg-zinc-100 text-zinc-700 rounded-full">{{ p.purchase_type }}</span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-zinc-600">{{ p.payment_details or '—' }}</td>
+                        <td class="px-6 py-4">
+                            <form action="/admin/purchases/delete/{{ p.id }}" method="post" onsubmit="return confirm('Удалить покупку?');">
+                                <button class="p-2 hover:bg-red-50 rounded-xl text-red-500 transition">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if total_pages > 1 %}
+        <div class="px-6 py-4 border-t border-zinc-200 flex justify-center">
+            <div class="flex gap-1">
+                {% if page > 1 %}
+                <a href="?page={{ page-1 }}&per_page={{ per_page }}&{{ request.query_params }}" class="px-4 py-2 rounded-2xl border border-zinc-200 hover:bg-zinc-100">&laquo;</a>
+                {% endif %}
+                <span class="px-5 py-2 bg-blue-600 text-white rounded-2xl font-medium">{{ page }} / {{ total_pages }}</span>
+                {% if page < total_pages %}
+                <a href="?page={{ page+1 }}&per_page={{ per_page }}&{{ request.query_params }}" class="px-4 py-2 rounded-2xl border border-zinc-200 hover:bg-zinc-100">&raquo;</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function applyFilters() {
+        const params = new URLSearchParams();
+        const client = document.getElementById('client_search').value;
+        const date_from = document.getElementById('date_from').value;
+        const date_to = document.getElementById('date_to').value;
+        const payment = document.getElementById('payment_type').value;
+
+        if (client) params.set('client_search', client);
+        if (date_from) params.set('date_from', date_from);
+        if (date_to) params.set('date_to', date_to);
+        if (payment && payment !== 'all') params.set('payment_type', payment);
+
+        params.set('page', 1);
+        window.location.search = params.toString();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        lucide.createIcons();
+    });
+</script>
+{% endblock %}
