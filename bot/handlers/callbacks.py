@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 @router.callback_query(F.data == "menu:inventory")
 async def menu_inventory(callback: CallbackQuery):
-    """Показать ассортимент"""
     await callback.answer()
     try:
         await callback.message.delete()
@@ -30,7 +29,6 @@ async def menu_inventory(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:help")
 async def menu_help(callback: CallbackQuery):
-    """Показать помощь"""
     await callback.answer()
     try:
         await callback.message.delete()
@@ -41,12 +39,9 @@ async def menu_help(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:stats")
 async def menu_stats(callback: CallbackQuery):
-    """Статистика"""
     await callback.answer()
-    
     try:
         stats = await StatsRepository.get_today_stats()
-        
         text = (
             f"📊 <b>Статистика на {stats.get('date', 'сегодня')}</b>\n\n"
             f"Продажи: <b>{stats.get('sales_count', 0)}</b>\n"
@@ -61,7 +56,6 @@ async def menu_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:remains")
 async def menu_remains(callback: CallbackQuery):
-    """Остатки (пока используем инвентарь)"""
     await callback.answer()
     try:
         await callback.message.delete()
@@ -74,11 +68,12 @@ async def menu_remains(callback: CallbackQuery):
 async def menu_export_assortment(callback: CallbackQuery):
     """Выгрузить ассортимент"""
     await callback.answer()
-    await callback.message.edit_text(
-        "Выгрузка ассортимента\n\n"
-        "Эта функция пока в разработке.",
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    # Пока используем show_inventory как временное решение
+    await show_inventory(callback.bot, callback.message.chat.id)
 
 
 @router.callback_query(F.data == "menu:clients_by_month")
@@ -86,15 +81,15 @@ async def menu_clients_by_month(callback: CallbackQuery):
     """Клиенты по месяцам"""
     await callback.answer()
     await callback.message.edit_text(
-        "Клиенты по месяцам\n\n"
-        "Эта функция пока в разработке.",
+        "👥 <b>Клиенты по месяцам</b>\n\n"
+        "Эта функция пока в разработке.\n"
+        "Можно использовать /export_clients для экспорта всех клиентов.",
         parse_mode="HTML"
     )
 
 
 @router.callback_query(F.data == "menu:clear")
 async def menu_clear(callback: CallbackQuery):
-    """Очистить ассортимент — подтверждение"""
     await callback.answer()
     await callback.message.edit_text(
         "Очистка ассортимента\n\n"
