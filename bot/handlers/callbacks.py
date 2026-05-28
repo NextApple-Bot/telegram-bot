@@ -6,7 +6,7 @@ Callback handlers for menu actions.
 import logging
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot.utils.helpers import send_and_clean
 
@@ -36,6 +36,66 @@ async def menu_help(callback: CallbackQuery):
     except Exception:
         pass
     await show_help(callback.bot, callback.message.chat.id)
+
+
+@router.callback_query(F.data == "menu:stats")
+async def menu_stats(callback: CallbackQuery):
+    """Статистика (временно заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "📊 <b>Статистика</b>\n\n"
+        "Эта функция пока в разработке.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "menu:remains")
+async def menu_remains(callback: CallbackQuery):
+    """Остатки (временно заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "📦 <b>Остатки</b>\n\n"
+        "Эта функция пока в разработке.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "menu:export_assortment")
+async def menu_export_assortment(callback: CallbackQuery):
+    """Выгрузить ассортимент (временно заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "📤 <b>Выгрузка ассортимента</b>\n\n"
+        "Эта функция пока в разработке.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "menu:clients_by_month")
+async def menu_clients_by_month(callback: CallbackQuery):
+    """Клиенты по месяцам (временно заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "👥 <b>Клиенты по месяцам</b>\n\n"
+        "Эта функция пока в разработке.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "menu:clear")
+async def menu_clear(callback: CallbackQuery):
+    """Очистить ассортимент"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "⚠️ <b>Очистка ассортимента</b>\n\n"
+        "Вы уверены, что хотите удалить весь ассортимент?\n\n"
+        "Это действие нельзя будет отменить.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Да, очистить", callback_data="reset_assortment:confirm")],
+            [InlineKeyboardButton(text="Отмена", callback_data="menu:cancel")]
+        ]),
+        parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data == "menu:cancel")
