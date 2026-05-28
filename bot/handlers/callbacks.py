@@ -66,19 +66,16 @@ async def menu_remains(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:export_assortment")
 async def menu_export_assortment(callback: CallbackQuery):
-    """Выгрузить ассортимент"""
     await callback.answer()
     try:
         await callback.message.delete()
     except Exception:
         pass
-    # Пока используем show_inventory как временное решение
     await show_inventory(callback.bot, callback.message.chat.id)
 
 
 @router.callback_query(F.data == "menu:clients_by_month")
 async def menu_clients_by_month(callback: CallbackQuery):
-    """Клиенты по месяцам"""
     await callback.answer()
     await callback.message.edit_text(
         "👥 <b>Клиенты по месяцам</b>\n\n"
