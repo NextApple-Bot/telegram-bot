@@ -40,7 +40,7 @@ async def menu_help(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:stats")
 async def menu_stats(callback: CallbackQuery):
-    """Статистика (временно заглушка)"""
+    """Статистика"""
     await callback.answer()
     await callback.message.edit_text(
         "📊 <b>Статистика</b>\n\n"
@@ -51,7 +51,7 @@ async def menu_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:remains")
 async def menu_remains(callback: CallbackQuery):
-    """Остатки (временно заглушка)"""
+    """Остатки"""
     await callback.answer()
     await callback.message.edit_text(
         "📦 <b>Остатки</b>\n\n"
@@ -62,7 +62,7 @@ async def menu_remains(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:export_assortment")
 async def menu_export_assortment(callback: CallbackQuery):
-    """Выгрузить ассортимент (временно заглушка)"""
+    """Выгрузить ассортимент"""
     await callback.answer()
     await callback.message.edit_text(
         "📤 <b>Выгрузка ассортимента</b>\n\n"
@@ -73,7 +73,7 @@ async def menu_export_assortment(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:clients_by_month")
 async def menu_clients_by_month(callback: CallbackQuery):
-    """Клиенты по месяцам (временно заглушка)"""
+    """Клиенты по месяцам"""
     await callback.answer()
     await callback.message.edit_text(
         "👥 <b>Клиенты по месяцам</b>\n\n"
@@ -84,15 +84,15 @@ async def menu_clients_by_month(callback: CallbackQuery):
 
 @router.callback_query(F.data == "menu:clear")
 async def menu_clear(callback: CallbackQuery):
-    """Очистить ассортимент"""
+    """Очистить ассортимент — подтверждение"""
     await callback.answer()
     await callback.message.edit_text(
         "⚠️ <b>Очистка ассортимента</b>\n\n"
-        "Вы уверены, что хотите удалить весь ассортимент?\n\n"
-        "Это действие нельзя будет отменить.",
+        "Вы уверены, что хотите <b>полностью удалить</b> все товары и категории?\n\n"
+        "Данные о клиентах, продажах и статистике останутся.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Да, очистить", callback_data="reset_assortment:confirm")],
-            [InlineKeyboardButton(text="Отмена", callback_data="menu:cancel")]
+            [InlineKeyboardButton(text="✅ Да, очистить всё", callback_data="reset_assortment:confirm")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
         ]),
         parse_mode="HTML"
     )
