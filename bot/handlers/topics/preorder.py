@@ -23,19 +23,22 @@ router = Router()
     (F.text | F.caption)
 )
 async def handle_preorder(message: Message):
+    logger.info(f"[PREORDER] Получено сообщение {message.message_id} в топик предзаказов")
+
     content = message.text or message.caption
     if not content:
         return
 
     is_first_time = await mark_message_processed(message.chat.id, message.message_id)
     if not is_first_time:
-        logger.info(f"Сообщение {message.message_id} уже обработано, пропускаем.")
+        logger.info(f"[PREORDER] Сообщение {message.message_id} уже обработано, пропускаем.")
         return
 
     lines = content.strip().splitlines()
     booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
 
     if booking_indices:
+        logger.info(f"[PREORDER] Найдено {len(booking_indices)} блоков брони")
         preorder_lines = lines[:booking_indices[0]]
         if preorder_lines:
             payments = extract_prepayments('\n'.join(preorder_lines))
@@ -56,7 +59,7 @@ async def handle_preorder(message: Message):
 
                 await StatsRepository.add_preorder(**payments)
                 await PaymentService.add_payments_batch(payments, source_type='preorder')
-                await safe_react(message, '👌')
+                await safe_react(message, 'Approved')
 
         for idx in booking_indices:
             start = idx + 1
@@ -66,7 +69,7 @@ async def handle_preorder(message: Message):
             result = await BookingService.process_booking(booking_lines, booking_payments)
             if not result.get("success"):
                 if result.get("reason") == "no_items":
-                    await safe_react(message, '‼️')
+                    await safe_react(message, 'Warning')
                     await send_and_clean(
                         bot=message.bot,
                         chat_id=message.chat.id,
@@ -76,7 +79,7 @@ async def handle_preorder(message: Message):
                         delete_after=60
                     )
                 continue
-            await safe_react(message, '👍')
+            await safe_react(message, 'Thumbs Up')
             booked_count = len(result.get("results", []))
             await send_and_clean(
                 bot=message.bot,
@@ -105,4 +108,4 @@ async def handle_preorder(message: Message):
 
             await StatsRepository.add_preorder(**payments)
             await PaymentService.add_payments_batch(payments, source_type='preorder')
-            await safe_react(message, '👌')
+            await safe_react(message, 'Approved')
