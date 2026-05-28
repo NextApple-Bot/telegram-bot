@@ -21,12 +21,12 @@ router = Router(name="seller")
 async def _get_seller_welcome_text(username: str | None) -> tuple[str, bool]:
     """Возвращает приветствие и флаг, зарегистрирован ли пользователь."""
     if not username:
-        return "👤 <b>Меню продавца</b>", False
+        return "Меню продавца", False
 
     seller = await SellerRepository.get_by_telegram_username(username)
     if seller:
-        return f"👋 Добро пожаловать, <b>{seller.name}</b>!", True
-    return "👤 <b>Меню продавца</b>", False
+        return f"Добро пожал��вать, {seller.name}!", True
+    return "Меню продавца", False
 
 
 @router.message(Command("/seller"))
@@ -68,17 +68,17 @@ async def show_seller_profile(callback: CallbackQuery):
 
     if seller:
         text = (
-            f"📋 <b>Ваш профиль</b>\n\n"
-            f"👤 Имя: <b>{seller.name}</b>\n"
-            f"📱 Телефон: <b>{seller.phone or '—'}</b>\n"
-            f"🆔 ID: <code>{seller.id}</code>\n"
-            f"📅 Зарегистрирован: {seller.created_at.strftime('%d.%m.%Y')}\n"
-            f"✅ Статус: {'Активен' if seller.is_active else 'Неактивен'}"
+            f"<b>Ваш профиль</b>\n\n"
+            f"Имя: <b>{seller.name}</b>\n"
+            f"Телефон: <b>{seller.phone or '—'}</b>\n"
+            f"ID: <code>{seller.id}</code>\n"
+            f"Зарегистрирован: {seller.created_at.strftime('%d.%m.%Y')}\n"
+            f"Статус: {'Активен' if seller.is_active else 'Неактивен'}"
         )
         menu = get_seller_menu_registered()
     else:
         text = (
-            "📋 <b>Профиль</b>\n\n"
+            "<b>Профиль</b>\n\n"
             "Вы ещё не зарегистрированы как продавец.\n"
             "Нажмите кнопку \"Зарегистрироваться\" в меню."
         )
@@ -86,3 +86,52 @@ async def show_seller_profile(callback: CallbackQuery):
 
     await callback.message.edit_text(text, reply_markup=menu)
     await callback.answer()
+
+
+# ==================== НОВЫЕ ОБРАБОТЧИКИ ====================
+
+@router.callback_query(F.data == "seller_products")
+async def seller_products(callback: CallbackQuery):
+    """Мои товары (заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "📦 <b>Мои товары</b>\n\n"
+        "Эта функция пока в разработке.\n"
+        "Здесь будет список ваших товаров и управление ими.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "seller_add_item")
+async def seller_add_item(callback: CallbackQuery):
+    """Добавить товар (заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "➕ <b>Добавить товар</b>\n\n"
+        "Эта функция пока в разработке.\n"
+        "Здесь будет форма добавления нового товара.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "seller_stats")
+async def seller_stats(callback: CallbackQuery):
+    """Статистика продавца (заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "📊 <b>Ваша статистика</b>\n\n"
+        "Эта функция пока в разработке.\n"
+        "Здесь будет статистика продаж и бронирований продавца.",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "seller_settings")
+async def seller_settings(callback: CallbackQuery):
+    """Настройки продавца (заглушка)"""
+    await callback.answer()
+    await callback.message.edit_text(
+        "⚙️ <b>Настройки</b>\n\n"
+        "Эта функция пока в разработке.",
+        parse_mode="HTML"
+    )
