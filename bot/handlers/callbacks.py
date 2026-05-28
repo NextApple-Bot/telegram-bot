@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from bot.utils.helpers import send_and_clean
 
 from .base import get_main_menu_keyboard, show_inventory, show_help
+from bot.repositories.stats import StatsRepository
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -42,22 +43,31 @@ async def menu_help(callback: CallbackQuery):
 async def menu_stats(callback: CallbackQuery):
     """Статистика"""
     await callback.answer()
-    await callback.message.edit_text(
-        "📊 <b>Статистика</b>\n\n"
-        "Эта функция пока в разработке.",
-        parse_mode="HTML"
-    )
+    
+    try:
+        stats = await StatsRepository.get_today_stats()
+        
+        text = (
+            f"📊 <b>Статистика на {stats.get('date', 'сегодня')}</b>\n\n"
+            f"Продажи: <b>{stats.get('sales_count', 0)}</b>\n"
+            f"Предзаказы: <b>{stats.get('preorders_count', 0)}</b>\n"
+            f"Бронирования: <b>{stats.get('bookings_count', 0)}</b>"
+        )
+        await callback.message.edit_text(text, parse_mode="HTML")
+    except Exception:
+        logger.exception("Error getting stats")
+        await callback.message.edit_text("Ошибка при получении статистики.")
 
 
 @router.callback_query(F.data == "menu:remains")
 async def menu_remains(callback: CallbackQuery):
-    """Остатки"""
+    """Остатки (пока используем инвентарь)"""
     await callback.answer()
-    await callback.message.edit_text(
-        "📦 <b>Остатки</b>\n\n"
-        "Эта функция пока в разработке.",
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await show_inventory(callback.bot, callback.message.chat.id)
 
 
 @router.callback_query(F.data == "menu:export_assortment")
@@ -65,7 +75,7 @@ async def menu_export_assortment(callback: CallbackQuery):
     """Выгрузить ассортимент"""
     await callback.answer()
     await callback.message.edit_text(
-        "📤 <b>Выгрузка ассортимента</b>\n\n"
+        "Выгрузка ассортимента\n\n"
         "Эта функция пока в разработке.",
         parse_mode="HTML"
     )
@@ -76,7 +86,7 @@ async def menu_clients_by_month(callback: CallbackQuery):
     """Клиенты по месяцам"""
     await callback.answer()
     await callback.message.edit_text(
-        "👥 <b>Клиенты по месяцам</b>\n\n"
+        "Клиенты по месяцам\n\n"
         "Эта функция пока в разработке.",
         parse_mode="HTML"
     )
@@ -87,12 +97,12 @@ async def menu_clear(callback: CallbackQuery):
     """Очистить ассортимент — подтверждение"""
     await callback.answer()
     await callback.message.edit_text(
-        "⚠️ <b>Очистка ассортимента</b>\n\n"
-        "Вы уверены, что хотите <b>полностью удалить</b> все товары и категории?\n\n"
+        "Очистка ассортимента\n\n"
+        "Вы уверены, что хотите полностью удалить все товары и категории?\n\n"
         "Данные о клиентах, продажах и статистике останутся.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, очистить всё", callback_data="reset_assortment:confirm")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu:cancel")]
+            [InlineKeyboardButton(text="Да, очистить всё", callback_data="reset_assortment:confirm")],
+            [InlineKeyboardButton(text="Отмена", callback_data="menu:cancel")]
         ]),
         parse_mode="HTML"
     )
