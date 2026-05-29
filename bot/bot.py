@@ -15,7 +15,6 @@ from bot.handlers.commands import router as commands_router
 from bot.handlers.callbacks import router as callbacks_router
 from bot.handlers import router as topics_router
 
-from bot.handlers.seller.router import router as seller_router
 from bot.handlers.admin.router import router as admin_router
 from bot.handlers.common.router import router as common_router
 
@@ -38,9 +37,8 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(topics_router)
     dp.include_router(commands_router)
     dp.include_router(callbacks_router)
-    dp.include_router(seller_router)
     dp.include_router(admin_router)
-    dp.include_router(common_router)   # new common module
+    dp.include_router(common_router)
 
     logger.info("All routers + ErrorHandlerMiddleware included successfully")
     return dp
