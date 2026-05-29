@@ -47,7 +47,12 @@ class AssortmentService:
 
     @staticmethod
     async def remove_by_serial(serial: str, reason: str = 'manual') -> bool:
-        """Удаляет товар по серийному номеру + сохраняет в deleted_items + инвалидирует кэш."""
+        """
+        Полноценное удаление товара по серийному номеру:
+        - Удаляет товар из items
+        - Сохраняет запись в deleted_items
+        - Инвалидирует кэш ассортимента
+        """
         from bot.repositories import ItemRepository
 
         if not serial:
@@ -56,15 +61,19 @@ class AssortmentService:
         normalized = serial.strip().upper()
 
         try:
+            # Получаем информацию о товаре
             item = await ItemRepository.get_item_by_serial(normalized)
             if not item:
-                logger.warning(f"Товар с серийником {normalized} не найден")
+                logger.warning(f"[AssortmentService] Товар с серийником {normalized} не найден")
                 return False
 
+            # Удаляем товар
             deleted = await ItemRepository.remove_item_by_serial(normalized)
             if deleted == 0:
+                logger.warning(f"[AssortmentService] Не удалось удалить товар {normalized}")
                 return False
 
+            # Сохраняем в deleted_items
             await ItemRepository.add_deleted_item(
                 item_id=item.get('id'),
                 text=item.get('text', ''),
@@ -73,15 +82,19 @@ class AssortmentService:
                 reason=reason
             )
 
+            # Инвалидируем кэш
             await AssortmentService.invalidate_cache()
-            logger.info(f"Товар {normalized} удалён (причина: {reason})")
+
+            logger.info(f"[AssortmentService] Товар {normalized} успешно удалён (причина: {reason})")
             return True
 
         except Exception as e:
-            logger.exception(f"Ошибка при удалении товара {normalized}")
+            logger.exception(f"[AssortmentService] Ошибка при удалении товара {normalized}")
             return False
 
     @staticmethod
     async def invalidate_cache():
+        """Инвалидирует кэш ассортимента."""
         from bot.services.cache import cache
         await cache.delete("assortment:all")
+        logger.debug("[AssortmentService] Кэш ассортимента инвалидирован")
