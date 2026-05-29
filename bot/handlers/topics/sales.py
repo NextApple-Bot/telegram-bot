@@ -1,15 +1,32 @@
 # bot/handlers/topics/sales.py
 import logging
+import re
 from aiogram import F, Router
 from aiogram.types import Message
 
 from bot import config
 from bot.services.sale import SaleService
 from bot.services.payment_parser import extract_payment_amounts
-from bot.utils.helpers import remove_trade_in_lines, send_and_clean
+from bot.utils.helpers import send_and_clean
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+TRADE_IN_PATTERNS = [
+    r'trade\s*in',
+    r'трейд\s*ин',
+    r'trade\-in',
+]
+
+
+def remove_trade_in_lines(text: str) -> str:
+    lines = text.splitlines()
+    filtered = []
+    for line in lines:
+        if any(re.search(p, line, re.IGNORECASE) for p in TRADE_IN_PATTERNS):
+            continue
+        filtered.append(line)
+    return '\n'.join(filtered)
 
 
 @router.message(
@@ -18,9 +35,6 @@ router = Router()
     (F.text | F.caption)
 )
 async def handle_sales_message(message: Message):
-    """
-    Обработчик сообщений о продажах в соответствующем топике
-    """
     logger.info(f"[SALES] Получено сообщение {message.message_id} в топик продаж")
 
     content = message.text or message.caption or ""
@@ -28,10 +42,7 @@ async def handle_sales_message(message: Message):
         logger.debug("[SALES] Пустое сообщение, пропускаем")
         return
 
-    # Очистка от строк Trade-in
     cleaned_content = remove_trade_in_lines(content)
-
-    # Извлечение сумм платежей
     payments = extract_payment_amounts(cleaned_content, ignore_prepay=True)
     logger.info(f"[SALES] Извлечены платежи: {payments}")
 
