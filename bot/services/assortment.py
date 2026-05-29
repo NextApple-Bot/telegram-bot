@@ -16,7 +16,6 @@ class AssortmentService:
 
     @staticmethod
     async def load_inventory() -> List[Dict[str, Any]]:
-        """Загружает весь ассортимент с группировкой по категориям."""
         async with get_async_session_factory()() as session:
             query = (
                 select(Category, Item)
@@ -46,12 +45,10 @@ class AssortmentService:
         return list(categories.values())
 
     @staticmethod
-    async def remove_by_serial(serial: str, reason: str = 'manual') -> bool:
+    async def remove_by_serial(serial: str, reason: str = 'sale', conn=None) -> bool:
         """
-        Полноценное удаление товара по серийному номеру:
-        - Удаляет товар из items
-        - Сохраняет запись в deleted_items
-        - Инвалидирует кэш ассортимента
+        Удаляет товар по серийному номеру + сохраняет в deleted_items.
+        Если передан conn — работает внутри существующей транзакции.
         """
         from bot.repositories import ItemRepository
 
@@ -61,19 +58,19 @@ class AssortmentService:
         normalized = serial.strip().upper()
 
         try:
-            # Получаем информацию о товаре
             item = await ItemRepository.get_item_by_serial(normalized)
             if not item:
-                logger.warning(f"[AssortmentService] Товар с серийником {normalized} не найден")
+                logger.warning(f"[AssortmentService] Товар {normalized} не найден")
                 return False
 
-            # Удаляем товар
-            deleted = await ItemRepository.remove_item_by_serial(normalized)
+            if conn:
+                deleted = await ItemRepository.remove_item_by_serial(normalized, conn=conn)
+            else:
+                deleted = await ItemRepository.remove_item_by_serial(normalized)
+
             if deleted == 0:
-                logger.warning(f"[AssortmentService] Не удалось удалить товар {normalized}")
                 return False
 
-            # Сохраняем в deleted_items
             await ItemRepository.add_deleted_item(
                 item_id=item.get('id'),
                 text=item.get('text', ''),
@@ -82,10 +79,10 @@ class AssortmentService:
                 reason=reason
             )
 
-            # Инвалидируем кэш
-            await AssortmentService.invalidate_cache()
+            if not conn:
+                await AssortmentService.invalidate_cache()
 
-            logger.info(f"[AssortmentService] Товар {normalized} успешно удалён (причина: {reason})")
+            logger.info(f"[AssortmentService] Товар {normalized} удалён (причина: {reason})")
             return True
 
         except Exception as e:
@@ -94,7 +91,5 @@ class AssortmentService:
 
     @staticmethod
     async def invalidate_cache():
-        """Инвалидирует кэш ассортимента."""
         from bot.services.cache import cache
         await cache.delete("assortment:all")
-        logger.debug("[AssortmentService] Кэш ассортимента инвалидирован")
