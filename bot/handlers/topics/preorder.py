@@ -36,9 +36,8 @@ async def handle_preorder(message: Message):
     booking_indices = [i for i, line in enumerate(lines) if re.match(r'^бронь\s*:?$', line.strip().lower())]
 
     if booking_indices:
-        # Есть блоки "бронь"
+        # === Блок предзаказа перед "бронь" ===
         preorder_lines = lines[:booking_indices[0]]
-
         if preorder_lines:
             payments = extract_prepayments('\n'.join(preorder_lines))
             if any(payments.values()):
@@ -54,13 +53,13 @@ async def handle_preorder(message: Message):
                             referral_source=data.get('referral_source')
                         )
                 except Exception as e:
-                    logger.exception("[PREORDER] Ошибка сохранения клиента")
+                    logger.exception("[PREORDER] Ошибка при сохранении клиента (предзаказ)")
 
                 await StatsRepository.add_preorder(**payments)
                 await PaymentService.add_payments_batch(payments, source_type='preorder')
                 await safe_react(message, '👌')
 
-        # Обработка блоков брони
+        # === Обработка блоков "бронь" ===
         for idx in booking_indices:
             start = idx + 1
             end = booking_indices[booking_indices.index(idx) + 1] if booking_indices.index(idx) + 1 < len(booking_indices) else len(lines)
@@ -93,7 +92,7 @@ async def handle_preorder(message: Message):
                 delete_after=60
             )
     else:
-        # Обычный предзаказ без блока "бронь"
+        # === Обычный предзаказ без блока "бронь" ===
         payments = extract_prepayments(content)
         if any(payments.values()):
             try:
@@ -108,7 +107,7 @@ async def handle_preorder(message: Message):
                         referral_source=data.get('referral_source')
                     )
             except Exception as e:
-                logger.exception("[PREORDER] Ошибка сохранения клиента")
+                logger.exception("[PREORDER] Ошибка при сохранении клиента")
 
             await StatsRepository.add_preorder(**payments)
             await PaymentService.add_payments_batch(payments, source_type='preorder')
