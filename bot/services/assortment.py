@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class AssortmentService:
-    """Сервис для работы с ассортиментом (категории + товары)."""
+    """Сервис для работы с ассортиментом."""
 
     @staticmethod
     async def load_inventory() -> List[Dict[str, Any]]:
@@ -47,8 +47,8 @@ class AssortmentService:
     @staticmethod
     async def remove_by_serial(serial: str, reason: str = 'sale', conn=None) -> bool:
         """
-        Удаляет товар по серийному номеру + сохраняет в deleted_items.
-        Если передан conn — работает внутри существующей транзакции.
+        Удаляет товар по серийному номеру.
+        Поддерживает работу внутри транзакции (если передан conn).
         """
         from bot.repositories import ItemRepository
 
@@ -60,7 +60,7 @@ class AssortmentService:
         try:
             item = await ItemRepository.get_item_by_serial(normalized)
             if not item:
-                logger.warning(f"[AssortmentService] Товар {normalized} не найден")
+                logger.warning(f"[AssortmentService] Товар с серийником {normalized} не найден")
                 return False
 
             if conn:
