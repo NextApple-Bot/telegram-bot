@@ -1,4 +1,3 @@
-# Файл: bot/utils/helpers.py
 import asyncio
 import logging
 from aiogram import Bot
@@ -20,10 +19,6 @@ async def send_and_clean(
     reply_markup=None,
     **kwargs
 ) -> Message:
-    """
-    Отправляет сообщение и автоматически удаляет его через delete_after секунд
-    (кроме топика ассортимента).
-    """
     msg = await bot.send_message(
         chat_id=chat_id,
         text=text,
