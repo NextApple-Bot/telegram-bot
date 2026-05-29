@@ -10,13 +10,8 @@ from loguru import logger
 
 from bot.config import config
 
-# === Routers ===
-from bot.handlers.commands import router as commands_router
-from bot.handlers.callbacks import router as callbacks_router
-from bot.handlers import router as topics_router
-
-from bot.handlers.admin.router import router as admin_router
-from bot.handlers.common.router import router as common_router
+# === Главный роутер (в нём уже подключены все остальные) ===
+from bot.handlers import router as main_router
 
 # === Middleware ===
 from bot.middleware.error_handler import ErrorHandlerMiddleware
@@ -31,16 +26,12 @@ def create_bot() -> Bot:
 
 def create_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
-
     dp.update.middleware(ErrorHandlerMiddleware())
 
-    dp.include_router(topics_router)
-    dp.include_router(commands_router)
-    dp.include_router(callbacks_router)
-    dp.include_router(admin_router)
-    dp.include_router(common_router)
+    # Подключаем только главный роутер
+    dp.include_router(main_router)
 
-    logger.info("All routers + ErrorHandlerMiddleware included successfully")
+    logger.info("Главный роутер + ErrorHandlerMiddleware подключены")
     return dp
 
 
@@ -50,7 +41,7 @@ async def main() -> None:
 
     await bot.delete_webhook(drop_pending_updates=True)
 
-    logger.info("Starting bot in polling mode...")
+    logger.info("Запуск бота в режиме polling...")
     await dp.start_polling(bot)
 
 
