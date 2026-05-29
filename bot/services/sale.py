@@ -10,10 +10,10 @@ class SaleService:
     @staticmethod
     async def process_sale(content: str, chat_id: int, message_id: int, payments: dict) -> dict:
         serials = list(set(extract_serials(content)))
-        is_accessory = (len(serials) == 0)
+        is_accessory = len(serials) == 0
 
         if is_accessory:
-            logger.info("Аксессуар — сохраняем только платежи")
+            logger.info("[SaleService] Аксессуар — сохраняем только платежи")
             return {
                 "sold_items": [],
                 "not_found": [],
@@ -25,9 +25,10 @@ class SaleService:
         for serial in serials:
             item = await ItemRepository.get_item_by_serial(serial)
             if item:
-                sold_items.append((item['id'], serial))
+                sold_items.append((item["id"], serial))
 
         if not sold_items:
+            logger.info(f"[SaleService] Серийные номера не найдены: {serials}")
             return {
                 "sold_items": [],
                 "not_found": serials,
@@ -37,17 +38,19 @@ class SaleService:
 
         # Удаляем товары
         for item_id, serial in sold_items:
-            await AssortmentService.remove_by_serial(serial, reason='sale')
+            success = await AssortmentService.remove_by_serial(serial, reason="sale")
+            if not success:
+                logger.warning(f"[SaleService] Не удалось удалить товар {serial}")
 
         # Сохраняем статистику
         await StatsRepository.add_sale(
             count=len(sold_items),
-            cash=payments.get('cash', 0),
-            terminal=payments.get('terminal', 0),
-            qr=payments.get('qr', 0),
-            transfer=payments.get('transfer', 0),
-            invoice=payments.get('invoice', 0),
-            installment=payments.get('installment', 0),
+            cash=payments.get("cash", 0),
+            terminal=payments.get("terminal", 0),
+            qr=payments.get("qr", 0),
+            transfer=payments.get("transfer", 0),
+            invoice=payments.get("invoice", 0),
+            installment=payments.get("installment", 0),
             is_accessory=False,
             message_id=message_id
         )
