@@ -5,7 +5,7 @@ from aiogram.types import Message
 
 from bot import config
 from bot.services.sale import SaleService
-from bot.utils.payment_parser import extract_payment_amounts
+from bot.services.payment_parser import extract_payment_amounts
 from bot.utils.helpers import remove_trade_in_lines, send_and_clean
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ async def handle_sales_message(message: Message):
             await send_and_clean(
                 bot=message.bot,
                 chat_id=message.chat.id,
-                text=f"✅ Продажа обработана: {len(result['sold_items'])} товар(ов)",
+                text=f"Продажа обработана: {len(result['sold_items'])} товар(ов)",
                 reply_to_message_id=message.message_id,
                 message_thread_id=config.THREAD_SALES,
                 delete_after=120
@@ -62,7 +62,7 @@ async def handle_sales_message(message: Message):
             await send_and_clean(
                 bot=message.bot,
                 chat_id=message.chat.id,
-                text=f"❌ Не найдены серийные номера: {result['not_found']}",
+                text=f"Не найдены серийные номера: {result['not_found']}",
                 reply_to_message_id=message.message_id,
                 message_thread_id=config.THREAD_SALES,
                 delete_after=120
@@ -73,7 +73,7 @@ async def handle_sales_message(message: Message):
         await send_and_clean(
             bot=message.bot,
             chat_id=message.chat.id,
-            text="⚠️ Ошибка при обработке продажи. Администратор уведомлён.",
+            text="Ошибка при обработке продажи. Администратор уведомлён.",
             reply_to_message_id=message.message_id,
             message_thread_id=config.THREAD_SALES,
             delete_after=120
