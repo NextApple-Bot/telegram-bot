@@ -1,15 +1,8 @@
-#!/usr/bin/env python
-"""
-Callback handlers for menu actions.
-"""
-
 import logging
-
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot.utils.helpers import send_and_clean
-
 from .base import get_main_menu_keyboard, show_inventory, show_help
 from bot.repositories.stats import StatsRepository
 
@@ -17,23 +10,25 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-@router.callback_query(F.data == "menu:inventory")
-async def menu_inventory(callback: CallbackQuery):
-    await callback.answer()
+async def _safe_delete_message(callback: CallbackQuery):
+    """Безопасно удаляет сообщение, игнорируя ошибки."""
     try:
         await callback.message.delete()
     except Exception:
         pass
+
+
+@router.callback_query(F.data == "menu:inventory")
+async def menu_inventory(callback: CallbackQuery):
+    await callback.answer()
+    await _safe_delete_message(callback)
     await show_inventory(callback.bot, callback.message.chat.id)
 
 
 @router.callback_query(F.data == "menu:help")
 async def menu_help(callback: CallbackQuery):
     await callback.answer()
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
+    await _safe_delete_message(callback)
     await show_help(callback.bot, callback.message.chat.id)
 
 
@@ -43,34 +38,28 @@ async def menu_stats(callback: CallbackQuery):
     try:
         stats = await StatsRepository.get_today_stats()
         text = (
-            f"📊 <b>Статистика на {stats.get('date', 'сегодня')}</b>\n\n"
-            f"Продажи: <b>{stats.get('sales_count', 0)}</b>\n"
-            f"Предзаказы: <b>{stats.get('preorders_count', 0)}</b>\n"
-            f"Бронирования: <b>{stats.get('bookings_count', 0)}</b>"
+            f"📊 Статистика на {stats.get('date', 'сегодня')}\n\n"
+            f"Продажи: {stats.get('sales_count', 0)}\n"
+            f"Предзаказы: {stats.get('preorders_count', 0)}\n"
+            f"Бронирования: {stats.get('bookings_count', 0)}"
         )
         await callback.message.edit_text(text, parse_mode="HTML")
     except Exception:
-        logger.exception("Error getting stats")
+        logger.exception("[CALLBACK] Ошибка при получении статистики")
         await callback.message.edit_text("Ошибка при получении статистики.")
 
 
 @router.callback_query(F.data == "menu:remains")
 async def menu_remains(callback: CallbackQuery):
     await callback.answer()
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
+    await _safe_delete_message(callback)
     await show_inventory(callback.bot, callback.message.chat.id)
 
 
 @router.callback_query(F.data == "menu:export_assortment")
 async def menu_export_assortment(callback: CallbackQuery):
     await callback.answer()
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
+    await _safe_delete_message(callback)
     await show_inventory(callback.bot, callback.message.chat.id)
 
 
@@ -78,7 +67,7 @@ async def menu_export_assortment(callback: CallbackQuery):
 async def menu_clients_by_month(callback: CallbackQuery):
     await callback.answer()
     await callback.message.edit_text(
-        "👥 <b>Клиенты по месяцам</b>\n\n"
+        "👥 Клиенты по месяцам\n\n"
         "Эта функция пока в разработке.\n"
         "Можно использовать /export_clients для экспорта всех клиентов.",
         parse_mode="HTML"
@@ -89,7 +78,7 @@ async def menu_clients_by_month(callback: CallbackQuery):
 async def menu_clear(callback: CallbackQuery):
     await callback.answer()
     await callback.message.edit_text(
-        "Очистка ассортимента\n\n"
+        "🗑 Очистка ассортимента\n\n"
         "Вы уверены, что хотите полностью удалить все товары и категории?\n\n"
         "Данные о клиентах, продажах и статистике останутся.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -103,10 +92,7 @@ async def menu_clear(callback: CallbackQuery):
 @router.callback_query(F.data == "menu:cancel")
 async def process_cancel(callback: CallbackQuery):
     await callback.answer("Отменено")
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
+    await _safe_delete_message(callback)
 
     keyboard = get_main_menu_keyboard()
     await send_and_clean(
