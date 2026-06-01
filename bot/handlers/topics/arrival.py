@@ -104,4 +104,51 @@ async def handle_arrival(message: Message, state: FSMContext):
         await state.update_data(temp_items=parsed_items)
         await state.set_state(ArrivalConfirmState.waiting_for_confirm)
 
-        preview = f"📥 Найдено **{len(parsed_items)}** товаров
+        preview = f"📥 Найдено **{len(parsed_items)}** товаров с серийными номерами.\n\n"
+        for item in parsed_items[:8]:
+            preview += f"• {item['text'][:70]}\n"
+        if len(parsed_items) > 8:
+            preview += f"... и ещё {len(parsed_items) - 8}\n"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Добавить в ассортимент", callback_data="arrival_confirm:yes")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="arrival_confirm:no")]
+        ])
+
+        await message.reply(preview, reply_markup=keyboard)
+
+    except Exception as e:
+        logger.exception("Ошибка в handle_arrival")
+        await message.reply(f"❌ Произошла ошибка: {str(e)[:120]}")
+
+
+@router.callback_query(ArrivalConfirmState.waiting_for_confirm, F.data.startswith("arrival_confirm:"))
+async def process_arrival_confirm(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    items = data.get("temp_items", [])
+    action = callback.data.split(":")[1]
+
+    if action == "yes" and items:
+        try:
+            added = 0
+            async_session = get_async_session_factory()
+            async with async_session() as session, session.begin():
+                for item in items:
+                    cat_id = await ItemRepository.get_or_create_category(item["category"], conn=session)
+                    session.add(Item(
+                        text=item["text"],
+                        serial=item.get("serial"),
+                        category_id=cat_id
+                    ))
+                    added += 1
+
+            await AssortmentService.invalidate_cache()
+            await callback.message.edit_text(f"✅ Успешно добавлено **{added}** товаров в ассортимент!")
+        except Exception as e:
+            logger.exception("Ошибка при добавлении товаров")
+            await callback.message.edit_text(f"❌ Ошибка при добавлении: {e}")
+    else:
+        await callback.message.edit_text("❌ Добавление отменено.")
+
+    await state.clear()
+    await callback.answer()
