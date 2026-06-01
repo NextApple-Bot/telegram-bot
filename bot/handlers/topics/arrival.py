@@ -22,6 +22,7 @@ router = Router()
 
 async def determine_category_for_item(item_text: str, categories: list) -> str:
     stripped = item_text.strip()
+
     if stripped.startswith("Б/У -") or stripped.startswith("Б/У "):
         return "Б/У:"
     if stripped.startswith("NS -") or stripped.startswith("NS "):
@@ -69,15 +70,18 @@ async def handle_arrival(message: Message, state: FSMContext):
             await message.reply("⚠️ Отправь текст с товарами.")
             return
 
-        # Извлекаем строки с серийными номерами
         lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+        # Убираем строки-разделители
+        lines = [line for line in lines if not re.match(r'^[-–—\s]+$', line)]
+
+        # Берём только строки с серийными номерами
         lines_with_serial = [line for line in lines if extract_serials(line)]
 
         if not lines_with_serial:
-            await message.reply("❌ В сообщении нет строк с серийными номерами в скобках.")
+            await message.reply("❌ В сообщении нет строк с серийными номерами в скобках `(...)`.")
             return
 
-        # Получаем текущие категории
         current_categories = await AssortmentService.load_inventory()
 
         parsed_items = []
@@ -85,6 +89,7 @@ async def handle_arrival(message: Message, state: FSMContext):
             serials = extract_serials(line)
             serial = serials[0] if serials else None
             category = await determine_category_for_item(line, current_categories)
+
             parsed_items.append({
                 "text": line,
                 "serial": serial,
@@ -95,23 +100,8 @@ async def handle_arrival(message: Message, state: FSMContext):
             await message.reply("❌ Не удалось распознать товары.")
             return
 
-        # Сохраняем в состояние и показываем превью
+        # Сохраняем и показываем превью
         await state.update_data(temp_items=parsed_items)
         await state.set_state(ArrivalConfirmState.waiting_for_confirm)
 
-        preview = f"📥 Найдено {len(parsed_items)} товаров с серийными номерами.\n\n"
-        for item in parsed_items[:6]:
-            preview += f"• {item['text'][:60]}\n"
-        if len(parsed_items) > 6:
-            preview += f"... и ещё {len(parsed_items) - 6}\n"
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Добавить в ассортимент", callback_data="arrival_confirm:yes")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="arrival_confirm:no")]
-        ])
-
-        await message.reply(preview, reply_markup=keyboard)
-
-    except Exception as e:
-        logger.exception("Ошибка в handle_arrival")
-        await message.reply(f"❌ Произошла ошибка при обработке: {str(e)[:100]}")
+        preview = f"📥 Найдено **{len(parsed_items)}** товаров
