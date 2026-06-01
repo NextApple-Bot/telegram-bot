@@ -7,16 +7,14 @@ from bot import config
 logger = logging.getLogger(__name__)
 router = Router()
 
-@router.message(
-    F.chat.id == config.MAIN_GROUP_ID,
-    F.message_thread_id == config.THREAD_ARRIVAL
-)
-async def debug_arrival(message: Message):
-    logger.warning(f"🔥 ARRIVAL TRIGGERED | thread_id={message.message_thread_id}")
-    await message.reply(
-        f"✅ Хендлер сработал!\n\n"
-        f"Твой thread_id: `{message.message_thread_id}`\n"
-        f"Ожидаемый (из config): `{config.THREAD_ARRIVAL}`"
-    )
+@router.message(F.chat.id == config.MAIN_GROUP_ID)
+async def debug_any_message(message: Message):
+    thread_id = getattr(message, 'message_thread_id', None)
+    logger.warning(f"📩 Получено сообщение | thread_id={thread_id} | текст: {message.text[:80] if message.text else 'нет текста'}")
+    
+    if thread_id == config.THREAD_ARRIVAL:
+        await message.reply(f"✅ Это топик Прибытие (thread_id={thread_id})")
+    else:
+        await message.reply(f"❌ Это НЕ топик Прибытие\nТвой thread_id = `{thread_id}`\nОжидается: `{config.THREAD_ARRIVAL}`")
 
-print("✅ Debug arrival router loaded")
+print("Debug router loaded")
